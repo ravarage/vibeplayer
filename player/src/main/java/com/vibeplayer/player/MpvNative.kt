@@ -1,5 +1,7 @@
 package com.vibeplayer.player
 
+import android.view.Surface
+
 object MpvNative {
     init {
         System.loadLibrary("c++_shared")
@@ -18,5 +20,8 @@ object MpvNative {
     external fun initialize(handle: Long): Int
     external fun command(handle: Long, args: Array<String>): Int
     external fun getPropertyString(handle: Long, name: String): String?
+    external fun setPropertyString(handle: Long, name: String, value: String): Int
+    external fun attachSurface(handle: Long, surface: Surface)
+    external fun detachSurface(handle: Long)
     external fun destroy(handle: Long)
 }

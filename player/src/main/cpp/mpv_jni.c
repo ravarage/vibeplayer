@@ -15,6 +15,7 @@ typedef struct {
     pthread_t event_thread;
     int thread_running;
     int stop_requested;
+    jobject surface_ref;
 } mpv_holder_t;
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
@@ -157,11 +158,63 @@ Java_com_vibeplayer_player_MpvNative_getPropertyString(JNIEnv *env, jobject thiz
     return res;
 }
 
+JNIEXPORT jint JNICALL
+Java_com_vibeplayer_player_MpvNative_setPropertyString(JNIEnv *env, jobject thiz,
+                                                       jlong handle, jstring name, jstring value) {
+    if (!handle || !name || !value) return -1;
+    mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    const char *c_value = (*env)->GetStringUTFChars(env, value, NULL);
+    int res = mpv_set_property_string(holder->mpv, c_name, c_value);
+    (*env)->ReleaseStringUTFChars(env, name, c_name);
+    (*env)->ReleaseStringUTFChars(env, value, c_value);
+    return res;
+}
+
+JNIEXPORT void JNICALL
+Java_com_vibeplayer_player_MpvNative_attachSurface(JNIEnv *env, jobject thiz,
+                                                   jlong handle, jobject surface) {
+    if (!handle || !surface) return;
+    mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (holder->surface_ref) {
+        int64_t wid = 0;
+        mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
+        (*env)->DeleteGlobalRef(env, holder->surface_ref);
+        holder->surface_ref = NULL;
+    }
+    jobject g_ref = (*env)->NewGlobalRef(env, surface);
+    holder->surface_ref = g_ref;
+    int64_t wid = (intptr_t)g_ref;
+    int res = mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
+    if (res < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "mpv_set_option(wid) failed: %s", mpv_error_string(res));
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_com_vibeplayer_player_MpvNative_detachSurface(JNIEnv *env, jobject thiz,
+                                                   jlong handle) {
+    if (!handle) return;
+    mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    int64_t wid = 0;
+    mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
+    if (holder->surface_ref) {
+        (*env)->DeleteGlobalRef(env, holder->surface_ref);
+        holder->surface_ref = NULL;
+    }
+}
+
 JNIEXPORT void JNICALL
 Java_com_vibeplayer_player_MpvNative_destroy(JNIEnv *env, jobject thiz, jlong handle) {
     if (!handle) return;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
     holder->stop_requested = 1;
+    if (holder->surface_ref) {
+        int64_t wid = 0;
+        mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
+        (*env)->DeleteGlobalRef(env, holder->surface_ref);
+        holder->surface_ref = NULL;
+    }
     if (holder->mpv) {
         mpv_wakeup(holder->mpv);
     }
