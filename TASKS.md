@@ -67,6 +67,17 @@ requested). *Files*: app/.../MainActivity.kt, manifest. *Accept*: video and audi
 
 ## P1 Player core
 
+_Reviewer notes on P1-01/P1-02 (commits 1f6cf15, 749ce1a). Fix in the task named:_
+- _P1-04: `time-pos` is observed as DOUBLE and logged on every change, i.e. a JNI call, a boxed Double
+  and a logcat line per video frame. Remove the per-update logs (pause/duration/position/eof). Forward
+  `time-pos` from C only when it moved by 100 ms or more, and `observeProperty`/unobserve it with
+  controls visibility (ARCHITECTURE.md: no position updates while controls are hidden). Add
+  `unobserveProperty` to the bridge._
+- _P1-06: the option table is hard-coded in `PlayerEngine.initHandle()`; move it to `PlaybackMode`._
+- _P1-07: `fallback` is set whenever `hwdec-current` is `no`, which is also true before any file is
+  loaded and for AV1 (software by design). Report fallback only when a file is playing, its video codec
+  is in `hwdec-codecs`, and `hwdec-current` is `no`._
+
 **P1-01 Event thread and state** — Native event loop, `observeProperty`, `PlayerState`, separate
 position flow. *Files*: mpv_jni.c, PlayerEngine.kt, PlayerState.kt. *Accept*: logcat shows pause,
 duration and position changes arriving as flow updates.
