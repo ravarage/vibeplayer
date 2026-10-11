@@ -18,7 +18,15 @@ Newest entry first. Keep entries short; no long logs.
 
 ## Open
 
-_none_
+## B-03 Device Vulkan 1.1 below libplacebo 1.2 requirement            Status: OPEN
+- Task: P6-00
+- Agent / date: AGY-2C / 2026-10-12
+- Problem: Device Adreno 642L reports Vulkan 1.1.128, which is below libplacebo's requirement PL_VK_MIN_VERSION (Vulkan 1.2). Probe with vo=gpu-next, gpu-api=vulkan, gpu-context=androidvk fails: libplacebo reports "Found no suitable device, giving up."
+- Tried: Built libmpv with Vulkan and shaderc (NDK r30); confirmed gpu-context=androidvk and gpu-api=vulkan in option choices; probed on device with com.vibeplayer.vk.
+- Options: Per TASKS.md P6-00, re-scope P6-02, P6-04, and P6-05 to compare vo=gpu-next vs vo=gpu on OpenGL ES. Both vo=gpu and vo=gpu-next confirmed fully working on GLES.
+- Needs from user: Non-blocking; reviewer acknowledgement of P6 re-scoping to gpu-next vs gpu on GLES.
+- Resolution: 
+
 
 ## Resolved
 

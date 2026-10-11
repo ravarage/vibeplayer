@@ -32,6 +32,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | freetype | 2.14.3 | https://gitlab.freedesktop.org/freetype/freetype.git | tag VER-2-14-3, latest stable |
 | harfbuzz | 14.6.0 | https://github.com/harfbuzz/harfbuzz.git | latest stable release |
 | fribidi | 1.0.17 | https://github.com/fribidi/fribidi.git | tag v1.0.17, latest stable |
+| shaderc | 2022.3 | Android NDK r30 (sources/third_party/shaderc) | Built via ndk-build libshaderc_combined for arm64-v8a at -O2 |
 
 ## Tasks
 | Task | Title | Status | Agent | Commit | Notes |
@@ -83,7 +84,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P5-03 | Background audio | TODO | | | |
 | P5-04 | Picture-in-picture | TODO | | | |
 | P5-05 | Lifecycle edge cases | TODO | | | |
-| P6-00 | Vulkan-enabled native build | TODO | | | |
+| P6-00 | Vulkan-enabled native build | DONE | AGY-2C | pending | Built libplacebo v7.360.1 + shaderc 2022.3 + mpv v0.41.0 with Vulkan; patch 0004 captures buildscripts; options confirmed; probe showed device Vulkan 1.1 < required 1.2; GLES playback confirmed |
 | P6-01 | Quality mode | TODO | | | |
 | P6-02 | Renderer switch | TODO | | | |
 | P6-03 | Benchmark harness | TODO | | | |
