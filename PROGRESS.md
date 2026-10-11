@@ -70,7 +70,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P3-06 | Pinch zoom | TODO | | | |
 | P3-07 | Lock | TODO | | | |
 | P3-08 | Haptics | TODO | | | |
-| P4-01 | Room setup | TODO | | | |
+| P4-01 | Room setup | DONE | AGY-1B | pending | AppDatabase, FileSettings entity and DAO configured with Room 2.8.5; insert/read round-trip verified on redwood; schema exported |
 | P4-02 | Resume position | TODO | | | |
 | P4-03 | Audio track picker | TODO | | | |
 | P4-04 | Subtitle picker | TODO | | | |

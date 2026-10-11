@@ -32,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.vibeplayer.data.db.AppDatabase
+import com.vibeplayer.data.db.FileSettings
 import com.vibeplayer.data.media.MediaRepository
 import com.vibeplayer.data.media.VideoFolder
 import com.vibeplayer.ui.browser.FolderListScreen
@@ -39,13 +41,17 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val repository by lazy { MediaRepository(applicationContext) }
+    private val db by lazy { AppDatabase.getInstance(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    MainScreen(repository = repository)
+                    MainScreen(
+                        repository = repository,
+                        db = db
+                    )
                 }
             }
         }
@@ -53,7 +59,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(repository: MediaRepository) {
+fun MainScreen(
+    repository: MediaRepository,
+    db: AppDatabase
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -71,6 +80,36 @@ fun MainScreen(repository: MediaRepository) {
 
     var folders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
+
+    // Verify Room round-trip on startup
+    LaunchedEffect(Unit) {
+        coroutineScope.launch {
+            try {
+                val dao = db.fileSettingsDao()
+                val testKey = "/sdcard/Movies/vibeplayer-test/ichiban.mp4:10485760"
+                val testItem = FileSettings(
+                    key = testKey,
+                    positionMs = 45000L,
+                    durationMs = 120000L,
+                    audioTrackId = 1,
+                    subTrackId = 2,
+                    subEnabled = true,
+                    speed = 1.25f,
+                    aspect = "fit",
+                    lastPlayedAt = System.currentTimeMillis()
+                )
+                dao.insert(testItem)
+                val readBack = dao.getByKey(testKey)
+                if (readBack != null && readBack.key == testKey && readBack.positionMs == 45000L) {
+                    Log.d("VP", "Room round trip success: key=${readBack.key}, pos=${readBack.positionMs}ms, dur=${readBack.durationMs}ms, speed=${readBack.speed}, aspect=${readBack.aspect}")
+                } else {
+                    Log.e("VP", "Room round trip failed: readBack=$readBack")
+                }
+            } catch (e: Exception) {
+                Log.e("VP", "Room test failed with exception", e)
+            }
+        }
+    }
 
     fun loadFolders() {
         isLoading = true
