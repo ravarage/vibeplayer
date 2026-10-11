@@ -1,6 +1,6 @@
 # PROGRESS
 
-Last reviewed commit: none
+Last reviewed commit: b8b3cba
 
 Statuses: TODO, IN PROGRESS, DONE, BLOCKED. Notes: one or two lines; for IN PROGRESS always state the next step.
 
@@ -37,26 +37,26 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 ## Tasks
 | Task | Title | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
-| P0-01 | Toolchain check | DONE | AGY-1 | pending | Host tools recorded (Linux 7.2.9, OpenJDK 27, Gradle 9.8.1, git 2.56.0, CMake 4.4.4, Meson 1.12.1, Ninja 1.13.2, NASM 3.02, Python 3.14.7, adb 1.0.41, 16 cores); JBR 25.0.3 configured in ~/.gradle/gradle.properties |
-| P0-02 | Device check | DONE | AGY-1 | pending | redwood (SDK 37, Vulkan 1.1, GLES 3.2); clips probed and mapped, missing clips recorded in non-blocking B-02 |
-| P0-03 | Fetch mpv-android | DONE | AGY-1 | pending | mpv-android pinned at c2e02fe; mpv v0.41.0, FFmpeg n9.0.2, dav1d 1.5.4, libass 0.17.5, libplacebo v7.360.1, harfbuzz 14.6.0 pinned in buildscripts via patch |
-| P0-04 | Download SDK, NDK, deps | DONE | AGY-1 | pending | SDK platform 36/build-tools 36.0.0, NDK r30 (30.0.16248370), CMake 4.4.4 recorded; all deps downloaded at pinned versions |
-| P0-05 | FFmpeg trim | DONE | AGY-1 | pending | Patch 0002 trims FFmpeg (0 encoders/muxers, no avdevice, libdav1d enabled); mpv built without avdevice; patches apply cleanly on fresh fetch |
-| P0-06 | Build native for arm64 | DONE | AGY-1 | pending | arm64-only native build at -O2 verified (readelf AArch64); 7 .so files copied to player/src/main/jniLibs/arm64-v8a; no libavdevice; build ~43s, incremental no-op ~16s |
-| P0-07 | Gradle skeleton | DONE | AGY-1 | pending | Gradle 9.8.1, AGP 9.4.1, compile/targetSdk 37, minSdk 37; :app and :player with version catalog; installed and ran blank Compose screen on redwood (also built independently on par/app by AGY-1B, reconciled) |
-| P0-08 | JNI bridge minimal | TODO | | | |
-| P0-09 | Verify mpv options and codecs | TODO | | | |
-| P0-10 | Play one file | TODO | | | |
+| P0-01 | Toolchain check | DONE | AGY-1 | 075cf3d | Host tools recorded (Linux 7.2.9, OpenJDK 27, Gradle 9.8.1, git 2.56.0, CMake 4.4.4, Meson 1.12.1, Ninja 1.13.2, NASM 3.02, Python 3.14.7, adb 1.0.41, 16 cores); JBR 25.0.3 configured in ~/.gradle/gradle.properties |
+| P0-02 | Device check | DONE | AGY-1 | d53c9b7 | redwood (SDK 37, Vulkan 1.1, GLES 3.2); clips probed and mapped, missing clips recorded in non-blocking B-02 |
+| P0-03 | Fetch mpv-android | DONE | AGY-1 | 9307be7 | mpv-android pinned at c2e02fe; mpv v0.41.0, FFmpeg n9.0.2, dav1d 1.5.4, libass 0.17.5, libplacebo v7.360.1, harfbuzz 14.6.0 pinned in buildscripts via patch |
+| P0-04 | Download SDK, NDK, deps | DONE | AGY-1 | e1e935b | SDK platform 36/build-tools 36.0.0, NDK r30 (30.0.16248370), CMake 4.4.4 recorded; all deps downloaded at pinned versions |
+| P0-05 | FFmpeg trim | DONE | AGY-1 | 341c081 | Patch 0002 trims FFmpeg (0 encoders/muxers, no avdevice, libdav1d enabled); mpv built without avdevice; patches apply cleanly on fresh fetch |
+| P0-06 | Build native for arm64 | DONE | AGY-1 | a7aca47 | arm64-only native build at -O2 verified (readelf AArch64); 7 .so files copied to player/src/main/jniLibs/arm64-v8a; no libavdevice; build ~43s, incremental no-op ~16s |
+| P0-07 | Gradle skeleton | DONE | AGY-1 | b7a7086 | Gradle 9.8.1, AGP 9.4.1, compile/targetSdk 37, minSdk 37; :app and :player with version catalog; installed and ran blank Compose screen on redwood |
+| P0-08 | JNI bridge minimal | DONE | AGY-1 | 866a54c | JNI bridge (mpv_jni.c, CMakeLists.txt, MpvNative.kt); JavaVM passed to FFmpeg in JNI_OnLoad; logcat shows mpv v0.41.0; no crash on exit |
+| P0-09 | Verify mpv options and codecs | DONE | AGY-1 | f4853de | Confirmed options: vo (gpu, gpu-next), hwdec (mediacodec, mediacodec-copy), ao (aaudio, audiotrack, opensles); 507 decoders (libdav1d, mediacodec, broad FFmpeg); 367 demuxers; 0 encoders/muxers |
+| P0-10 | Play one file | DONE | AGY-1 | b8b3cba | MainActivity with SurfaceView attached to libmpv wid plays ichiban.mp4; hwdec=mediacodec, ao=audiotrack confirmed in log; video and audio play to end (eof reached); pause toggle works; clean exit |
 | P1-01 | Event thread and state | TODO | | | |
 | P1-02 | PlayerEngine API | TODO | | | |
-| P1-03 | Surface lifecycle | TODO | | | |
+| P1-03 | PlayerActivity and surface lifecycle | TODO | | | |
 | P1-04 | Player screen | TODO | | | |
 | P1-05 | Scrubbing | TODO | | | |
 | P1-06 | Efficient mode candidates | TODO | | | |
 | P1-07 | Software fallback and dav1d threads | TODO | | | |
 | P1-08 | Debug overlay | TODO | | | |
 | P1-09 | Open-with intent | TODO | | | |
-| P1-10 | ASS subtitles and efficient path decision | TODO | | | |
+| P1-10 | ASS subtitles on both efficient paths | TODO | | | |
 | P2-01 | MediaStore repository | DONE | AGY-1B | pending | READ_MEDIA_VIDEO flow and MediaRepository query implemented; 9 folders and counts logged matching device gallery |
 | P2-02 | Folder list screen | DONE | AGY-1B | pending | FolderListScreen implemented with LazyColumn, folder icon, name, count; verified on redwood showing all 9 folders including vibeplayer-test |
 | P2-03 | Video list screen | DONE | AGY-1B | pending | VideoListScreen implemented with title, duration, size, resolution; tap calls onPlayVideo with VP log/Toast (player acceptance skipped per instructions); back returns to folder list |
@@ -84,6 +84,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P5-03 | Background audio | TODO | | | |
 | P5-04 | Picture-in-picture | TODO | | | |
 | P5-05 | Lifecycle edge cases | TODO | | | |
+| P6-00 | Vulkan-enabled native build | TODO | | | |
 | P6-01 | Quality mode | TODO | | | |
 | P6-02 | Renderer switch | TODO | | | |
 | P6-03 | Benchmark harness | TODO | | | |

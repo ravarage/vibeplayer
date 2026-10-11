@@ -18,16 +18,18 @@ Newest entry first. Keep entries short; no long logs.
 
 ## Open
 
-## B-02 Missing test clips (AV1 4K and multi-track AC3/PGS)            Status: OPEN
+_none_
+
+## Resolved
+
+## B-02 Missing test clips (AV1 4K and multi-track AC3/PGS)            Status: RESOLVED
 - Task: P0-02
 - Agent / date: AGY-1 / 2026-10-11
 - Problem: No clips in /sdcard/Movies/vibeplayer-test match 'AV1 stress test (4K)' and '2+ audio tracks (one AC3/EAC3/DTS), 2+ subtitle tracks (one PGS)'.
 - Tried: Probed all 9 clips on device with ffprobe. All AV1 files are <= 1080p; audio tracks are AAC/Opus/MP3/Vorbis; subtitles are ASS.
 - Options: A) user pushes av1_4k and multi_track clips to /sdcard/Movies/vibeplayer-test; B) create/substitute clips during P1-07 and P4-03/04.
 - Needs from user: Non-blocking: provide matching 4K AV1 clip and multi-track (AC3/DTS + PGS) clip when possible.
-- Resolution:
-
-## Resolved
+- Resolution: reviewer pushed `av1_4k.mp4` and `multi_track.mkv` to the device on 2026-10-11; SPEC.md clip table updated.
 
 ## B-01 Android Studio missing            Status: RESOLVED
 - Task: P0-01

@@ -83,9 +83,12 @@ duration and position changes arriving as flow updates.
 *Files*: PlayerEngine.kt. *Accept*: no mpv call on main (StrictMode or thread assert); load/seek/release
 100 times in a loop without crash or leak.
 
-**P1-03 Surface lifecycle** — Attach/detach on surface created/destroyed; survive rotate, home and
-return, screen off and on. *Files*: PlayerEngine.kt, mpv_jni.c, ui/player/VideoSurface.kt.
-*Accept*: 10 rotations and 10 home/return cycles, playback continues, no crash, no black screen.
+**P1-03 PlayerActivity and surface lifecycle** — Move playback out of MainActivity into
+`ui.player.PlayerActivity` (ARCHITECTURE.md, Activities); MainActivity keeps only a trivial launcher
+until the browser branch is merged. Implement the attach/detach sequence from ARCHITECTURE.md
+(Surface handling). Survive rotate, home and return, screen off and on. *Files*: PlayerActivity.kt,
+PlayerEngine.kt, mpv_jni.c, ui/player/VideoSurface.kt, manifest. *Accept*: 10 rotations and 10
+home/return cycles, playback continues, no crash, no black screen, no native crash in logcat.
 
 **P1-04 Player screen** — Compose controls over the surface: play/pause, time labels, seek bar, title,
 back; auto-hide after 3 s; immersive fullscreen; keep screen on. *Files*: ui/player/*.
@@ -98,7 +101,7 @@ file stays responsive; released position is exact within 1 s.
 **P1-06 Efficient mode candidates** — Implement both efficient paths from ARCHITECTURE.md behind a
 debug switch; play `h264_1080p.mp4` 5 minutes on each and record power and drops. *Files*:
 PlaybackMode.kt, docs/BENCHMARK.md. *Accept*: `hwdec-current` is a mediacodec variant for the H.264,
-HEVC and VP9 clips on each working path; numbers recorded. The choice is made after P1-10.
+HEVC and VP9 clips on each working path; numbers recorded. Path B is the default.
 
 **P1-07 Software fallback and dav1d threads** — Detect and expose fallback; confirm AV1 uses dav1d on
 all cores. *Files*: PlayerEngine.kt, PlayerState.kt. *Accept*: `av1_1080p.mkv` plays with
@@ -110,14 +113,13 @@ both drop counters. Stats flow observed only while open. *Files*: ui/player/Debu
 *Accept*: values update live; closed overlay causes no stats updates in logcat.
 
 **P1-09 Open-with intent** — Handle `ACTION_VIEW` for `video/*` (file and content URIs); orientation
-follows video aspect. *Files*: manifest, MainActivity.kt, ui/player/*. *Accept*: the "Play a test
-clip" command in AGENT_RULES.md works; opening from a file manager works.
+follows video aspect. *Files*: manifest, PlayerActivity.kt, ui/player/*. *Accept*: the "Play a test
+clip" command in AGENT_RULES.md works (targets PlayerActivity); opening from a file manager works.
 
-**P1-10 ASS subtitles and efficient path decision** — Check styled ASS (embedded fonts) and software
-fallback on both efficient paths; write the P1-06 numbers and trade-offs into a BLOCKERS entry for the
-user to pick the path. *Files*: BLOCKERS.md, ARCHITECTURE.md. *Accept*: per-path result for
-`anime_ass.mkv` (fonts, positions, karaoke) recorded; task is BLOCKED until the user answers, then
-the chosen path becomes the efficient default and the mode table is updated.
+**P1-10 ASS subtitles on both efficient paths** — Check styled ASS (embedded fonts) and software
+fallback on both efficient paths; record results next to the P1-06 numbers. Path B stays the default
+(ARCHITECTURE.md); do not block. *Files*: docs/BENCHMARK.md, ARCHITECTURE.md. *Accept*: per-path result
+for the Bocchi clip (fonts, positions, karaoke) recorded; path B renders it correctly.
 
 ## P2 Browser and thumbnails
 
@@ -219,6 +221,14 @@ while playing. *Files*: playback/*. *Accept*: none of these crash or leave a sta
 
 ## P6 Quality mode and renderer benchmark
 
+**P6-00 Vulkan-enabled native build** — Enable Vulkan in libplacebo and mpv (and what they need, e.g.
+shaderc/glslang, Vulkan headers from the NDK) via a new patch; rebuild; probe on the device with
+`gpu-api=vulkan`, `gpu-context=androidvk`, `vo=gpu-next`. *Files*: native/patches/*, native/build.sh,
+ARCHITECTURE.md (Vulkan status, Confirmed mpv options). *Accept*: either a clip plays through Vulkan
+(overlay/log shows the Vulkan context), or the exact failure (e.g. device Vulkan 1.1 below the required
+version) is recorded in ARCHITECTURE.md and a non-blocking BLOCKERS entry, and P6-02/P6-04/P6-05 are
+re-scoped to `gpu-next` vs `gpu` on GLES. GLES playback must still work after the rebuild.
+
 **P6-01 Quality mode** — Quality option table; mode setting and in-player toggle using
 `reconfigure()`. *Files*: PlaybackMode.kt, PlayerEngine.kt, ui/settings/*. *Accept*: overlay shows
 `gpu-next` and `mediacodec-copy`; switching mid-file keeps position and tracks.
@@ -243,7 +253,7 @@ temperature. *Files*: docs/BENCHMARK.md. *Accept*: 2 rows plus a written recomme
 
 ## P7 Performance pass (release builds only)
 
-**P7-01 Release build** — R8 full mode, resource shrinking, local signing config, keep rules for JNI.
+**P7-01 Release build** — mpv log level `warn` in release (P0 sets `all=v`, which costs CPU); R8 full mode, resource shrinking, local signing config, keep rules for JNI.
 *Files*: app/build.gradle.kts, proguard files, AGENT_RULES.md (commands). *Accept*: release APK
 installs and passes a smoke test of P1 to P5 features.
 
