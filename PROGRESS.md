@@ -64,8 +64,8 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P2-05 | Thumbnail generator | DONE | AGY-1B | pending | FrameExtractor interface & MediaMetadataRetriever extractor implemented (max 2 parallel, cancellable); on device 6 clips extracted, 5 got no thumbnail (av1_4k, hevc10_4k, bocchi, bad girl, clevatess) awaiting mpv fallback |
 | P2-06 | Thumbnail cache | DONE | AGY-1B | pending | ThumbnailCache with disk cache (path+size+mtime WebP) and memory LRU; tested on redwood: instant disk cache HIT on second launch with no extraction, cache miss/regeneration verified on replacing file |
 | P2-07 | Launch player from browser | DONE | AGY-1B | pending | onPlayVideo starts explicit ACTION_VIEW intent for PlayerActivity with file Uri & video/*; missing activity caught and Toast displayed; verified on redwood |
-| P2-08 | Thumbnail robustness | DONE | AGY-2B | pending | MMR failures investigated (null on 10-bit HEVC & 10-bit/4K AV1; 8-bit AV1 & 8-bit H264/VP8/VP9 succeed); versioned (.failed) negative cache; non-blocking sends in ContentObserver; display-size decode; 0 extractions on 2nd launch |
-| P2-09 | Settings screen scaffold | TODO | | | |
+| P2-08 | Thumbnail robustness | DONE | AGY-2B | a5b09df | MMR failures investigated (null on 10-bit HEVC & 10-bit/4K AV1; 8-bit AV1 & 8-bit H264/VP8/VP9 succeed); versioned (.failed) negative cache; non-blocking sends in ContentObserver; display-size decode; 0 extractions on 2nd launch |
+| P2-09 | Settings screen scaffold | DONE | AGY-2B | pending | SettingsScreen scaffold via gear icon in browser top bar; DataStore AppSettings (mode, renderer, gestures, skip seconds, background audio, shaders); values persist across app restart |
 | P3-01 | Gesture layer | TODO | | | |
 | P3-02 | Brightness | TODO | | | |
 | P3-03 | Volume | TODO | | | |

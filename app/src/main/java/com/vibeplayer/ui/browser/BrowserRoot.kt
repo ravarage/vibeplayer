@@ -46,6 +46,7 @@ fun BrowserRoot(
     val coroutineScope = rememberCoroutineScope()
     val repository = remember { MediaRepository(context.applicationContext) }
     val preferences = remember { BrowserPreferences(context.applicationContext) }
+    val settingsRepository = remember { com.vibeplayer.data.prefs.AppSettingsRepository(context.applicationContext) }
     val db = remember { AppDatabase.getInstance(context.applicationContext) }
     val thumbnailGenerator = remember { ThumbnailGenerator() }
     val thumbnailCache = remember { ThumbnailCache(context.applicationContext, thumbnailGenerator) }
@@ -84,6 +85,7 @@ fun BrowserRoot(
     BrowserNavGraph(
         repository = repository,
         preferences = preferences,
+        settingsRepository = settingsRepository,
         thumbnailCache = thumbnailCache,
         onPlayVideo = effectiveOnPlayVideo,
         modifier = modifier,

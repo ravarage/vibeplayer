@@ -28,6 +28,7 @@ object NavRoutes {
     const val FOLDERS = "folders"
     const val VIDEOS = "videos/{bucketId}/{bucketName}"
     const val PLAYER = "player/{videoPath}"
+    const val SETTINGS = "settings"
 
     fun videos(bucketId: String, bucketName: String): String {
         val encodedName = Uri.encode(bucketName)
@@ -44,6 +45,7 @@ object NavRoutes {
 fun BrowserNavGraph(
     repository: MediaRepository,
     preferences: BrowserPreferences,
+    settingsRepository: com.vibeplayer.data.prefs.AppSettingsRepository,
     thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache,
     onPlayVideo: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -67,6 +69,30 @@ fun BrowserNavGraph(
                 onFolderClick = { folder ->
                     Log.d("VP", "Navigating to folder ${folder.name} (${folder.bucketId})")
                     navController.navigate(NavRoutes.videos(folder.bucketId, folder.name))
+                },
+                onSettingsClick = {
+                    Log.d("VP", "Navigating to settings")
+                    navController.navigate(NavRoutes.SETTINGS)
+                }
+            )
+        }
+
+        composable(NavRoutes.SETTINGS) {
+            val currentSettings by settingsRepository.appSettingsFlow.collectAsState(
+                initial = com.vibeplayer.data.prefs.AppSettings()
+            )
+
+            com.vibeplayer.ui.settings.SettingsScreen(
+                settings = currentSettings,
+                onUpdateSettings = { newSettings ->
+                    coroutineScope.launch {
+                        Log.d("VP", "Updating app settings: $newSettings")
+                        settingsRepository.updateSettings(newSettings)
+                    }
+                },
+                onBack = {
+                    Log.d("VP", "Navigating back from settings")
+                    navController.popBackStack()
                 }
             )
         }
