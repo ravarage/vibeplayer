@@ -33,6 +33,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+
 class PlayerActivity : ComponentActivity() {
 
     private val playerEngine = PlayerEngine()
@@ -50,6 +55,9 @@ class PlayerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Log.i("VP", "PlayerActivity onCreate")
 
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        hideSystemBars()
+
         resolveVideoPath()
         checkPermissionAndProceed()
 
@@ -61,81 +69,37 @@ class PlayerActivity : ComponentActivity() {
             val playerState by playerEngine.state.collectAsState()
             val positionMs by playerEngine.position.collectAsState()
 
-            val posSec = positionMs / 1000.0
-            val durSec = playerState.durationMs / 1000.0
-
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = Color.Black
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable {
-                                playerEngine.togglePause()
-                            }
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                         VideoSurface(
                             playerEngine = playerEngine,
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // Status overlay
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 40.dp)
-                                .background(Color(0x99000000))
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = "Pos: %.1f / %.1f | hwdec: %s | paused: %s | eof: %s\nTap screen to play/pause"
-                                    .format(posSec, durSec, playerState.hwdecCurrent, playerState.paused, playerState.eof),
-                                color = Color.White,
-                                fontSize = 14.sp
-                            )
-                        }
-
-                        // Bottom test controls
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 32.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    playerEngine.seekTo(305_000, exact = true)
-                                    Log.i("VP", "Seeked near end (305s)")
-                                },
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            ) {
-                                Text("Seek End")
-                            }
-
-                            Button(
-                                onClick = {
-                                    playerEngine.seekTo(0, exact = true)
-                                    Log.i("VP", "Seeked to beginning (0s)")
-                                },
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            ) {
-                                Text("Restart")
-                            }
-
-                            Button(
-                                onClick = {
-                                    runP102Test()
-                                },
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            ) {
-                                Text("100x Test")
-                            }
-                        }
+                        PlayerControls(
+                            playerEngine = playerEngine,
+                            playerState = playerState,
+                            positionMs = positionMs,
+                            videoPath = currentVideoPath,
+                            onBack = { finish() },
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
             }
         }
+    }
+
+    private fun hideSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -254,6 +218,14 @@ class PlayerActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         Log.i("VP", "PlayerActivity onResume")
+        hideSystemBars()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            hideSystemBars()
+        }
     }
 
     override fun onPause() {
