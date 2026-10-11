@@ -46,6 +46,7 @@ fun BrowserNavGraph(
     repository: MediaRepository,
     preferences: BrowserPreferences,
     settingsRepository: com.vibeplayer.data.prefs.AppSettingsRepository,
+    db: com.vibeplayer.data.db.AppDatabase,
     thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache,
     onPlayVideo: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -53,6 +54,51 @@ fun BrowserNavGraph(
     thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val historyList by db.fileSettingsDao().observeHistory().collectAsState(initial = emptyList())
+    val allVideos by repository.observeAllVideos().collectAsState(initial = emptyList())
+
+    fun normalizePath(p: String): String =
+        p.replace("/sdcard/", "/storage/emulated/0/")
+
+    val historyMap = androidx.compose.runtime.remember(historyList) {
+        val map = mutableMapOf<String, com.vibeplayer.data.db.FileSettings>()
+        for (item in historyList) {
+            map[item.key] = item
+            val p = item.key.substringBeforeLast(":")
+            map[p] = item
+            map[normalizePath(p)] = item
+        }
+        map
+    }
+
+    val continueWatchingList = androidx.compose.runtime.remember(historyList, allVideos) {
+        historyList.filter { it.positionMs > 0 && it.durationMs > 0 }.mapNotNull { setting ->
+            val path = setting.key.substringBeforeLast(":")
+            val pathNorm = normalizePath(path)
+            val fileName = java.io.File(path).name
+            val video = allVideos.find {
+                normalizePath(it.path) == pathNorm || it.displayName == fileName
+            } ?: run {
+                val file = java.io.File(path)
+                if (file.exists()) {
+                    VideoItem(
+                        id = -1L,
+                        uri = android.net.Uri.fromFile(file),
+                        path = path,
+                        displayName = file.name,
+                        bucketId = "unknown",
+                        bucketName = "Unknown",
+                        durationMs = setting.durationMs,
+                        sizeBytes = setting.key.substringAfterLast(":").toLongOrNull() ?: file.length(),
+                        dateModified = file.lastModified() / 1000,
+                        width = 0,
+                        height = 0
+                    )
+                } else null
+            }
+            video?.let { com.vibeplayer.ui.browser.ContinueWatchingItem(it, setting) }
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -65,11 +111,13 @@ fun BrowserNavGraph(
             FolderListScreen(
                 folders = folders,
                 isLoading = false,
+                continueWatchingItems = continueWatchingList,
                 thumbnailCache = thumbnailCache,
                 onFolderClick = { folder ->
                     Log.d("VP", "Navigating to folder ${folder.name} (${folder.bucketId})")
                     navController.navigate(NavRoutes.videos(folder.bucketId, folder.name))
                 },
+                onPlayVideo = onPlayVideo,
                 onSettingsClick = {
                     Log.d("VP", "Navigating to settings")
                     navController.navigate(NavRoutes.SETTINGS)
@@ -116,6 +164,7 @@ fun BrowserNavGraph(
                 videos = videos,
                 isLoading = false,
                 sortOrder = sortOrder,
+                historyMap = historyMap,
                 onSortOrderChange = { newOrder ->
                     coroutineScope.launch {
                         Log.d("VP", "Setting sort order: $newOrder")

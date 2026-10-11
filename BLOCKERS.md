@@ -18,7 +18,14 @@ Newest entry first. Keep entries short; no long logs.
 
 ## Open
 
-_none_
+## B-03 Device disconnected over adb            Status: OPEN
+- Task: P4-08
+- Agent / date: AGY-2B / 2026-10-11
+- Problem: Device disconnected over adb (`2fbe93cc: connection terminated: read failed`, `adb devices` shows empty).
+- Tried: Checked `lsusb`, `adb devices`, `adb reconnect`; device not present on USB.
+- Options: User reconnects phone redwood to host via USB / adb.
+- Needs from user: Reconnect phone to USB / enable USB debugging.
+- Resolution:
 
 ## Resolved
 

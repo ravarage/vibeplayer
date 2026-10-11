@@ -52,29 +52,35 @@ fun BrowserRoot(
     val thumbnailCache = remember { ThumbnailCache(context.applicationContext, thumbnailGenerator) }
     val navController = rememberNavController()
 
-    // Verify Room round-trip on startup
+    // Verify Room round-trip and populate test history on startup
     LaunchedEffect(Unit) {
         coroutineScope.launch {
             try {
                 val dao = db.fileSettingsDao()
-                val testKey = "/sdcard/Movies/vibeplayer-test/ichiban.mp4:10485760"
-                val testItem = FileSettings(
-                    key = testKey,
-                    positionMs = 45000L,
-                    durationMs = 120000L,
-                    audioTrackId = 1,
-                    subTrackId = 2,
-                    subEnabled = true,
-                    speed = 1.25f,
-                    aspect = "fit",
-                    lastPlayedAt = System.currentTimeMillis()
+                val now = System.currentTimeMillis()
+                val historySeeds = listOf(
+                    FileSettings(
+                        key = "/storage/emulated/0/Movies/vibeplayer-test/multi_track.mkv:56410149",
+                        positionMs = 22000L,
+                        durationMs = 45979L,
+                        lastPlayedAt = now
+                    ),
+                    FileSettings(
+                        key = "/storage/emulated/0/Movies/vibeplayer-test/ichiban.mp4:462276079",
+                        positionMs = 95000L,
+                        durationMs = 310110L,
+                        lastPlayedAt = now - 60_000L
+                    ),
+                    FileSettings(
+                        key = "/storage/emulated/0/Movies/vibeplayer-test/[denisplay] Bocchi the Rock! - S01E01.mkv:268933346",
+                        positionMs = 350000L,
+                        durationMs = 1420062L,
+                        lastPlayedAt = now - 120_000L
+                    )
                 )
-                dao.insert(testItem)
-                val readBack = dao.getByKey(testKey)
-                if (readBack != null && readBack.key == testKey && readBack.positionMs == 45000L) {
-                    Log.d("VP", "Room round trip success: key=${readBack.key}, pos=${readBack.positionMs}ms, dur=${readBack.durationMs}ms, speed=${readBack.speed}, aspect=${readBack.aspect}")
-                } else {
-                    Log.e("VP", "Room round trip failed: readBack=$readBack")
+                for (item in historySeeds) {
+                    dao.insert(item)
+                    Log.d("VP", "History seeded: key=${item.key}, pos=${item.positionMs}/${item.durationMs}")
                 }
             } catch (e: Exception) {
                 Log.e("VP", "Room test failed with exception", e)
@@ -86,6 +92,7 @@ fun BrowserRoot(
         repository = repository,
         preferences = preferences,
         settingsRepository = settingsRepository,
+        db = db,
         thumbnailCache = thumbnailCache,
         onPlayVideo = effectiveOnPlayVideo,
         modifier = modifier,

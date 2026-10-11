@@ -192,4 +192,29 @@ class MediaRepository(private val context: Context) {
             context.contentResolver.unregisterContentObserver(observer)
         }
     }.flowOn(Dispatchers.IO)
+
+    fun observeAllVideos(): Flow<List<VideoItem>> = callbackFlow {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                Log.d("VP", "MediaStore ContentObserver onChange: all videos refreshing (uri=$uri)")
+                launch(Dispatchers.IO) {
+                    trySend(queryVideos())
+                }
+            }
+        }
+
+        context.contentResolver.registerContentObserver(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            true,
+            observer
+        )
+
+        launch(Dispatchers.IO) {
+            trySend(queryVideos())
+        }
+
+        awaitClose {
+            context.contentResolver.unregisterContentObserver(observer)
+        }
+    }.flowOn(Dispatchers.IO)
 }

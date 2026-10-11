@@ -52,6 +52,7 @@ fun VideoListScreen(
     videos: List<VideoItem>,
     isLoading: Boolean,
     sortOrder: VideoSortOrder = VideoSortOrder.DATE_DESC,
+    historyMap: Map<String, com.vibeplayer.data.db.FileSettings> = emptyMap(),
     onSortOrderChange: (VideoSortOrder) -> Unit = {},
     onRefresh: (() -> Unit)? = null,
     onBack: () -> Unit,
@@ -185,8 +186,12 @@ fun VideoListScreen(
                             items = sortedVideos,
                             key = { it.id }
                         ) { video ->
+                            val setting = historyMap["${video.path}:${video.sizeBytes}"]
+                                ?: historyMap.values.find { it.key.startsWith(video.path) }
+
                             VideoItemRow(
                                 video = video,
+                                fileSettings = setting,
                                 onClick = { onPlayVideo(video) },
                                 thumbnailCache = thumbnailCache,
                                 thumbnailContent = thumbnailContent
@@ -209,9 +214,14 @@ fun VideoItemRow(
     video: VideoItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    fileSettings: com.vibeplayer.data.db.FileSettings? = null,
     thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache? = null,
     thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
 ) {
+    val progress = if (fileSettings != null && fileSettings.durationMs > 0 && fileSettings.positionMs > 0) {
+        (fileSettings.positionMs.toFloat() / fileSettings.durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -219,7 +229,7 @@ fun VideoItemRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Thumbnail or placeholder
+        // Thumbnail or placeholder with bottom progress bar
         Box(
             modifier = Modifier
                 .size(width = 96.dp, height = 54.dp)
@@ -248,12 +258,12 @@ fun VideoItemRow(
                 )
             }
 
-            // Duration badge at bottom right
+            // Duration badge at bottom right (placed slightly above progress bar)
             if (video.durationMs > 0) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(3.dp)
+                        .padding(end = 3.dp, bottom = if (progress > 0f) 5.dp else 3.dp)
                         .background(
                             Color.Black.copy(alpha = 0.75f),
                             shape = RoundedCornerShape(3.dp)
@@ -265,6 +275,24 @@ fun VideoItemRow(
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // Progress bar along the bottom edge of thumbnail
+            if (progress > 0f) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(fraction = progress)
+                            .height(3.dp)
+                            .background(MaterialTheme.colorScheme.primary)
                     )
                 }
             }

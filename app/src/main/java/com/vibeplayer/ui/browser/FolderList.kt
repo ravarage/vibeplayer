@@ -37,12 +37,18 @@ import com.vibeplayer.data.media.VideoFolder
 import com.vibeplayer.data.thumbs.AsyncThumbnail
 import com.vibeplayer.data.thumbs.ThumbnailCache
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import com.vibeplayer.data.media.VideoItem
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen(
     folders: List<VideoFolder>,
     isLoading: Boolean,
+    continueWatchingItems: List<ContinueWatchingItem> = emptyList(),
     onFolderClick: (VideoFolder) -> Unit = {},
+    onPlayVideo: ((VideoItem) -> Unit)? = null,
     onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     thumbnailCache: ThumbnailCache? = null
@@ -85,7 +91,7 @@ fun FolderListScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                folders.isEmpty() -> {
+                folders.isEmpty() && continueWatchingItems.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -101,6 +107,40 @@ fun FolderListScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        if (continueWatchingItems.isNotEmpty()) {
+                            item(key = "continue_watching_section") {
+                                Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                                    Text(
+                                        text = "Continue Watching",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                    )
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        items(
+                                            items = continueWatchingItems,
+                                            key = { it.settings.key }
+                                        ) { item ->
+                                            ContinueWatchingCard(
+                                                item = item,
+                                                onClick = { onPlayVideo?.invoke(item.video) },
+                                                thumbnailCache = thumbnailCache
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                        thickness = 0.5.dp
+                                    )
+                                }
+                            }
+                        }
+
                         items(
                             items = folders,
                             key = { it.bucketId }
