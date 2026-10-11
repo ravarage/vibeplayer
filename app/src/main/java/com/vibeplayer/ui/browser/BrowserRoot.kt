@@ -14,6 +14,7 @@ import com.vibeplayer.data.db.FileSettings
 import com.vibeplayer.data.media.MediaRepository
 import com.vibeplayer.data.media.VideoItem
 import com.vibeplayer.data.prefs.BrowserPreferences
+import com.vibeplayer.data.thumbs.ThumbnailGenerator
 import com.vibeplayer.ui.BrowserNavGraph
 import kotlinx.coroutines.launch
 
@@ -30,6 +31,7 @@ fun BrowserRoot(
     val repository = remember { MediaRepository(context.applicationContext) }
     val preferences = remember { BrowserPreferences(context.applicationContext) }
     val db = remember { AppDatabase.getInstance(context.applicationContext) }
+    val thumbnailGenerator = remember { ThumbnailGenerator() }
     val navController = rememberNavController()
 
     // Verify Room round-trip on startup
@@ -58,6 +60,22 @@ fun BrowserRoot(
                 }
             } catch (e: Exception) {
                 Log.e("VP", "Room test failed with exception", e)
+            }
+        }
+    }
+
+    // Verify thumbnail extraction on all vibeplayer-test clips
+    LaunchedEffect(Unit) {
+        coroutineScope.launch {
+            val testClips = repository.queryVideos().filter { it.bucketName == "vibeplayer-test" }
+            Log.d("VP", "Testing thumbnail extraction for ${testClips.size} clips in vibeplayer-test:")
+            for (clip in testClips) {
+                val thumb = thumbnailGenerator.generateThumbnail(clip.path)
+                if (thumb != null) {
+                    Log.d("VP", "[P2-05] SUCCESS: thumbnail generated for ${clip.displayName} (${thumb.width}x${thumb.height})")
+                } else {
+                    Log.w("VP", "[P2-05] NO_THUMBNAIL: could not generate thumbnail for ${clip.displayName}")
+                }
             }
         }
     }
