@@ -116,6 +116,7 @@ class PlayerActivity : ComponentActivity() {
             val playerState by playerEngine.state.collectAsState()
             val positionMs by playerEngine.position.collectAsState()
             var showDebugOverlay by remember { mutableStateOf(false) }
+            var controlsVisible by remember { mutableStateOf(true) }
 
             MaterialTheme {
                 Surface(
@@ -128,13 +129,22 @@ class PlayerActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxSize()
                         )
 
+                        GestureLayer(
+                            modifier = Modifier.fillMaxSize(),
+                            onSingleTap = {
+                                controlsVisible = !controlsVisible
+                            }
+                        )
+
                         PlayerControls(
                             playerEngine = playerEngine,
                             playerState = playerState,
                             positionMs = positionMs,
                             videoPath = currentVideoTitle,
+                            controlsVisible = controlsVisible,
                             onBack = { finish() },
                             onToggleDebug = { showDebugOverlay = !showDebugOverlay },
+                            onHideControls = { controlsVisible = false },
                             modifier = Modifier.fillMaxSize()
                         )
 

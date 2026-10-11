@@ -52,11 +52,15 @@ fun PlayerControls(
     playerState: PlayerState,
     positionMs: Long,
     videoPath: String,
+    controlsVisible: Boolean,
     onBack: () -> Unit,
     onToggleDebug: () -> Unit = {},
+    onResetInactivity: () -> Unit = {},
+    onHideControls: () -> Unit = {},
+    isLocked: Boolean = false,
+    onToggleLock: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var controlsVisible by remember { mutableStateOf(true) }
     var userSeeking by remember { mutableStateOf(false) }
     var seekProgress by remember { mutableFloatStateOf(0f) }
     var lastInteraction by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -64,13 +68,16 @@ fun PlayerControls(
     // Sync visibility with PlayerEngine so time-pos is unobserved when hidden
     LaunchedEffect(controlsVisible) {
         playerEngine.setControlsVisible(controlsVisible)
+        if (controlsVisible) {
+            lastInteraction = System.currentTimeMillis()
+        }
     }
 
     // Auto-hide controls after 3 seconds of inactivity
     LaunchedEffect(controlsVisible, lastInteraction, userSeeking, playerState.paused) {
         if (controlsVisible && !userSeeking && !playerState.paused) {
             delay(3000)
-            controlsVisible = false
+            onHideControls()
         }
     }
 
@@ -89,19 +96,7 @@ fun PlayerControls(
         positionMs
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) {
-                controlsVisible = !controlsVisible
-                if (controlsVisible) {
-                    lastInteraction = System.currentTimeMillis()
-                }
-            }
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),

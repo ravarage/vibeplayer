@@ -67,7 +67,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P2-07 | Launch player from browser | DONE | AGY-1B | pending | onPlayVideo starts explicit ACTION_VIEW intent for PlayerActivity with file Uri & video/*; missing activity caught and Toast displayed; verified on redwood |
 | P2-08 | Thumbnail robustness | DONE | AGY-2B | a5b09df | MMR failures investigated (null on 10-bit HEVC & 10-bit/4K AV1; 8-bit AV1 & 8-bit H264/VP8/VP9 succeed); versioned (.failed) negative cache; non-blocking sends in ContentObserver; display-size decode; 0 extractions on 2nd launch |
 | P2-09 | Settings screen scaffold | DONE | AGY-2B | a2f1767 | SettingsScreen scaffold via gear icon in browser top bar; DataStore AppSettings (mode, renderer, gestures, skip seconds, background audio, shaders); values persist across app restart |
-| P3-01 | Gesture layer | TODO | | | |
+| P3-01 | Gesture layer | DONE | AGY-2 | pending | GestureLayer with zones (left/right/horizontal), slop direction lock, single-tap toggle; controls clickable; check_video.py verified (non_black=80.0% changed=41.6%) |
 | P3-02 | Brightness | TODO | | | |
 | P3-03 | Volume | TODO | | | |
 | P3-04 | Swipe seek | TODO | | | |
