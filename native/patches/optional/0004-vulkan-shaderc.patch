@@ -1,0 +1,146 @@
+diff --git a/buildscripts/buildall.sh b/buildscripts/buildall.sh
+index c4327f9..8bd703e 100755
+--- a/buildscripts/buildall.sh
++++ b/buildscripts/buildall.sh
+@@ -41,7 +41,7 @@ loadarch () {
+ 	unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
+ 	unset PKG_CONFIG_PATH
+ 
+-	local apilvl=23
++	export apilvl=24
+ 	# ndk_triple: the target triple
+ 	local cc_triple # how the compilers are actually prefixed
+ 	if [[ "$1" == "armv7l" ]]; then
+@@ -126,6 +126,9 @@ CROSSFILE
+ }
+ 
+ build () {
++	if [[ "$1" == "shaderc" ]]; then
++		mkdir -p deps/shaderc
++	fi
+ 	if [[ $1 != "mpv-android" && ! -d deps/$1 ]]; then
+ 		printf >&2 '\e[1;31m%s\e[m\n' "Target $1 not found"
+ 		return 1
+diff --git a/buildscripts/include/depinfo.sh b/buildscripts/include/depinfo.sh
+index 29522ac..4d771a2 100755
+--- a/buildscripts/include/depinfo.sh
++++ b/buildscripts/include/depinfo.sh
+@@ -24,11 +24,13 @@ v_ffmpeg=n9.0.2
+ v_libass=0.17.5
+ v_libplacebo=v7.360.1
+ v_mpv=v0.41.0
++v_shaderc=2022.3
+ 
+ 
+ ## Dependency tree
+ 
+ dep_mbedtls=()
++dep_shaderc=()
+ dep_dav1d=()
+ dep_libxml2=()
+ dep_ffmpeg=(mbedtls dav1d libxml2)
+@@ -39,7 +41,7 @@ dep_harfbuzz=()
+ dep_unibreak=()
+ dep_libass=(freetype2 fontconfig fribidi harfbuzz unibreak)
+ dep_lua=()
+-dep_libplacebo=()
++dep_libplacebo=(shaderc)
+ dep_curl=(mbedtls)
+ dep_mpv=(ffmpeg libass lua libplacebo curl)
+ dep_mpv_android=(mpv)
+diff --git a/buildscripts/include/download-deps.sh b/buildscripts/include/download-deps.sh
+index 336def4..cfe6e53 100755
+--- a/buildscripts/include/download-deps.sh
++++ b/buildscripts/include/download-deps.sh
+@@ -7,6 +7,9 @@
+ 
+ mkdir -p deps && cd deps
+ 
++# shaderc (from NDK)
++[ ! -d shaderc ] && mkdir -p shaderc
++
+ # mbedtls
+ if [ ! -d mbedtls ]; then
+ 	mkdir mbedtls
+diff --git a/buildscripts/scripts/libplacebo.sh b/buildscripts/scripts/libplacebo.sh
+index fac33d9..e52ef17 100755
+--- a/buildscripts/scripts/libplacebo.sh
++++ b/buildscripts/scripts/libplacebo.sh
+@@ -15,7 +15,7 @@ fi
+ 
+ unset CC CXX
+ meson setup $build --cross-file "$prefix_dir"/crossfile.txt \
+-	-Dvulkan=disabled -Ddemos=false
++	-Dvulkan=enabled -Dshaderc=enabled -Ddemos=false
+ 
+ ninja -C $build -j$cores
+ DESTDIR="$prefix_dir" ninja -C $build install
+diff --git a/buildscripts/scripts/mpv.sh b/buildscripts/scripts/mpv.sh
+index f11dd5d..4fbd0a7 100755
+--- a/buildscripts/scripts/mpv.sh
++++ b/buildscripts/scripts/mpv.sh
+@@ -18,6 +18,7 @@ unset CC CXX # meson wants these unset
+ meson setup $build --cross-file "$prefix_dir"/crossfile.txt \
+ 	--default-library shared \
+ 	-Diconv=disabled -Dlua=enabled \
++	-Dvulkan=enabled \
+ 	-Dlibmpv=true -Dcplayer=false \
+ 	-Dlibavdevice=disabled \
+ 	-Dmanpage-build=disabled
+diff --git a/buildscripts/scripts/shaderc.sh b/buildscripts/scripts/shaderc.sh
+new file mode 100755
+index 0000000..ad45d64
+--- /dev/null
++++ b/buildscripts/scripts/shaderc.sh
+@@ -0,0 +1,51 @@
++#!/bin/bash -e
++
++. ../../include/path.sh
++
++src_dir="$ANDROID_NDK_ROOT/sources/third_party/shaderc"
++
++case "$ndk_triple" in
++	aarch64-linux-android) abi=arm64-v8a ;;
++	arm-linux-androideabi) abi=armeabi-v7a ;;
++	i686-linux-android) abi=x86 ;;
++	x86_64-linux-android) abi=x86_64 ;;
++	*) echo "Unknown ndk_triple: $ndk_triple" >&2; exit 1 ;;
++esac
++
++if [ "$1" == "clean" ]; then
++	rm -rf "$src_dir"/obj "$src_dir"/libs
++	rm -rf "$prefix_dir/include/shaderc" "$prefix_dir/lib/libshaderc.a" "$prefix_dir/lib/pkgconfig/shaderc.pc"
++	exit 0
++elif [ "$1" != "build" ]; then
++	exit 255
++fi
++
++# Build shaderc using ndk-build
++"$ANDROID_NDK_ROOT/ndk-build" -C "$src_dir" \
++	NDK_PROJECT_PATH=. \
++	APP_BUILD_SCRIPT=Android.mk \
++	APP_STL=c++_static \
++	APP_ABI=$abi \
++	APP_PLATFORM=android-${apilvl:-24} \
++	APP_CFLAGS="-O2" \
++	APP_CXXFLAGS="-O2" \
++	libshaderc_combined \
++	-j$cores
++
++mkdir -p "$prefix_dir/include/shaderc" "$prefix_dir/lib/pkgconfig"
++cp -p "$src_dir/libshaderc/include/shaderc"/*.h "$prefix_dir/include/shaderc/"
++cp -p "$src_dir/libshaderc/include/shaderc"/*.hpp "$prefix_dir/include/shaderc/"
++cp -p "$src_dir/libs/c++_static/$abi/libshaderc.a" "$prefix_dir/lib/"
++
++cat > "$prefix_dir/lib/pkgconfig/shaderc.pc" <<EOF
++prefix=/usr/local
++exec_prefix=\${prefix}
++libdir=\${prefix}/lib
++includedir=\${prefix}/include
++
++Name: shaderc
++Description: Tools and libraries for Vulkan shader compilation
++Version: 2022.3
++Libs: -L\${libdir} -lshaderc -lc++
++Cflags: -I\${includedir}
++EOF

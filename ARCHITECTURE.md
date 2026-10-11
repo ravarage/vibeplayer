@@ -99,11 +99,32 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
   `PlayerEngine.reconfigure()` saves position and tracks, destroys and recreates the handle with the
   new option table, reloads the file and seeks.
 
-## Vulkan status (review 2026-10-11)
-The P0 build has **no Vulkan**: libmpv offers only `gpu-context=android` / `gpu-api=opengl`. The device
-reports Vulkan 1.1.128; libplacebo may require 1.2. Task P6-00 builds with Vulkan enabled and probes it
-on the device. Until then every mode uses OpenGL ES, and the Vulkan rows in the mode table are unusable.
-If P6-00 shows Vulkan cannot work on this device, the P6 comparison becomes `gpu-next` vs `gpu` on GLES.
+## Vulkan status (probe 2026-10-12, task P6-00)
+**Decision (reviewer, 2026-10-12): Vulkan is not usable on this device; every mode uses OpenGL ES.** The default native build does not include Vulkan: the patch lives in `native/patches/optional/0004-vulkan-shaderc.patch` and `fetch.sh` does not apply it (it doubles libmpv.so to 15 MB). In the default build `gpu-context` offers only `android` and `gpu-api` only `opengl`; ignore `androidvk`/`vulkan` in the options table below. P6 compares `gpu-next` vs `gpu` on GLES.
+
+Vulkan support was enabled in the native build (libplacebo v7.360.1 + shaderc 2022.3 from NDK r30 + mpv v0.41.0 via patch `0004-vulkan-shaderc.patch`). The built `libmpv` successfully exposes `gpu-context=auto,android,androidvk` and `gpu-api=auto,opengl,vulkan`.
+
+During device probe on redwood (Adreno 642L), `vo=gpu-next` with `gpu-api=vulkan`, `gpu-context=androidvk` failed to initialize because libplacebo requires Vulkan 1.2 minimum, whereas the device driver provides Vulkan 1.1.128:
+```
+[vo/gpu-next/vulkan] Initializing GPU context 'androidvk'
+[vo/gpu-next/libplacebo] Initialized libplacebo v7.360.1 (v7.360.1) (API v360)
+[vo/gpu-next/libplacebo] Creating vulkan instance with extensions:
+...
+[vo/gpu-next/libplacebo] Probing for vulkan devices:
+[vo/gpu-next/libplacebo]     GPU 0: Adreno (TM) 642L v1.1.128 (integrated)
+[vo/gpu-next/libplacebo]            uuid: 43:51:00:00:05:00:00:00:7B:02:50:00:0A:00:7B:02
+[vo/gpu-next/libplacebo] Found no suitable device, giving up.
+[vo/gpu-next/libplacebo] Failed initializing vulkan device
+[vo/gpu-next] Failed initializing any suitable GPU context!
+[cplayer] Error opening/initializing the selected video_out (--vo) device.
+```
+
+**Root cause**: In `libplacebo` (`src/include/libplacebo/vulkan.h:27` and `src/vulkan/context.c:1071`), `#define PL_VK_MIN_VERSION VK_API_VERSION_1_2`. During physical device enumeration, devices where `apiVersion < PL_VK_MIN_VERSION` are rejected with `PL_DEBUG(vk, "      -> excluding due to too low API version")`, resulting in `pl_vulkan_choose_device` returning NULL.
+
+**Re-scoping**: Per TASKS.md P6-00, since Vulkan cannot initialize on this device due to the Vulkan 1.1 hardware/driver limitation, tasks P6-02, P6-04, and P6-05 are re-scoped to compare `vo=gpu-next` vs `vo=gpu` on OpenGL ES.
+OpenGL ES playback was verified after the rebuild:
+- `vo=gpu` (`gpu-api=opengl`, `gpu-context=android`, `hwdec=mediacodec`): functional and smooth.
+- `vo=gpu-next` (`gpu-api=opengl`, `gpu-context=android`, `hwdec=mediacodec-copy`): functional and smooth.
 
 ## Surface handling (required sequence, from mpv-android)
 - Attach: set `wid` to the surface ref, then set property `vo` to the mode's vo (and `force-window=yes`).
@@ -112,14 +133,14 @@ If P6-00 shows Vulkan cannot work on this device, the P6 comparison becomes `gpu
   P1-03 must fix this.
 
 ## Confirmed mpv options
-_Filled by P0-09 from the built libmpv._
+_Filled by P0-09 and updated by P6-00 from the built libmpv._
 
 | Option | Confirmed values / choices | Notes |
 |---|---|---|
 | `vo` | `gpu-next`, `gpu`, `mediacodec_embed`, `libmpv`, `null`, `image`, `tct`, `kitty`, `lavc` | Primary output is `gpu` or `gpu-next` |
 | `hwdec` | `mediacodec`, `mediacodec-copy`, `auto`, `auto-safe`, `auto-copy`, `no` | Confirmed `mediacodec` and `mediacodec-copy` accepted |
-| `gpu-context` | `auto`, `android` | `android` for GLES EGL window context |
-| `gpu-api` | `auto`, `opengl` | GLES 3.2 on Adreno 642L |
+| `gpu-context` | `auto`, `android`, `androidvk` | `android` for GLES EGL window context; `androidvk` built & confirmed (requires Vulkan >= 1.2) |
+| `gpu-api` | `auto`, `opengl`, `vulkan` | GLES 3.2 on Adreno 642L; Vulkan built & confirmed (requires Vulkan >= 1.2) |
 | `ao` | `audiotrack`, `aaudio`, `opensles`, `null`, `pcm`, `lavc` | Native Android audio outputs |
 
 ## Decoders and demuxers
