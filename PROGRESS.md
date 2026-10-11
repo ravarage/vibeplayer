@@ -57,7 +57,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P1-09 | Open-with intent | TODO | | | |
 | P1-10 | ASS subtitles and efficient path decision | TODO | | | |
 | P2-01 | MediaStore repository | DONE | AGY-1B | pending | READ_MEDIA_VIDEO flow and MediaRepository query implemented; 9 folders and counts logged matching device gallery |
-| P2-02 | Folder list screen | TODO | | | |
+| P2-02 | Folder list screen | DONE | AGY-1B | pending | FolderListScreen implemented with LazyColumn, folder icon, name, count; verified on redwood showing all 9 folders including vibeplayer-test |
 | P2-03 | Video list screen | TODO | | | |
 | P2-04 | Navigation and refresh | TODO | | | |
 | P2-05 | Thumbnail generator | TODO | | | |

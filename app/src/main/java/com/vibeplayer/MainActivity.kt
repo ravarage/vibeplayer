@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.vibeplayer.data.media.MediaRepository
 import com.vibeplayer.data.media.VideoFolder
+import com.vibeplayer.ui.browser.FolderListScreen
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -41,7 +43,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MainScreen(repository = repository)
                 }
@@ -99,24 +101,28 @@ fun MainScreen(repository: MediaRepository) {
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        if (!hasPermission) {
+    if (!hasPermission) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(text = "Permission required to access video library")
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Button(onClick = { launcher.launch(permission) }) {
                     Text("Grant Permission")
                 }
             }
-        } else if (isLoading) {
-            Text("Loading video folders...")
-        } else {
-            Text("Loaded ${folders.size} folders (${folders.sumOf { it.videoCount }} videos)")
         }
+    } else {
+        FolderListScreen(
+            folders = folders,
+            isLoading = isLoading,
+            onFolderClick = { folder ->
+                Log.d("VP", "Clicked folder: ${folder.name} (${folder.videoCount} videos)")
+            }
+        )
     }
 }
