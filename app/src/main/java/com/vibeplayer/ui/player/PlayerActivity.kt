@@ -1,0 +1,274 @@
+package com.vibeplayer.ui.player
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.vibeplayer.player.PlayerEngine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+class PlayerActivity : ComponentActivity() {
+
+    private val playerEngine = PlayerEngine()
+    private var playbackStarted = false
+    private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        Log.i("VP", "PlayerActivity storage permission result: $isGranted")
+        tryStartPlayback()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        Log.i("VP", "PlayerActivity onCreate")
+
+        resolveVideoPath()
+        checkPermissionAndProceed()
+
+        if (intent.getStringExtra("test") == "p1_02") {
+            runP102Test()
+        }
+
+        setContent {
+            val playerState by playerEngine.state.collectAsState()
+            val positionMs by playerEngine.position.collectAsState()
+
+            val posSec = positionMs / 1000.0
+            val durSec = playerState.durationMs / 1000.0
+
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color.Black
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable {
+                                playerEngine.togglePause()
+                            }
+                    ) {
+                        VideoSurface(
+                            playerEngine = playerEngine,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        // Status overlay
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 40.dp)
+                                .background(Color(0x99000000))
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "Pos: %.1f / %.1f | hwdec: %s | paused: %s | eof: %s\nTap screen to play/pause"
+                                    .format(posSec, durSec, playerState.hwdecCurrent, playerState.paused, playerState.eof),
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        // Bottom test controls
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 32.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    playerEngine.seekTo(305_000, exact = true)
+                                    Log.i("VP", "Seeked near end (305s)")
+                                },
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Text("Seek End")
+                            }
+
+                            Button(
+                                onClick = {
+                                    playerEngine.seekTo(0, exact = true)
+                                    Log.i("VP", "Seeked to beginning (0s)")
+                                },
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Text("Restart")
+                            }
+
+                            Button(
+                                onClick = {
+                                    runP102Test()
+                                },
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Text("100x Test")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val oldPath = currentVideoPath
+        resolveVideoPath()
+        if (currentVideoPath != oldPath) {
+            playerEngine.load(currentVideoPath)
+        }
+    }
+
+    private fun resolveVideoPath() {
+        val extraPath = intent.getStringExtra("path")
+        val dataUri = intent.data
+        if (!extraPath.isNullOrEmpty()) {
+            currentVideoPath = extraPath
+        } else if (dataUri != null) {
+            val scheme = dataUri.scheme
+            if (scheme == "file") {
+                currentVideoPath = dataUri.path ?: currentVideoPath
+            } else {
+                currentVideoPath = dataUri.toString()
+            }
+        }
+        Log.i("VP", "Resolved video path: $currentVideoPath")
+    }
+
+    private fun checkPermissionAndProceed() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_MEDIA_VIDEO
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                tryStartPlayback()
+            } else {
+                requestPermissionLauncher.launch(Manifest.permission.READ_MEDIA_VIDEO)
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                tryStartPlayback()
+            } else {
+                requestPermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+    }
+
+    private fun tryStartPlayback() {
+        if (playbackStarted) return
+
+        val file = File(currentVideoPath)
+        Log.i("VP", "File access: path=$currentVideoPath exists=${file.exists()} canRead=${file.canRead()} size=${file.length()}")
+
+        playbackStarted = true
+        playerEngine.load(currentVideoPath)
+    }
+
+    private fun runP102Test() {
+        lifecycleScope.launch(Dispatchers.Default) {
+            Log.i("VP", "=== Starting P1-02 verification test in PlayerActivity ===")
+            var threadAssertPassed = false
+            try {
+                withContext(Dispatchers.Main) {
+                    playerEngine.assertCommandThread()
+                }
+            } catch (e: IllegalStateException) {
+                Log.i("VP", "Main thread assertion check PASSED: caught expected exception: ${e.message}")
+                threadAssertPassed = true
+            }
+
+            if (!threadAssertPassed) {
+                Log.e("VP", "FAILED: Calling assertCommandThread on main thread did not throw!")
+                return@launch
+            }
+
+            val testClip = currentVideoPath
+            val runtime = Runtime.getRuntime()
+            System.gc()
+            val startMem = runtime.totalMemory() - runtime.freeMemory()
+
+            var allSuccess = true
+            for (i in 1..100) {
+                try {
+                    val testEngine = PlayerEngine()
+                    testEngine.load(testClip)
+                    testEngine.seekTo(5000, exact = false)
+                    testEngine.seekTo(15000, exact = true)
+                    testEngine.release(sync = true)
+                    if (i % 20 == 0 || i == 100) {
+                        val currentMem = runtime.totalMemory() - runtime.freeMemory()
+                        Log.i("VP", "P1-02 loop progress: $i/100 completed. Used memory: ${currentMem / 1024} KB")
+                    }
+                } catch (e: Throwable) {
+                    Log.e("VP", "P1-02 loop iteration $i failed: ${e.message}", e)
+                    allSuccess = false
+                    break
+                }
+            }
+
+            System.gc()
+            val endMem = runtime.totalMemory() - runtime.freeMemory()
+            Log.i("VP", "=== P1-02 test completed. success=$allSuccess, memDelta=${(endMem - startMem) / 1024} KB ===")
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        Log.i("VP", "PlayerActivity onStart")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.i("VP", "PlayerActivity onResume")
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.i("VP", "PlayerActivity onPause")
+    }
+
+    override fun onStop() {
+        super.onStop()
+        Log.i("VP", "PlayerActivity onStop")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.i("VP", "PlayerActivity onDestroy")
+        playerEngine.release()
+    }
+}

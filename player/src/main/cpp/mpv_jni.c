@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <android/log.h>
 #include <mpv/client.h>
@@ -27,6 +28,7 @@ typedef struct {
     jobject surface_ref;
     jobject callback;
     pthread_mutex_t lock;
+    char vo_in_use[32];
 } mpv_holder_t;
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
@@ -185,6 +187,7 @@ Java_com_vibeplayer_player_MpvNative_create(JNIEnv *env, jobject thiz) {
 
     mpv_holder_t *holder = (mpv_holder_t *)calloc(1, sizeof(mpv_holder_t));
     holder->mpv = mpv;
+    strncpy(holder->vo_in_use, "gpu", sizeof(holder->vo_in_use) - 1);
     pthread_mutex_init(&holder->lock, NULL);
 
     if (pthread_create(&holder->event_thread, NULL, event_thread_func, holder) == 0) {
@@ -292,6 +295,9 @@ Java_com_vibeplayer_player_MpvNative_setPropertyString(JNIEnv *env, jobject thiz
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
     const char *c_value = (*env)->GetStringUTFChars(env, value, NULL);
     int res = mpv_set_property_string(holder->mpv, c_name, c_value);
+    if (res >= 0 && strcmp(c_name, "vo") == 0 && strcmp(c_value, "null") != 0) {
+        strncpy(holder->vo_in_use, c_value, sizeof(holder->vo_in_use) - 1);
+    }
     (*env)->ReleaseStringUTFChars(env, name, c_name);
     (*env)->ReleaseStringUTFChars(env, value, c_value);
     return res;
@@ -392,11 +398,24 @@ Java_com_vibeplayer_player_MpvNative_unobserveProperty(JNIEnv *env, jobject thiz
 }
 
 JNIEXPORT void JNICALL
+Java_com_vibeplayer_player_MpvNative_setSurfaceSize(JNIEnv *env, jobject thiz,
+                                                    jlong handle, jint width, jint height) {
+    if (!handle) return;
+    mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    char size_str[32];
+    snprintf(size_str, sizeof(size_str), "%dx%d", width, height);
+    mpv_set_property_string(holder->mpv, "android-surface-size", size_str);
+}
+
+JNIEXPORT void JNICALL
 Java_com_vibeplayer_player_MpvNative_attachSurface(JNIEnv *env, jobject thiz,
                                                    jlong handle, jobject surface) {
     if (!handle || !surface) return;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
     if (holder->surface_ref) {
+        mpv_set_property_string(holder->mpv, "vo", "null");
+        mpv_set_property_string(holder->mpv, "force-window", "no");
+        usleep(20000);
         int64_t wid = 0;
         mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
         (*env)->DeleteGlobalRef(env, holder->surface_ref);
@@ -409,6 +428,8 @@ Java_com_vibeplayer_player_MpvNative_attachSurface(JNIEnv *env, jobject thiz,
     if (res < 0) {
         __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "mpv_set_option(wid) failed: %s", mpv_error_string(res));
     }
+    mpv_set_property_string(holder->mpv, "force-window", "yes");
+    mpv_set_property_string(holder->mpv, "vo", holder->vo_in_use[0] ? holder->vo_in_use : "gpu");
 }
 
 JNIEXPORT void JNICALL
@@ -416,6 +437,9 @@ Java_com_vibeplayer_player_MpvNative_detachSurface(JNIEnv *env, jobject thiz,
                                                    jlong handle) {
     if (!handle) return;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    mpv_set_property_string(holder->mpv, "vo", "null");
+    mpv_set_property_string(holder->mpv, "force-window", "no");
+    usleep(20000);
     int64_t wid = 0;
     mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
     if (holder->surface_ref) {

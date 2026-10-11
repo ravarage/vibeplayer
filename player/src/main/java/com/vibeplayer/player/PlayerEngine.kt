@@ -188,6 +188,16 @@ class PlayerEngine {
         }
     }
 
+    fun setSurfaceSize(width: Int, height: Int) {
+        scope.launch {
+            assertCommandThread()
+            if (handle != 0L) {
+                MpvNative.setSurfaceSize(handle, width, height)
+                Log.i("VP", "Surface size updated to ${width}x$height")
+            }
+        }
+    }
+
     fun load(path: String) {
         scope.launch {
             assertCommandThread()
