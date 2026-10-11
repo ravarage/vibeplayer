@@ -36,6 +36,27 @@
                 <data android:scheme="content" />
                 <data android:mimeType="video/*" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.mp4" />
+                <data android:pathPattern=".*\\.mkv" />
+                <data android:pathPattern=".*\\.webm" />
+                <data android:pathPattern=".*\\.avi" />
+                <data android:pathPattern=".*\\.mov" />
+                <data android:pathPattern=".*\\.flv" />
+                <data android:pathPattern=".*\\.ts" />
+            </intent-filter>
         </activity>
     </application>
 

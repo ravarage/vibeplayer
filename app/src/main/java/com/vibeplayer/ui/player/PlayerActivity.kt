@@ -1,9 +1,12 @@
 package com.vibeplayer.ui.player
 
 import android.Manifest
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -50,6 +53,7 @@ class PlayerActivity : ComponentActivity() {
     private val playerEngine = PlayerEngine()
     private var playbackStarted = false
     private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
+    private var currentVideoTitle: String = "ichiban.mp4"
 
     private fun resolveConfig(): PlaybackConfig {
         val pathArg = intent.getStringExtra("efficient_path") ?: intent.getStringExtra("path_mode")
@@ -76,6 +80,25 @@ class PlayerActivity : ComponentActivity() {
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
+
+        // Auto-orient based on video aspect ratio (P1-09)
+        lifecycleScope.launch {
+            playerEngine.state.collect { state ->
+                val w = state.videoWidth
+                val h = state.videoHeight
+                if (w > 0 && h > 0) {
+                    val targetOrientation = if (w >= h) {
+                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                    }
+                    if (requestedOrientation != targetOrientation) {
+                        Log.i("VP", "Auto-orienting: ${w}x${h} -> orientation=$targetOrientation")
+                        requestedOrientation = targetOrientation
+                    }
+                }
+            }
+        }
 
         val config = resolveConfig()
         if (config != playerEngine.playbackConfig) {
@@ -109,7 +132,7 @@ class PlayerActivity : ComponentActivity() {
                             playerEngine = playerEngine,
                             playerState = playerState,
                             positionMs = positionMs,
-                            videoPath = currentVideoPath,
+                            videoPath = currentVideoTitle,
                             onBack = { finish() },
                             onToggleDebug = { showDebugOverlay = !showDebugOverlay },
                             modifier = Modifier.fillMaxSize()
@@ -160,18 +183,61 @@ class PlayerActivity : ComponentActivity() {
         val dataUri = intent.data
         if (!extraPath.isNullOrEmpty()) {
             currentVideoPath = extraPath
+            currentVideoTitle = File(extraPath).name
         } else if (dataUri != null) {
             val scheme = dataUri.scheme
             if (scheme == "file") {
-                currentVideoPath = dataUri.path ?: currentVideoPath
+                val path = dataUri.path ?: dataUri.toString()
+                currentVideoPath = path
+                currentVideoTitle = File(path).name
+            } else if (scheme == "content") {
+                currentVideoTitle = queryDisplayName(dataUri)
+                currentVideoPath = resolveContentUri(dataUri)
             } else {
                 currentVideoPath = dataUri.toString()
+                currentVideoTitle = dataUri.lastPathSegment ?: "Video"
             }
         }
-        Log.i("VP", "Resolved video path: $currentVideoPath")
+        Log.i("VP", "Resolved video path: $currentVideoPath (title: $currentVideoTitle)")
+    }
+
+    private fun queryDisplayName(uri: Uri): String {
+        try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx != -1) {
+                        val name = cursor.getString(idx)
+                        if (!name.isNullOrEmpty()) return name
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("VP", "Failed to query displayName: ${e.message}")
+        }
+        return uri.lastPathSegment ?: "Video"
+    }
+
+    private fun resolveContentUri(uri: Uri): String {
+        try {
+            val pfd = contentResolver.openFileDescriptor(uri, "r")
+            if (pfd != null) {
+                val fd = pfd.detachFd()
+                return "fdclose://$fd"
+            }
+        } catch (e: Exception) {
+            Log.e("VP", "Failed to openFileDescriptor for $uri: ${e.message}", e)
+        }
+        return uri.toString()
     }
 
     private fun checkPermissionAndProceed() {
+        val dataUri = intent.data
+        if (dataUri != null && dataUri.scheme == "content") {
+            tryStartPlayback()
+            return
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
                     this,
@@ -198,8 +264,10 @@ class PlayerActivity : ComponentActivity() {
     private fun tryStartPlayback() {
         if (playbackStarted) return
 
-        val file = File(currentVideoPath)
-        Log.i("VP", "File access: path=$currentVideoPath exists=${file.exists()} canRead=${file.canRead()} size=${file.length()}")
+        if (!currentVideoPath.startsWith("fdclose://")) {
+            val file = File(currentVideoPath)
+            Log.i("VP", "File access: path=$currentVideoPath exists=${file.exists()} canRead=${file.canRead()} size=${file.length()}")
+        }
 
         val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
         if (!forceHwdec.isNullOrEmpty()) {
