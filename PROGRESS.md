@@ -68,7 +68,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P2-08 | Thumbnail robustness | DONE | AGY-2B | a5b09df | MMR failures investigated (null on 10-bit HEVC & 10-bit/4K AV1; 8-bit AV1 & 8-bit H264/VP8/VP9 succeed); versioned (.failed) negative cache; non-blocking sends in ContentObserver; display-size decode; 0 extractions on 2nd launch |
 | P2-09 | Settings screen scaffold | DONE | AGY-2B | a2f1767 | SettingsScreen scaffold via gear icon in browser top bar; DataStore AppSettings (mode, renderer, gestures, skip seconds, background audio, shaders); values persist across app restart |
 | P3-01 | Gesture layer | DONE | AGY-2 | pending | GestureLayer with zones (left/right/horizontal), slop direction lock, single-tap toggle; controls clickable; check_video.py verified (non_black=80.0% changed=41.6%) |
-| P3-02 | Brightness | TODO | | | |
+| P3-02 | Brightness | DONE | AGY-2 | pending | Left vertical swipe adjusts window brightness; BrightnessIndicator overlay with 1s fade-out verified; full swipe covers min-max; reset on exit verified; check_video.py verified (non_black=80.0% changed=76.1%) |
 | P3-03 | Volume | TODO | | | |
 | P3-04 | Swipe seek | TODO | | | |
 | P3-05 | Double tap skip | TODO | | | |

@@ -5,17 +5,21 @@ import android.util.Log
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -38,6 +42,8 @@ fun GestureLayer(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     isLocked: Boolean = false,
+    initialBrightness: Float = 0.5f,
+    onBrightnessChanged: (Float) -> Unit = {},
     onSingleTap: () -> Unit = {},
     onDoubleTap: (isLeft: Boolean) -> Unit = {},
     onGestureTypeChanged: (GestureType) -> Unit = {},
@@ -51,6 +57,10 @@ fun GestureLayer(
     var pendingSingleTapJob by remember { mutableStateOf<Job?>(null) }
     var lastTapTime by remember { mutableStateOf(0L) }
     var lastTapPos by remember { mutableStateOf(Offset.Zero) }
+
+    var brightnessLevel by remember(initialBrightness) { mutableFloatStateOf(initialBrightness) }
+    var showBrightnessIndicator by remember { mutableStateOf(false) }
+    var hideIndicatorJob by remember { mutableStateOf<Job?>(null) }
 
     Box(
         modifier = modifier.pointerInput(enabled, isLocked) {
@@ -121,15 +131,20 @@ fun GestureLayer(
                             change.consume()
                         }
                     } else {
-                        change.consume()
                         val dx = change.positionChange().x
                         val dy = change.positionChange().y
+                        change.consume()
                         when (lockedGesture) {
                             GestureType.HORIZONTAL -> {
                                 onHorizontalDrag(dx)
                             }
                             GestureType.LEFT_VERTICAL -> {
                                 val deltaPercent = -dy / height
+                                val newB = (brightnessLevel + deltaPercent).coerceIn(0.01f, 1.0f)
+                                brightnessLevel = newB
+                                showBrightnessIndicator = true
+                                hideIndicatorJob?.cancel()
+                                onBrightnessChanged(newB)
                                 onVerticalDrag(true, deltaPercent)
                             }
                             GestureType.RIGHT_VERTICAL -> {
@@ -174,6 +189,13 @@ fun GestureLayer(
                     }
                 } else {
                     Log.i("VP", "Gesture ended: $lockedGesture")
+                    if (lockedGesture == GestureType.LEFT_VERTICAL) {
+                        hideIndicatorJob?.cancel()
+                        hideIndicatorJob = coroutineScope.launch {
+                            delay(1000L)
+                            showBrightnessIndicator = false
+                        }
+                    }
                     onGestureEnded(lockedGesture)
                     onGestureTypeChanged(GestureType.NONE)
                 }
@@ -181,5 +203,13 @@ fun GestureLayer(
         }
     ) {
         content()
+
+        BrightnessIndicator(
+            visible = showBrightnessIndicator,
+            brightness = brightnessLevel,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 64.dp)
+        )
     }
 }

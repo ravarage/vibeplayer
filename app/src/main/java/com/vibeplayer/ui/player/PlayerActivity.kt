@@ -131,6 +131,12 @@ class PlayerActivity : ComponentActivity() {
 
                         GestureLayer(
                             modifier = Modifier.fillMaxSize(),
+                            initialBrightness = window.attributes.screenBrightness.let { if (it < 0f) 0.5f else it },
+                            onBrightnessChanged = { b ->
+                                val lp = window.attributes
+                                lp.screenBrightness = b
+                                window.attributes = lp
+                            },
                             onSingleTap = {
                                 controlsVisible = !controlsVisible
                             }
@@ -361,6 +367,10 @@ class PlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         Log.i("VP", "PlayerActivity onStop")
+        val lp = window.attributes
+        lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        window.attributes = lp
+        Log.i("VP", "Reset window brightness override on exit")
     }
 
     override fun onDestroy() {
