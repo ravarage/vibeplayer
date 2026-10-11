@@ -78,6 +78,18 @@ _Reviewer notes on P1-01/P1-02 (commits 1f6cf15, 749ce1a). Fix in the task named
   loaded and for AV1 (software by design). Report fallback only when a file is playing, its video codec
   is in `hwdec-codecs`, and `hwdec-current` is `no`._
 
+_Reviewer notes on P1-03 (commit 97054a8). Fix first in P1-04, before the player screen work:_
+- _`PlayerEngine.detachSurface()` only posts to the command thread, so `surfaceDestroyed` returns
+  while mpv may still be drawing; Android destroys the Surface as soon as that callback returns.
+  Make detach block the caller until the native detach has finished (run it on the command thread and
+  wait, with a timeout of about 2 s and a log line if it expires). This is the one permitted blocking
+  call on the main thread. Order attach/detach/setSurfaceSize strictly: a detach must never be
+  overtaken by a queued attach of the old surface._
+- _`usleep(20000)` in `attachSurface`/`detachSurface` is a guess. Replace it with a real wait: after
+  setting `vo=null`, poll `current-vo` (or `vo-configured`) until it is empty, bounded to 500 ms._
+- _Re-verify on the device: 20 rotations and 20 home/return cycles and screen off/on during playback,
+  logcat free of EGL/`BufferQueue has been abandoned` errors._
+
 **P1-01 Event thread and state** — Native event loop, `observeProperty`, `PlayerState`, separate
 position flow. *Files*: mpv_jni.c, PlayerEngine.kt, PlayerState.kt. *Accept*: logcat shows pause,
 duration and position changes arriving as flow updates.
