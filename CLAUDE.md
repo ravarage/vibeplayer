@@ -8,18 +8,16 @@ fish wrapper doesn't exist). Do not use `codex` in this project (user's instruct
 ### agy (Antigravity CLI) — `/home/rava/.local/bin/agy`
 
 ```sh
-/home/rava/.local/bin/agy --model gemini-3.8-flash --effort <low|medium|high> --mode accept-edits \
-  --output-format json -p "<task>" > <scratchpad>/agy_<task>_<n>.json 2>&1
+/home/rava/.local/bin/agy --model gemini-3.8-flash --effort <low|medium|high> \
+  --dangerously-skip-permissions --output-format json -p "<task>" > <scratchpad>/agy_<task>_<n>.json 2>&1
 ```
 
 - This is the form the user asked for (2026-10-11). Their shorthand `flash.3.8` is not a valid model
   id; `gemini-3.8-flash` is the name that accepts `--effort`.
-- Headless agy can only read and edit files (`--mode accept-edits`). Shell commands are auto-denied
-  and a denied action ends the turn with an empty response, so every prompt must say "you cannot run
-  shell commands". Claude runs git, builds and adb, passes the results into the prompt, and commits
-  on the agent's behalf (agent name AGY-1 / AGY-2 per account).
-- Don't add `--dangerously-skip-permissions` or edit agy's `settings.json` allow-rules unless the
-  user asks.
+- The user approved `--dangerously-skip-permissions` for this project (2026-10-11), so agy runs its
+  own git, builds and adb and commits itself. Without the flag, headless agy cannot run commands.
+- Run long sessions in the background; review the commits afterwards.
+- Android Studio: `/home/rava/.local/share/JetBrains/Toolbox/apps/android-studio` (JBR in `jbr/`).
 - Output is one JSON object: `{"status":"SUCCESS","response":"...","denied_actions":[...],"usage":{...}}`.
   Continue a thread with `--conversation <id>`.
 

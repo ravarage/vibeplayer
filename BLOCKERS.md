@@ -25,7 +25,7 @@ Newest entry first. Keep entries short; no long logs.
 - Tried: Searched /opt, home, JetBrains Toolbox, pacman, flatpak; no 'jbr' directory exists.
 - Options: A) user installs Android Studio (e.g. tarball to ~/android-studio, no sudo needed, or AUR package); B) user relaxes the JDK rule.
 - Needs from user: install Android Studio and tell the agent its path.
-- Resolution:
+- Resolution: user installed Android Studio at /home/rava/.local/share/JetBrains/Toolbox/apps/android-studio (JBR 25.0.3 in jbr/) on 2026-10-11. Agent: finish P0-01, then move this entry to Resolved.
 
 ## Resolved
 

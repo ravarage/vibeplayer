@@ -18,9 +18,12 @@ at its bundled JetBrains Runtime (`org.gradle.java.home` in the user-level gradl
 the repo). *Files*: PROGRESS.md (Versions). *Accept*: JBR path and version recorded; if Android Studio
 is not installed, BLOCKERS entry asking the user to install it.
 
-**P0-02 Device check** — Confirm the device over adb and record facts. *Files*: ARCHITECTURE.md
-(device facts). *Accept*: `adb devices` shows redwood; SDK level, Vulkan and GLES versions recorded;
-all 7 test clips exist, otherwise BLOCKERS entry listing the missing ones.
+**P0-02 Device check and clip mapping** — Confirm the device over adb and record facts. The user's
+clips in `/sdcard/Movies/vibeplayer-test/` keep their own file names: probe each one (codec, bit depth,
+resolution, audio and subtitle tracks) and replace the file column of SPEC.md's test clip table with
+the real names. *Files*: ARCHITECTURE.md (device facts), SPEC.md (test clips). *Accept*: `adb devices`
+shows redwood; SDK level, Vulkan and GLES versions recorded; every clip mapped; purposes with no
+matching clip listed in a BLOCKERS entry (non-blocking: continue with the next task).
 
 **P0-03 Fetch mpv-android and bump native versions** — `native/fetch.sh` clones mpv-android at a
 pinned commit. Look up the latest stable releases of mpv, FFmpeg, dav1d, libass, libplacebo, freetype,
