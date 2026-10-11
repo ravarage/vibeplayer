@@ -16,6 +16,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -146,7 +147,7 @@ class MediaRepository(private val context: Context) {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
                 Log.d("VP", "MediaStore ContentObserver onChange: folders refreshing (uri=$uri)")
-                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                launch(Dispatchers.IO) {
                     trySend(getFolders())
                 }
             }
@@ -158,7 +159,9 @@ class MediaRepository(private val context: Context) {
             observer
         )
 
-        trySend(getFolders())
+        launch(Dispatchers.IO) {
+            trySend(getFolders())
+        }
 
         awaitClose {
             context.contentResolver.unregisterContentObserver(observer)
@@ -169,7 +172,7 @@ class MediaRepository(private val context: Context) {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
                 Log.d("VP", "MediaStore ContentObserver onChange: bucket $bucketId refreshing (uri=$uri)")
-                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                launch(Dispatchers.IO) {
                     trySend(getVideosInBucket(bucketId))
                 }
             }
@@ -181,7 +184,9 @@ class MediaRepository(private val context: Context) {
             observer
         )
 
-        trySend(getVideosInBucket(bucketId))
+        launch(Dispatchers.IO) {
+            trySend(getVideosInBucket(bucketId))
+        }
 
         awaitClose {
             context.contentResolver.unregisterContentObserver(observer)

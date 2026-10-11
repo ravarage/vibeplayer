@@ -31,6 +31,10 @@ class ThumbnailCache(
         if (!exists()) mkdirs()
     }
 
+    companion object {
+        const val NEGATIVE_CACHE_VERSION = 1
+    }
+
     // Memory LRU Cache: 1/8th of available runtime memory in KB
     private val memoryCache: LruCache<String, Bitmap> = run {
         val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024).toInt()
@@ -41,6 +45,9 @@ class ThumbnailCache(
             }
         }
     }
+
+    // Fast in-memory negative cache to prevent repeated disk checks
+    private val negativeMemoryCache = java.util.Collections.synchronizedSet(java.util.LinkedHashSet<String>())
 
     fun makeCacheKey(path: String, sizeBytes: Long, mtime: Long): String {
         val raw = "$path:$sizeBytes:$mtime"
@@ -53,37 +60,87 @@ class ThumbnailCache(
         return memoryCache.get(key)
     }
 
+    fun isNegativeCached(key: String): Boolean {
+        return negativeMemoryCache.contains(key)
+    }
+
+    private fun decodeSampledBitmap(file: File, reqWidth: Int = 320, reqHeight: Int = 180): Bitmap? {
+        return try {
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeFile(file.absolutePath, options)
+            if (options.outWidth <= 0 || options.outHeight <= 0) return null
+
+            var inSampleSize = 1
+            val halfHeight = options.outHeight / 2
+            val halfWidth = options.outWidth / 2
+            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+                inSampleSize *= 2
+            }
+
+            val decodeOptions = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+                inJustDecodeBounds = false
+            }
+            BitmapFactory.decodeFile(file.absolutePath, decodeOptions)
+        } catch (e: Exception) {
+            Log.w("VP", "Failed to decode sampled bitmap from ${file.name}", e)
+            null
+        }
+    }
+
     suspend fun getThumbnail(
         path: String,
         sizeBytes: Long,
-        mtime: Long
+        mtime: Long,
+        targetWidth: Int = 320,
+        targetHeight: Int = 180
     ): Bitmap? = withContext(Dispatchers.IO) {
         val key = makeCacheKey(path, sizeBytes, mtime)
 
-        // 1. Memory cache check
+        // 1. In-memory cache check (positive & negative)
         memoryCache.get(key)?.let {
             return@withContext it
         }
+        if (negativeMemoryCache.contains(key)) {
+            return@withContext null
+        }
 
-        // 2. Disk cache check
-        val diskFile = File(cacheDir, "$key.webp")
-        if (diskFile.exists() && diskFile.length() > 0) {
+        // 2. Disk negative cache check (marker file)
+        val markerFile = File(cacheDir, "$key.failed")
+        if (markerFile.exists()) {
             try {
-                val bitmap = BitmapFactory.decodeFile(diskFile.absolutePath)
-                if (bitmap != null) {
-                    Log.d("VP", "Thumbnail disk cache HIT for $path")
-                    memoryCache.put(key, bitmap)
-                    return@withContext bitmap
+                val versionStr = markerFile.readText().trim()
+                if (versionStr == NEGATIVE_CACHE_VERSION.toString()) {
+                    negativeMemoryCache.add(key)
+                    return@withContext null
+                } else {
+                    // Marker version changed or invalid, re-attempt
+                    markerFile.delete()
                 }
             } catch (e: Exception) {
-                Log.w("VP", "Failed to decode cached thumbnail: ${diskFile.name}", e)
+                markerFile.delete()
+            }
+        }
+
+        // 3. Disk cache check with display-size decode
+        val diskFile = File(cacheDir, "$key.webp")
+        if (diskFile.exists() && diskFile.length() > 0) {
+            val bitmap = decodeSampledBitmap(diskFile, targetWidth, targetHeight)
+            if (bitmap != null) {
+                Log.d("VP", "Thumbnail disk cache HIT for $path")
+                memoryCache.put(key, bitmap)
+                return@withContext bitmap
+            } else {
+                Log.w("VP", "Failed to decode cached thumbnail: ${diskFile.name}")
                 diskFile.delete()
             }
         }
 
-        // 3. Disk cache MISS -> extract and save
+        // 4. Disk cache MISS -> extract and save
         Log.d("VP", "Thumbnail cache MISS for $path, extracting frame...")
-        val generated = generator.generateThumbnail(path)
+        val generated = generator.generateThumbnail(path, targetWidth = targetWidth, targetHeight = targetHeight)
         if (generated != null) {
             memoryCache.put(key, generated)
             try {
@@ -98,9 +155,18 @@ class ThumbnailCache(
             } catch (e: Exception) {
                 Log.w("VP", "Failed to write thumbnail to disk cache for $path", e)
             }
+            generated
+        } else {
+            // Extraction failed -> write negative cache marker
+            try {
+                markerFile.writeText(NEGATIVE_CACHE_VERSION.toString())
+                negativeMemoryCache.add(key)
+                Log.d("VP", "Saved negative cache marker for $path: ${markerFile.name}")
+            } catch (e: Exception) {
+                Log.w("VP", "Failed to write negative cache marker for $path", e)
+            }
+            null
         }
-
-        generated
     }
 }
 

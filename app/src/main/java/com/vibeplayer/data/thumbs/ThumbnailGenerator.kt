@@ -36,7 +36,7 @@ class MediaMetadataRetrieverFrameExtractor : FrameExtractor {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(path)
-            val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            val rawBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 retriever.getScaledFrameAtTime(
                     timeUs,
                     MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
@@ -46,7 +46,16 @@ class MediaMetadataRetrieverFrameExtractor : FrameExtractor {
             } else {
                 retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             }
-            bitmap
+            if (rawBitmap != null && (rawBitmap.width > targetWidth * 2 || rawBitmap.height > targetHeight * 2)) {
+                val scale = minOf(targetWidth.toFloat() / rawBitmap.width, targetHeight.toFloat() / rawBitmap.height)
+                val destW = (rawBitmap.width * scale).toInt().coerceAtLeast(1)
+                val destH = (rawBitmap.height * scale).toInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(rawBitmap, destW, destH, true).also {
+                    if (it != rawBitmap) rawBitmap.recycle()
+                }
+            } else {
+                rawBitmap
+            }
         } catch (e: Exception) {
             Log.w("VP", "MediaMetadataRetriever failed for $path: ${e.message}")
             null
