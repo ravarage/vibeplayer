@@ -4,18 +4,17 @@ import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.compose.rememberNavController
 import com.vibeplayer.data.db.AppDatabase
 import com.vibeplayer.data.db.FileSettings
 import com.vibeplayer.data.media.MediaRepository
-import com.vibeplayer.data.media.VideoFolder
 import com.vibeplayer.data.media.VideoItem
+import com.vibeplayer.data.prefs.BrowserPreferences
+import com.vibeplayer.ui.BrowserNavGraph
 import kotlinx.coroutines.launch
 
 @Composable
@@ -23,19 +22,15 @@ fun BrowserRoot(
     modifier: Modifier = Modifier,
     onPlayVideo: (VideoItem) -> Unit = { item ->
         Log.d("VP", "Play video requested: ${item.displayName} (${item.path})")
-    }
+    },
+    thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val repository = remember { MediaRepository(context.applicationContext) }
+    val preferences = remember { BrowserPreferences(context.applicationContext) }
     val db = remember { AppDatabase.getInstance(context.applicationContext) }
-
-    var folders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
-    var isLoadingFolders by remember { mutableStateOf(true) }
-
-    var selectedFolder by remember { mutableStateOf<VideoFolder?>(null) }
-    var folderVideos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
-    var isLoadingVideos by remember { mutableStateOf(false) }
+    val navController = rememberNavController()
 
     // Verify Room round-trip on startup
     LaunchedEffect(Unit) {
@@ -67,45 +62,12 @@ fun BrowserRoot(
         }
     }
 
-    LaunchedEffect(Unit) {
-        isLoadingFolders = true
-        folders = repository.getFolders()
-        isLoadingFolders = false
-    }
-
-    LaunchedEffect(selectedFolder) {
-        val folder = selectedFolder
-        if (folder != null) {
-            isLoadingVideos = true
-            folderVideos = repository.getVideosInBucket(folder.bucketId)
-            isLoadingVideos = false
-        } else {
-            folderVideos = emptyList()
-        }
-    }
-
-    val currentFolder = selectedFolder
-    if (currentFolder == null) {
-        FolderListScreen(
-            folders = folders,
-            isLoading = isLoadingFolders,
-            onFolderClick = { folder ->
-                Log.d("VP", "Selected folder: ${folder.name} (${folder.videoCount} videos)")
-                selectedFolder = folder
-            },
-            modifier = modifier
-        )
-    } else {
-        VideoListScreen(
-            folder = currentFolder,
-            videos = folderVideos,
-            isLoading = isLoadingVideos,
-            onBack = {
-                Log.d("VP", "Back to folder list from ${currentFolder.name}")
-                selectedFolder = null
-            },
-            onPlayVideo = onPlayVideo,
-            modifier = modifier
-        )
-    }
+    BrowserNavGraph(
+        repository = repository,
+        preferences = preferences,
+        onPlayVideo = onPlayVideo,
+        modifier = modifier,
+        navController = navController,
+        thumbnailContent = thumbnailContent
+    )
 }

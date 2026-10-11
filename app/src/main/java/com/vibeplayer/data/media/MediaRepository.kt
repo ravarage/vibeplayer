@@ -2,13 +2,40 @@ package com.vibeplayer.data.media
 
 import android.content.ContentUris
 import android.content.Context
+import android.database.ContentObserver
 import android.database.Cursor
+import android.media.MediaScannerConnection
+import android.net.Uri
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class MediaRepository(private val context: Context) {
+
+    fun scanFolder(folderPath: String) {
+        val dir = File(folderPath)
+        if (dir.exists() && dir.isDirectory) {
+            val files = dir.listFiles { file ->
+                file.isFile && (file.extension.lowercase() in listOf("mp4", "mkv", "webm", "avi", "mov", "ts", "flv"))
+            } ?: emptyArray()
+
+            val paths = files.map { it.absolutePath }.toTypedArray()
+            if (paths.isNotEmpty()) {
+                MediaScannerConnection.scanFile(context, paths, null) { path, uri ->
+                    Log.d("VP", "Scanned file: $path -> $uri")
+                }
+            }
+        }
+    }
 
     suspend fun queryVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
         val videos = mutableListOf<VideoItem>()
@@ -111,4 +138,50 @@ class MediaRepository(private val context: Context) {
         val all = queryVideos()
         all.filter { it.bucketId == bucketId }
     }
+
+    fun observeFolders(): Flow<List<VideoFolder>> = callbackFlow {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                Log.d("VP", "MediaStore ContentObserver onChange: folders refreshing (uri=$uri)")
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    trySend(getFolders())
+                }
+            }
+        }
+
+        context.contentResolver.registerContentObserver(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            true,
+            observer
+        )
+
+        trySend(getFolders())
+
+        awaitClose {
+            context.contentResolver.unregisterContentObserver(observer)
+        }
+    }.flowOn(Dispatchers.IO)
+
+    fun observeVideosInBucket(bucketId: String): Flow<List<VideoItem>> = callbackFlow {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                Log.d("VP", "MediaStore ContentObserver onChange: bucket $bucketId refreshing (uri=$uri)")
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    trySend(getVideosInBucket(bucketId))
+                }
+            }
+        }
+
+        context.contentResolver.registerContentObserver(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            true,
+            observer
+        )
+
+        trySend(getVideosInBucket(bucketId))
+
+        awaitClose {
+            context.contentResolver.unregisterContentObserver(observer)
+        }
+    }.flowOn(Dispatchers.IO)
 }

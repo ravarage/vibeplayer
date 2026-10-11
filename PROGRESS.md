@@ -60,7 +60,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P2-01 | MediaStore repository | DONE | AGY-1B | pending | READ_MEDIA_VIDEO flow and MediaRepository query implemented; 9 folders and counts logged matching device gallery |
 | P2-02 | Folder list screen | DONE | AGY-1B | pending | FolderListScreen implemented with LazyColumn, folder icon, name, count; verified on redwood showing all 9 folders including vibeplayer-test |
 | P2-03 | Video list screen | DONE | AGY-1B | pending | VideoListScreen implemented with title, duration, size, resolution; tap calls onPlayVideo with VP log/Toast (player acceptance skipped per instructions); back returns to folder list |
-| P2-04 | Navigation and refresh | TODO | | | |
+| P2-04 | Navigation and refresh | DONE | AGY-1B | pending | BrowserNavGraph in ui/Nav.kt with folders->videos->player routes; ContentObserver auto-refresh verified; DataStore sort order (name/date/size) verified surviving restart |
 | P2-05 | Thumbnail generator | TODO | | | |
 | P2-06 | Thumbnail cache | TODO | | | |
 | P3-01 | Gesture layer | TODO | | | |
