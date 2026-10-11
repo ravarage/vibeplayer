@@ -34,8 +34,9 @@ USER FEEDBACK section of TASKS.md before touching anything.
 - Never paste long build logs into files. Summarise errors in a few lines.
 - No `-O3` or `-Ofast`. Tuning flags only in P9.
 - Do not add dependencies beyond what the task needs; note every new one in the PROGRESS.md note.
-- Needs sudo, a missing device, missing test clips, or a decision by the user: add a BLOCKERS.md
-  entry and stop. Do not work around it.
+- Needs sudo or a missing device: add a BLOCKERS.md entry and stop. A design decision: the user
+  is away, so pick the option that best fits SPEC.md, record it as a non-blocking BLOCKERS entry for
+  the reviewer, and continue. Do not work around it.
 - Do not edit the USER FEEDBACK section; only the user writes there. Feedback there outranks task text.
 
 ## Dependency policy

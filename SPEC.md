@@ -57,7 +57,7 @@ device: **POCO X5 Pro 5G (redwood)**, Snapdragon 778G, Adreno GPU, Android 17, a
 - From P7 on: tap to first frame under 1 s on a local 1080p file, measured on a release build.
 
 ## Test clips
-Provided by the user on the device in `/sdcard/Movies/vibeplayer-test/` (task P0-02 checks them):
+Provided by the user and the reviewer on the device in `/sdcard/Movies/vibeplayer-test/` (task P0-02 checks them):
 
 | File | Purpose |
 |---|---|
@@ -65,9 +65,10 @@ Provided by the user on the device in `/sdcard/Movies/vibeplayer-test/` (task P0
 | `hevc10_4k.mp4` | HEVC 10-bit 4K |
 | `vp9_1080p.webm` | VP9, Opus (video only) |
 | `[Ironclad] Clevatess - S02E01 [WEB.1080p.AV1].mkv` | AV1 software decode |
-| _none_ (see B-02) | AV1 stress test (`av1_4k.mkv`) |
+| `av1_4k.mp4` | AV1 10-bit 4K stress test (video only) |
 | `[denisplay] Bocchi the Rock! - S01E01.mkv` | heavily styled ASS, embedded fonts |
-| _none_ (see B-02) | 2+ audio tracks (one AC3/EAC3/DTS), 2+ subtitle tracks (one PGS) (`multi_track.mkv`) |
+| `multi_track.mkv` | H.264 + AC3, E-AC3, DTS, TrueHD 5.1 (synthetic tones) + PGS and SRT subtitles |
+| `Case Closed - 001 - The Big Shrink.mkv` | AV1 8-bit 1440x1080, 2 audio (eng/jpn), 2 ASS tracks, fonts |
 
 ## Measurement methods
 - **Hardware decode**: mpv property `hwdec-current` (shown in the debug overlay, task P1-08).

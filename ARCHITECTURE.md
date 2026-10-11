@@ -48,6 +48,12 @@ Application id and base package: `com.vibeplayer`.
   `onPropertyChange(name, value)` and `onEvent(id)`. No other native-to-Kotlin calls.
 - Keep rules for these callbacks and `MpvNative` go in the consumer ProGuard file (needed by P7).
 
+## Activities
+- `MainActivity`: browser only (`setContent { BrowserRoot() }`).
+- `ui.player.PlayerActivity`: the player. Own activity so PiP, orientation and immersive mode stay
+  isolated from the browser. Receives `ACTION_VIEW` for `video/*` and an explicit intent from the
+  browser. `configChanges` handles rotation and size changes without recreating the engine.
+
 ## Threading model
 | Thread | Does | Must never |
 |---|---|---|
@@ -86,8 +92,10 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
   fallback would need a re-init onto another vo. Path B keeps frames on the GPU without a copy and is
   believed to support subtitles and in-place software fallback, at some GPU cost. All of this is
   unverified, including whether path B's zero-copy interop works on this device.
-- P1-06 measures power and drops for both and P1-10 checks ASS rendering on both. The agent then
-  writes the numbers and the trade-off into BLOCKERS.md and **the user picks**; agents do not choose.
+- **Default is path B** (reviewer decision, 2026-10-11: the user is away and ASS subtitles are a hard
+  requirement). P1-06 measures power and drops for both and P1-10 checks ASS rendering on both; the
+  numbers go into docs/BENCHMARK.md. Agents do not block on this. Path A may later be offered as an
+  automatic choice for files played without subtitles if the measured power gain is above 10%.
 - **Software fallback**: mpv falls back to software when hwdec init or decoding fails
   (`hwdec-current` becomes `no`) when the vo is `gpu`/`gpu-next` (**candidate**, P1-07). On path A the
   engine must detect the failure and `reconfigure()` onto path B options at the same position.
@@ -95,6 +103,18 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
 - **Mode or renderer switch**: `vo`, `gpu-api` and `gpu-context` cannot change on a live output.
   `PlayerEngine.reconfigure()` saves position and tracks, destroys and recreates the handle with the
   new option table, reloads the file and seeks.
+
+## Vulkan status (review 2026-10-11)
+The P0 build has **no Vulkan**: libmpv offers only `gpu-context=android` / `gpu-api=opengl`. The device
+reports Vulkan 1.1.128; libplacebo may require 1.2. Task P6-00 builds with Vulkan enabled and probes it
+on the device. Until then every mode uses OpenGL ES, and the Vulkan rows in the mode table are unusable.
+If P6-00 shows Vulkan cannot work on this device, the P6 comparison becomes `gpu-next` vs `gpu` on GLES.
+
+## Surface handling (required sequence, from mpv-android)
+- Attach: set `wid` to the surface ref, then set property `vo` to the mode's vo (and `force-window=yes`).
+- Detach: set property `vo=null` and `force-window=no` **first**, wait for it to take effect, then set
+  `wid=0` and delete the global ref. The P0-10 code deletes the ref while the vo may still be drawing;
+  P1-03 must fix this.
 
 ## Confirmed mpv options
 _Filled by P0-09 from the built libmpv._
