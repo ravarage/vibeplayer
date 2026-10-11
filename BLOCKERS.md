@@ -18,7 +18,14 @@ Newest entry first. Keep entries short; no long logs.
 
 ## Open
 
-_none_
+## B-01 Android Studio missing            Status: OPEN
+- Task: P0-01
+- Agent / date: AGY-1 / 2026-10-11
+- Problem: Android Studio missing, so the required build JDK (JetBrains Runtime bundled with Android Studio) is unavailable; only OpenJDK 27 is installed.
+- Tried: Searched /opt, home, JetBrains Toolbox, pacman, flatpak; no 'jbr' directory exists.
+- Options: A) user installs Android Studio (e.g. tarball to ~/android-studio, no sudo needed, or AUR package); B) user relaxes the JDK rule.
+- Needs from user: install Android Studio and tell the agent its path.
+- Resolution:
 
 ## Resolved
 

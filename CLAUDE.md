@@ -8,14 +8,20 @@ fish wrapper doesn't exist). Do not use `codex` in this project (user's instruct
 ### agy (Antigravity CLI) — `/home/rava/.local/bin/agy`
 
 ```sh
-/home/rava/.local/bin/agy -p "<prompt>" --mode accept-edits --output-format json
+/home/rava/.local/bin/agy --model gemini-3.8-flash --effort <low|medium|high> --mode accept-edits \
+  --output-format json -p "<task>" > <scratchpad>/agy_<task>_<n>.json 2>&1
 ```
 
-- Run from the project root; `--mode accept-edits` lets it write files headlessly (verified).
-- Output is one JSON object: `{"status":"SUCCESS","response":"...","conversation_id":"...","usage":{...}}`.
-- Continue a thread with `--conversation <id>`; pick a model with `--model` (`agy models` lists them,
-  e.g. `gemini-3.1-pro-high`, `gemini-3.8-flash-high`).
-- Don't use `--dangerously-skip-permissions` unless the user asks.
+- This is the form the user asked for (2026-10-11). Their shorthand `flash.3.8` is not a valid model
+  id; `gemini-3.8-flash` is the name that accepts `--effort`.
+- Headless agy can only read and edit files (`--mode accept-edits`). Shell commands are auto-denied
+  and a denied action ends the turn with an empty response, so every prompt must say "you cannot run
+  shell commands". Claude runs git, builds and adb, passes the results into the prompt, and commits
+  on the agent's behalf (agent name AGY-1 / AGY-2 per account).
+- Don't add `--dangerously-skip-permissions` or edit agy's `settings.json` allow-rules unless the
+  user asks.
+- Output is one JSON object: `{"status":"SUCCESS","response":"...","denied_actions":[...],"usage":{...}}`.
+  Continue a thread with `--conversation <id>`.
 
 ## Usage limits: stop and tell the user
 
