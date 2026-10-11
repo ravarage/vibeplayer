@@ -125,7 +125,7 @@ _Filled by P0-02._
 
 | Fact | Value |
 |---|---|
-| `ro.product.device` | |
-| `ro.build.version.sdk` | |
-| Vulkan version / features | |
-| GLES version | |
+| `ro.product.device` | redwood |
+| `ro.build.version.sdk` | 37 (Android 17) |
+| Vulkan version / features | 1.1.128 (apiVersion 4198528 / 0x401080, Adreno 642L), level 1, compute, samplerYcbcrConversion |
+| GLES version | OpenGL ES 3.2 V@0530.57 (ro.opengles.version 196610, Adreno 642L) |

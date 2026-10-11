@@ -61,13 +61,13 @@ Provided by the user on the device in `/sdcard/Movies/vibeplayer-test/` (task P0
 
 | File | Purpose |
 |---|---|
-| `h264_1080p.mp4` | H.264 8-bit, AAC |
-| `hevc10_4k.mkv` | HEVC 10-bit 4K |
-| `vp9_1080p.webm` | VP9, Opus |
-| `av1_1080p.mkv` | AV1 software decode |
-| `av1_4k.mkv` | AV1 stress test |
-| `anime_ass.mkv` | heavily styled ASS, embedded fonts |
-| `multi_track.mkv` | 2+ audio tracks (one AC3/EAC3/DTS), 2+ subtitle tracks (one PGS) |
+| `ichiban.mp4` | H.264 8-bit, AAC |
+| `hevc10_4k.mp4` | HEVC 10-bit 4K |
+| `vp9_1080p.webm` | VP9, Opus (video only) |
+| `[Ironclad] Clevatess - S02E01 [WEB.1080p.AV1].mkv` | AV1 software decode |
+| _none_ (see B-02) | AV1 stress test (`av1_4k.mkv`) |
+| `[denisplay] Bocchi the Rock! - S01E01.mkv` | heavily styled ASS, embedded fonts |
+| _none_ (see B-02) | 2+ audio tracks (one AC3/EAC3/DTS), 2+ subtitle tracks (one PGS) (`multi_track.mkv`) |
 
 ## Measurement methods
 - **Hardware decode**: mpv property `hwdec-current` (shown in the debug overlay, task P1-08).
