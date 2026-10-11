@@ -1,0 +1,33 @@
+diff --git a/buildscripts/buildall.sh b/buildscripts/buildall.sh
+index 3250620..c4327f9 100755
+--- a/buildscripts/buildall.sh
++++ b/buildscripts/buildall.sh
+@@ -68,6 +68,8 @@ loadarch () {
+ 	export prefix_dir="$PWD/prefix/$prefix_name"
+ 	export CC=$cc_triple-clang
+ 	export CXX=$cc_triple-clang++
++	export CFLAGS="-O2"
++	export CXXFLAGS="-O2"
+ 	export LDFLAGS="-Wl,-O1,--icf=safe -Wl,-z,max-page-size=16384"
+ 	export AR=llvm-ar
+ 	export RANLIB=llvm-ranlib
+@@ -97,6 +99,7 @@ setup_prefix () {
+ 	cat >"$prefix_dir/crossfile.tmp" <<CROSSFILE
+ [built-in options]
+ buildtype = 'release'
++optimization = '2'
+ default_library = 'static'
+ wrap_mode = 'nodownload'
+ prefix = '/usr/local'
+diff --git a/buildscripts/scripts/ffmpeg.sh b/buildscripts/scripts/ffmpeg.sh
+index 3e63137..0a97c65 100755
+--- a/buildscripts/scripts/ffmpeg.sh
++++ b/buildscripts/scripts/ffmpeg.sh
+@@ -27,6 +27,7 @@ args=(
+ 	--cross-prefix=$ndk_triple- --cc=$CC --pkg-config=pkg-config --nm=llvm-nm
+ 	--arch=${ndk_triple%%-*} --cpu=$cpu
+ 	--extra-cflags="-I$prefix_dir/include $cpuflags" --extra-ldflags="-L$prefix_dir/lib"
++	--optflags="-O2"
+ 
+ 	--enable-{jni,mediacodec,mbedtls,libdav1d,libxml2} --disable-vulkan
+ 	--disable-static --enable-shared --enable-{gpl,version3}

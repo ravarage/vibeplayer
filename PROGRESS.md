@@ -41,7 +41,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P0-03 | Fetch mpv-android | DONE | AGY-1 | pending | mpv-android pinned at c2e02fe; mpv v0.41.0, FFmpeg n9.0.2, dav1d 1.5.4, libass 0.17.5, libplacebo v7.360.1, harfbuzz 14.6.0 pinned in buildscripts via patch |
 | P0-04 | Download SDK, NDK, deps | DONE | AGY-1 | pending | SDK platform 36/build-tools 36.0.0, NDK r30 (30.0.16248370), CMake 4.4.4 recorded; all deps downloaded at pinned versions |
 | P0-05 | FFmpeg trim | DONE | AGY-1 | pending | Patch 0002 trims FFmpeg (0 encoders/muxers, no avdevice, libdav1d enabled); mpv built without avdevice; patches apply cleanly on fresh fetch |
-| P0-06 | Build native for arm64 | TODO | | | |
+| P0-06 | Build native for arm64 | DONE | AGY-1 | pending | arm64-only native build at -O2 verified (readelf AArch64); 7 .so files copied to player/src/main/jniLibs/arm64-v8a; no libavdevice; build ~43s, incremental no-op ~16s |
 | P0-07 | Gradle skeleton | TODO | | | |
 | P0-08 | JNI bridge minimal | TODO | | | |
 | P0-09 | Verify mpv options and codecs | TODO | | | |
