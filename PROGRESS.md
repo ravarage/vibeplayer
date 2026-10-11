@@ -10,17 +10,17 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | Component | Version used | Source checked | Notes (e.g. fell back from X) |
 |---|---|---|---|
 | Android Studio / JetBrains Runtime (build JDK) | 25.0.3 (build 25.0.3+-15898627-b508.16) | /home/rava/.local/share/JetBrains/Toolbox/apps/android-studio/jbr | Android Studio 2026.2.1 |
-| compileSdk / targetSdk | | | |
-| Android Gradle Plugin | | | |
-| Gradle | | | |
-| Kotlin | | | |
-| Compose BOM | | | |
-| Room | | | |
-| Media / MediaSession | | | |
-| Activity | | | |
-| Lifecycle | | | |
-| Navigation | | | |
-| Baseline Profile / Macrobenchmark | | | |
+| compileSdk / targetSdk | 37 | developer.android.com | Android 17 (device SDK) |
+| Android Gradle Plugin | 9.4.1 | maven.google.com | Latest stable AGP |
+| Gradle | 9.8.1 | gradle.org | Latest stable Gradle 9.x |
+| Kotlin | 2.4.21 | repo1.maven.org | Latest stable Kotlin |
+| Compose BOM | 2026.09.00 | maven.google.com | Latest stable Compose BOM |
+| Room | 2.8.5 | maven.google.com | Latest stable Room 2.x |
+| Media / MediaSession | 1.11.1 | maven.google.com | Latest stable Media3 |
+| Activity | 1.13.0 | maven.google.com | Latest stable Activity |
+| Lifecycle | 2.11.0 | maven.google.com | Latest stable Lifecycle |
+| Navigation | 2.10.2 | maven.google.com | Latest stable Navigation |
+| Baseline Profile / Macrobenchmark | 1.5.0 | maven.google.com | Latest stable Benchmark |
 | NDK | | | |
 | CMake | | | |
 | mpv-android (commit) | | | |
@@ -42,7 +42,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P0-04 | Download SDK, NDK, deps | TODO | | | |
 | P0-05 | FFmpeg trim | TODO | | | |
 | P0-06 | Build native for arm64 | TODO | | | |
-| P0-07 | Gradle skeleton | TODO | | | |
+| P0-07 | Gradle skeleton | DONE | AGY-1B | pending | AGP 9.4.1, Gradle 9.8.1, Kotlin 2.4.21, Compose BOM 2026.09.00; :app and :player created; blank Compose screen verified on redwood |
 | P0-08 | JNI bridge minimal | TODO | | | |
 | P0-09 | Verify mpv options and codecs | TODO | | | |
 | P0-10 | Play one file | TODO | | | |
