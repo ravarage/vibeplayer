@@ -1,0 +1,38 @@
+diff --git a/buildscripts/scripts/ffmpeg.sh b/buildscripts/scripts/ffmpeg.sh
+index c7e9567..3e63137 100755
+--- a/buildscripts/scripts/ffmpeg.sh
++++ b/buildscripts/scripts/ffmpeg.sh
+@@ -31,16 +31,9 @@ args=(
+ 	--enable-{jni,mediacodec,mbedtls,libdav1d,libxml2} --disable-vulkan
+ 	--disable-static --enable-shared --enable-{gpl,version3}
+ 
+-	# disable unneeded parts
++	# disable unneeded parts per SPEC
+ 	--disable-{stripping,doc,programs}
+-	# to keep the build lean we disable some feature quite aggressively:
+-	# - muxers, encoders: mpv-android does not have any way to use these
+-	# - devices: no practical use on Android
+-	--disable-{muxers,encoders,devices}
+-	# useful to taking screenshots
+-	--enable-encoder=mjpeg,png
+-	# useful for the `dump-cache` command
+-	--enable-muxer=mov,matroska,mpegts
++	--disable-{muxers,encoders,devices,avdevice}
+ )
+ ../configure "${args[@]}"
+ 
+diff --git a/buildscripts/scripts/mpv.sh b/buildscripts/scripts/mpv.sh
+index b1ad44a..f11dd5d 100755
+--- a/buildscripts/scripts/mpv.sh
++++ b/buildscripts/scripts/mpv.sh
+@@ -17,8 +17,9 @@ unset CC CXX # meson wants these unset
+ 
+ meson setup $build --cross-file "$prefix_dir"/crossfile.txt \
+ 	--default-library shared \
+-	-Diconv=disabled -D{lua,libcurl}=enabled \
++	-Diconv=disabled -Dlua=enabled \
+ 	-Dlibmpv=true -Dcplayer=false \
++	-Dlibavdevice=disabled \
+ 	-Dmanpage-build=disabled
+ 
+ ninja -C $build -j$cores
