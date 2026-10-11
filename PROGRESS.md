@@ -4,6 +4,36 @@ Last reviewed commit: none
 
 Statuses: TODO, IN PROGRESS, DONE, BLOCKED. Notes: one or two lines; for IN PROGRESS always state the next step.
 
+## Versions
+Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Dependency policy). Fill before use.
+
+| Component | Version used | Source checked | Notes (e.g. fell back from X) |
+|---|---|---|---|
+| Android Studio / JetBrains Runtime (build JDK) | | | |
+| compileSdk / targetSdk | | | |
+| Android Gradle Plugin | | | |
+| Gradle | | | |
+| Kotlin | | | |
+| Compose BOM | | | |
+| Room | | | |
+| Media / MediaSession | | | |
+| Activity | | | |
+| Lifecycle | | | |
+| Navigation | | | |
+| Baseline Profile / Macrobenchmark | | | |
+| NDK | | | |
+| CMake | | | |
+| mpv-android (commit) | | | |
+| mpv | | | |
+| FFmpeg | | | |
+| dav1d | | | |
+| libass | | | |
+| libplacebo | | | |
+| freetype | | | |
+| harfbuzz | | | |
+| fribidi | | | |
+
+## Tasks
 | Task | Title | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
 | P0-01 | Toolchain check | TODO | | | |

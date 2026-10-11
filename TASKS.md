@@ -13,21 +13,24 @@ Clips are in `/sdcard/Movies/vibeplayer-test/` (SPEC.md). Tasks are sequential u
 
 ## P0 Native build and first playback
 
-**P0-01 Toolchain check** — Record host tool versions; pick the JDK Gradle will use (only JDK 27 is
-installed; prefer a Gradle toolchain download over sudo). *Files*: ARCHITECTURE.md (pinned versions).
-*Accept*: versions recorded; if sudo is required, BLOCKERS entry instead.
+**P0-01 Toolchain and build JDK** — Record host tool versions. Locate Android Studio and point Gradle
+at its bundled JetBrains Runtime (`org.gradle.java.home` in the user-level gradle.properties, not in
+the repo). *Files*: PROGRESS.md (Versions). *Accept*: JBR path and version recorded; if Android Studio
+is not installed, BLOCKERS entry asking the user to install it.
 
 **P0-02 Device check** — Confirm the device over adb and record facts. *Files*: ARCHITECTURE.md
 (device facts). *Accept*: `adb devices` shows redwood; SDK level, Vulkan and GLES versions recorded;
 all 7 test clips exist, otherwise BLOCKERS entry listing the missing ones.
 
-**P0-03 Fetch mpv-android** — `native/fetch.sh` clones mpv-android at a pinned commit; `.gitignore`
-covers it. *Files*: native/fetch.sh, .gitignore, ARCHITECTURE.md. *Accept*: fresh run reproduces the
-same commit; mpv/FFmpeg/dav1d/libass versions recorded.
+**P0-03 Fetch mpv-android and bump native versions** — `native/fetch.sh` clones mpv-android at a
+pinned commit. Look up the latest stable releases of mpv, FFmpeg, dav1d, libass, libplacebo, freetype,
+harfbuzz, fribidi and patch the buildscripts' version pins to them. *Files*: native/fetch.sh,
+native/patches/*, .gitignore, PROGRESS.md (Versions). *Accept*: fresh run reproduces the same tree;
+every native version recorded with its source; no alpha/beta/RC/nightly.
 
 **P0-04 Download SDK, NDK, deps** — Run the buildscripts' download step; confirm what it fetches.
 *Files*: native/build.sh (download stage), ARCHITECTURE.md. *Accept*: SDK, NDK and all dependency
-sources present; NDK version recorded; the "candidate" note in Native build replaced by facts.
+sources present at the recorded versions; latest stable NDK and CMake recorded; the "candidate" note in Native build replaced by facts.
 
 **P0-05 FFmpeg trim** — Patch the FFmpeg configure flags per SPEC (disable programs, doc, encoders,
 muxers, devices, avdevice; libdav1d on; decoders/demuxers stay broad). Confirm mpv builds without
@@ -37,12 +40,14 @@ configure output shows no encoders/muxers and libdav1d enabled.
 **P0-06 Build native for arm64** — `native/build.sh` builds everything arm64-only at `-O2` and copies
 the `.so` files to `player/src/main/jniLibs/arm64-v8a/`. *Files*: native/build.sh, AGENT_RULES.md
 (commands). *Accept*: `libmpv.so` is aarch64 (`readelf -h`); no libavdevice; a second run is a fast
-no-op; build time noted.
+no-op; build time noted; any fallback to a previous stable version noted in PROGRESS.md.
 
-**P0-07 Gradle skeleton** — `:app` and `:player` modules, Compose, `abiFilters arm64-v8a`, minSdk =
-device SDK, empty MainActivity. *Files*: settings/build gradle files, app/, player/.
-*Accept*: `./gradlew :app:assembleDebug` succeeds; app installs and shows a blank Compose screen;
-versions recorded.
+**P0-07 Gradle skeleton** — Look up and record latest stable AGP, Gradle, Kotlin, Compose BOM and
+AndroidX versions, then create `:app` and `:player` with a version catalog, Compose,
+`abiFilters arm64-v8a`, compileSdk/targetSdk = latest stable API, minSdk = device SDK, empty
+MainActivity. *Files*: settings/build gradle files, gradle/libs.versions.toml, app/, player/,
+PROGRESS.md (Versions). *Accept*: `./gradlew :app:assembleDebug` succeeds on the JBR; app installs and
+shows a blank Compose screen; versions recorded.
 
 **P0-08 JNI bridge minimal** — `mpv_jni.c` + `MpvNative`: create, setOptionString, initialize,
 command, destroy; JavaVM handed to FFmpeg; mpv log to logcat tag `mpv`. *Files*: player/src/main/cpp/*,

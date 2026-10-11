@@ -33,11 +33,26 @@ USER FEEDBACK section of TASKS.md before touching anything.
 - Never edit acceptance criteria to make a task pass. Never mark a task DONE that was not run on the device.
 - Never paste long build logs into files. Summarise errors in a few lines.
 - No `-O3` or `-Ofast`. Tuning flags only in P9.
-- Do not bump pinned versions (ARCHITECTURE.md) outside a task that says so.
 - Do not add dependencies beyond what the task needs; note every new one in the PROGRESS.md note.
 - Needs sudo, a missing device, missing test clips, or a decision by the user: add a BLOCKERS.md
   entry and stop. Do not work around it.
 - Do not edit the USER FEEDBACK section; only the user writes there. Feedback there outranks task text.
+
+## Dependency policy
+Latest stable versions everywhere.
+- During P0, look up the current latest stable version of each of these from official sources and
+  record them in PROGRESS.md (Versions table) before using them: Android Gradle Plugin, Gradle,
+  Kotlin, Compose BOM, AndroidX libraries (Room, Media/MediaSession, Activity, Lifecycle,
+  Navigation), Baseline Profile / Macrobenchmark, NDK, CMake, mpv, FFmpeg, dav1d, libass, libplacebo,
+  freetype, harfbuzz, fribidi.
+- compileSdk and targetSdk: the latest stable Android API (the device runs Android 17).
+- Build JDK: the JetBrains Runtime bundled with Android Studio.
+- Do not use alpha, beta, RC or nightly versions unless a task explicitly says so. If the latest
+  stable version of something fails to build, try the previous stable version and note it in
+  PROGRESS.md.
+- The mpv-android buildscripts pin library versions; bump them to the latest stable releases and
+  record the final versions used.
+- Once a version is recorded and working, do not change it again outside a task that says so.
 
 ## Commands
 Filled in and kept current by the tasks that create them (P0-06, P0-07).

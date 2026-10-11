@@ -117,20 +117,8 @@ _Filled by P0-09 from the built libmpv (`vo`, `hwdec`, `gpu-context`, `gpu-api`,
   agents because they work on the same machine.
 - Development flags `-O2`. P9 adds `-mcpu=cortex-a78 -flto=thin` behind `TUNED=1 native/build.sh`.
 
-## Pinned versions
-_Filled by P0-01/P0-03/P0-07. Do not bump without a task._
-
-| Component | Version / commit |
-|---|---|
-| mpv-android | |
-| mpv | |
-| FFmpeg | |
-| dav1d | |
-| libass | |
-| NDK | |
-| JDK used by Gradle | |
-| Gradle / AGP | |
-| Kotlin / Compose BOM | |
+## Versions
+See the Versions table in PROGRESS.md and the dependency policy in AGENT_RULES.md.
 
 ## Device facts
 _Filled by P0-02._
