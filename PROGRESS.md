@@ -46,7 +46,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P0-08 | JNI bridge minimal | DONE | AGY-1 | 866a54c | JNI bridge (mpv_jni.c, CMakeLists.txt, MpvNative.kt); JavaVM passed to FFmpeg in JNI_OnLoad; logcat shows mpv v0.41.0; no crash on exit |
 | P0-09 | Verify mpv options and codecs | DONE | AGY-1 | f4853de | Confirmed options: vo (gpu, gpu-next), hwdec (mediacodec, mediacodec-copy), ao (aaudio, audiotrack, opensles); 507 decoders (libdav1d, mediacodec, broad FFmpeg); 367 demuxers; 0 encoders/muxers |
 | P0-10 | Play one file | DONE | AGY-1 | b8b3cba | MainActivity with SurfaceView attached to libmpv wid plays ichiban.mp4; hwdec=mediacodec, ao=audiotrack confirmed in log; video and audio play to end (eof reached); pause toggle works; clean exit |
-| P1-01 | Event thread and state | TODO | | | |
+| P1-01 | Event thread and state | DONE | AGY-1 | pending | Event thread calling onPropertyChange/onEvent JNI callbacks; PlayerEngine exposes state (PlayerState) and position StateFlows; verified on redwood with pause/duration/position flow updates |
 | P1-02 | PlayerEngine API | TODO | | | |
 | P1-03 | PlayerActivity and surface lifecycle | TODO | | | |
 | P1-04 | Player screen | TODO | | | |
