@@ -111,8 +111,7 @@ _Filled by P0-09 from the built libmpv (`vo`, `hwdec`, `gpu-context`, `gpu-api`,
   encoders). Disk cache key = `path + size + mtime`, plus an in-memory LRU.
 
 ## Native build
-- mpv-android buildscripts are expected to download their own SDK, NDK and dependency sources
-  (**candidate**, P0-04 confirms). The Gradle build uses that same SDK through `local.properties`.
+- mpv-android buildscripts download their own SDK (Android SDK cmdline-tools 11076708, platform 36, build-tools 36.0.0), NDK (r30 / 30.0.16248370) and all dependency sources into `native/mpv-android/buildscripts/{sdk,deps}` (confirmed by P0-04). The Gradle build uses that same SDK through `local.properties`.
 - Native code is rebuilt only by tasks that touch `native/`. Outputs are gitignored and shared by all
   agents because they work on the same machine.
 - Development flags `-O2`. P9 adds `-mcpu=cortex-a78 -flto=thin` behind `TUNED=1 native/build.sh`.

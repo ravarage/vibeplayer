@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -25,33 +26,29 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.vibeplayer.data.db.AppDatabase
-import com.vibeplayer.data.db.FileSettings
-import com.vibeplayer.data.media.MediaRepository
-import com.vibeplayer.data.media.VideoFolder
-import com.vibeplayer.ui.browser.FolderListScreen
-import kotlinx.coroutines.launch
+import com.vibeplayer.data.media.VideoItem
+import com.vibeplayer.ui.browser.BrowserRoot
 
 class MainActivity : ComponentActivity() {
-    private val repository by lazy { MediaRepository(applicationContext) }
-    private val db by lazy { AppDatabase.getInstance(applicationContext) }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    MainScreen(
-                        repository = repository,
-                        db = db
-                    )
+                    BrowserPermissionWrapper {
+                        BrowserRoot(
+                            onPlayVideo = { item: VideoItem ->
+                                Log.d("VP", "Play video: ${item.displayName} (${item.path})")
+                                Toast.makeText(this, "Playing: ${item.displayName}", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -59,13 +56,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(
-    repository: MediaRepository,
-    db: AppDatabase
-) {
+fun BrowserPermissionWrapper(content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_VIDEO
     } else {
@@ -78,69 +70,26 @@ fun MainScreen(
         )
     }
 
-    var folders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
-
-    // Verify Room round-trip on startup
-    LaunchedEffect(Unit) {
-        coroutineScope.launch {
-            try {
-                val dao = db.fileSettingsDao()
-                val testKey = "/sdcard/Movies/vibeplayer-test/ichiban.mp4:10485760"
-                val testItem = FileSettings(
-                    key = testKey,
-                    positionMs = 45000L,
-                    durationMs = 120000L,
-                    audioTrackId = 1,
-                    subTrackId = 2,
-                    subEnabled = true,
-                    speed = 1.25f,
-                    aspect = "fit",
-                    lastPlayedAt = System.currentTimeMillis()
-                )
-                dao.insert(testItem)
-                val readBack = dao.getByKey(testKey)
-                if (readBack != null && readBack.key == testKey && readBack.positionMs == 45000L) {
-                    Log.d("VP", "Room round trip success: key=${readBack.key}, pos=${readBack.positionMs}ms, dur=${readBack.durationMs}ms, speed=${readBack.speed}, aspect=${readBack.aspect}")
-                } else {
-                    Log.e("VP", "Room round trip failed: readBack=$readBack")
-                }
-            } catch (e: Exception) {
-                Log.e("VP", "Room test failed with exception", e)
-            }
-        }
-    }
-
-    fun loadFolders() {
-        isLoading = true
-        coroutineScope.launch {
-            val list = repository.getFolders()
-            folders = list
-            isLoading = false
-        }
-    }
-
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasPermission = granted
         if (granted) {
             Log.d("VP", "READ_MEDIA_VIDEO permission granted by user")
-            loadFolders()
         } else {
             Log.w("VP", "READ_MEDIA_VIDEO permission denied by user")
         }
     }
 
     LaunchedEffect(hasPermission) {
-        if (hasPermission) {
-            loadFolders()
-        } else {
+        if (!hasPermission) {
             launcher.launch(permission)
         }
     }
 
-    if (!hasPermission) {
+    if (hasPermission) {
+        content()
+    } else {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -155,13 +104,5 @@ fun MainScreen(
                 }
             }
         }
-    } else {
-        FolderListScreen(
-            folders = folders,
-            isLoading = isLoading,
-            onFolderClick = { folder ->
-                Log.d("VP", "Clicked folder: ${folder.name} (${folder.videoCount} videos)")
-            }
-        )
     }
 }

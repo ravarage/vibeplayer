@@ -10,39 +10,40 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | Component | Version used | Source checked | Notes (e.g. fell back from X) |
 |---|---|---|---|
 | Android Studio / JetBrains Runtime (build JDK) | 25.0.3 (build 25.0.3+-15898627-b508.16) | /home/rava/.local/share/JetBrains/Toolbox/apps/android-studio/jbr | Android Studio 2026.2.1 |
-| compileSdk / targetSdk | 37 | developer.android.com | Android 17 (device SDK) |
-| Android Gradle Plugin | 9.4.1 | maven.google.com | Latest stable AGP |
-| Gradle | 9.8.1 | gradle.org | Latest stable Gradle 9.x |
-| Kotlin | 2.4.21 | repo1.maven.org | Latest stable Kotlin |
-| Compose BOM | 2026.09.00 | maven.google.com | Latest stable Compose BOM |
-| Room | 2.8.5 | maven.google.com | Latest stable Room 2.x |
-| Media / MediaSession | 1.11.1 | maven.google.com | Latest stable Media3 |
-| Activity | 1.13.0 | maven.google.com | Latest stable Activity |
-| Lifecycle | 2.11.0 | maven.google.com | Latest stable Lifecycle |
-| Navigation | 2.10.2 | maven.google.com | Latest stable Navigation |
-| Baseline Profile / Macrobenchmark | 1.5.0 | maven.google.com | Latest stable Benchmark |
-| NDK | | | |
-| CMake | | | |
-| mpv-android (commit) | | | |
-| mpv | | | |
-| FFmpeg | | | |
-| dav1d | | | |
-| libass | | | |
-| libplacebo | | | |
-| freetype | | | |
-| harfbuzz | | | |
-| fribidi | | | |
+| compileSdk / targetSdk | 37 / 37 | platforms;android-37.1 / build-tools 37.0.0 | Matches redwood device Android 17 (SDK 37) |
+| Android Gradle Plugin | 9.4.1 | https://dl.google.com/dl/android/maven2 | latest stable AGP release |
+| Gradle | 9.8.1 | https://services.gradle.org/distributions/ | latest stable Gradle release |
+| Kotlin | 2.4.21 | https://repo1.maven.org/maven2 | latest stable release (built-in AGP 9.4.1) |
+| Compose BOM | 2026.09.00 | https://dl.google.com/dl/android/maven2 | latest stable BOM |
+| Room | 2.8.5 | https://dl.google.com/dl/android/maven2 | latest stable release |
+| Media / MediaSession | 1.11.1 | https://dl.google.com/dl/android/maven2 | latest stable Media3 session |
+| Activity | 1.13.0 | https://dl.google.com/dl/android/maven2 | latest stable activity-compose |
+| Lifecycle | 2.11.0 | https://dl.google.com/dl/android/maven2 | latest stable lifecycle-runtime-compose |
+| Navigation | 2.10.2 | https://dl.google.com/dl/android/maven2 | latest stable navigation-compose |
+| DataStore | 1.2.1 | https://dl.google.com/dl/android/maven2 | latest stable DataStore Preferences |
+| Baseline Profile / Macrobenchmark | 1.5.0 | https://dl.google.com/dl/android/maven2 | latest stable benchmark-macro |
+| NDK | r30 (30.0.16248370) | https://github.com/android/ndk/releases | latest stable release |
+| CMake | 4.4.4 | https://github.com/Kitware/CMake/tags | latest stable release (matches host) |
+| mpv-android (commit) | c2e02fe111541e4063ab8f868bf629649ed937a3 | https://github.com/mpv-android/mpv-android.git | pinned HEAD from 2026-10-06 |
+| mpv | v0.41.0 | https://github.com/mpv-player/mpv.git | latest stable release |
+| FFmpeg | n9.0.2 | https://github.com/FFmpeg/FFmpeg.git | latest stable release |
+| dav1d | 1.5.4 | https://code.videolan.org/videolan/dav1d.git | latest stable release |
+| libass | 0.17.5 | https://github.com/libass/libass.git | latest stable release |
+| libplacebo | v7.360.1 | https://github.com/haasn/libplacebo.git | latest stable release |
+| freetype | 2.14.3 | https://gitlab.freedesktop.org/freetype/freetype.git | tag VER-2-14-3, latest stable |
+| harfbuzz | 14.6.0 | https://github.com/harfbuzz/harfbuzz.git | latest stable release |
+| fribidi | 1.0.17 | https://github.com/fribidi/fribidi.git | tag v1.0.17, latest stable |
 
 ## Tasks
 | Task | Title | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
 | P0-01 | Toolchain check | DONE | AGY-1 | pending | Host tools recorded (Linux 7.2.9, OpenJDK 27, Gradle 9.8.1, git 2.56.0, CMake 4.4.4, Meson 1.12.1, Ninja 1.13.2, NASM 3.02, Python 3.14.7, adb 1.0.41, 16 cores); JBR 25.0.3 configured in ~/.gradle/gradle.properties |
 | P0-02 | Device check | DONE | AGY-1 | pending | redwood (SDK 37, Vulkan 1.1, GLES 3.2); clips probed and mapped, missing clips recorded in non-blocking B-02 |
-| P0-03 | Fetch mpv-android | TODO | | | |
-| P0-04 | Download SDK, NDK, deps | TODO | | | |
-| P0-05 | FFmpeg trim | TODO | | | |
-| P0-06 | Build native for arm64 | TODO | | | |
-| P0-07 | Gradle skeleton | DONE | AGY-1B | pending | AGP 9.4.1, Gradle 9.8.1, Kotlin 2.4.21, Compose BOM 2026.09.00; :app and :player created; blank Compose screen verified on redwood |
+| P0-03 | Fetch mpv-android | DONE | AGY-1 | pending | mpv-android pinned at c2e02fe; mpv v0.41.0, FFmpeg n9.0.2, dav1d 1.5.4, libass 0.17.5, libplacebo v7.360.1, harfbuzz 14.6.0 pinned in buildscripts via patch |
+| P0-04 | Download SDK, NDK, deps | DONE | AGY-1 | pending | SDK platform 36/build-tools 36.0.0, NDK r30 (30.0.16248370), CMake 4.4.4 recorded; all deps downloaded at pinned versions |
+| P0-05 | FFmpeg trim | DONE | AGY-1 | pending | Patch 0002 trims FFmpeg (0 encoders/muxers, no avdevice, libdav1d enabled); mpv built without avdevice; patches apply cleanly on fresh fetch |
+| P0-06 | Build native for arm64 | DONE | AGY-1 | pending | arm64-only native build at -O2 verified (readelf AArch64); 7 .so files copied to player/src/main/jniLibs/arm64-v8a; no libavdevice; build ~43s, incremental no-op ~16s |
+| P0-07 | Gradle skeleton | DONE | AGY-1 | pending | Gradle 9.8.1, AGP 9.4.1, compile/targetSdk 37, minSdk 37; :app and :player with version catalog; installed and ran blank Compose screen on redwood (also built independently on par/app by AGY-1B, reconciled) |
 | P0-08 | JNI bridge minimal | TODO | | | |
 | P0-09 | Verify mpv options and codecs | TODO | | | |
 | P0-10 | Play one file | TODO | | | |
