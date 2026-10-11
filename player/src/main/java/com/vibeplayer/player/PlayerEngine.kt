@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -172,6 +175,27 @@ class PlayerEngine(
         return isHwdecCodec && (hwdec == "no" || hwdec.isEmpty())
     }
 
+    private var statsJob: Job? = null
+
+    fun setStatsEnabled(enabled: Boolean) {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (enabled) {
+                if (statsJob == null || statsJob?.isActive == false) {
+                    statsJob = scope.launch {
+                        while (isActive) {
+                            logStats()
+                            delay(500)
+                        }
+                    }
+                }
+            } else {
+                statsJob?.cancel()
+                statsJob = null
+            }
+        }
+    }
+
     fun logStats() {
         commandExecutor.execute {
             assertCommandThread()
@@ -181,16 +205,18 @@ class PlayerEngine(
                 val drops = MpvNative.getPropertyLong(handle, "frame-drop-count") ?: 0L
                 val decDrops = MpvNative.getPropertyLong(handle, "decoder-frame-drop-count") ?: 0L
                 val fps = MpvNative.getPropertyDouble(handle, "estimated-vf-fps") ?: 0.0
+                val modeStr = "${playbackConfig.mode} (${playbackConfig.efficientPath})"
                 _stats.value = PlayerStats(
                     vo = vo,
                     hwdecCurrent = hwdec,
+                    mode = modeStr,
                     videoW = _state.value.videoWidth,
                     videoH = _state.value.videoHeight,
                     fps = fps,
                     frameDropCount = drops,
                     decoderFrameDropCount = decDrops
                 )
-                Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec drops=$drops decDrops=$decDrops fps=$fps")
+                Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec mode=$modeStr drops=$drops decDrops=$decDrops fps=$fps")
             }
         }
     }
@@ -406,6 +432,8 @@ class PlayerEngine(
     }
 
     fun release(sync: Boolean = false) {
+        statsJob?.cancel()
+        statsJob = null
         val task = Runnable {
             assertCommandThread()
             if (handle != 0L) {

@@ -20,6 +20,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -89,6 +92,7 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             val playerState by playerEngine.state.collectAsState()
             val positionMs by playerEngine.position.collectAsState()
+            var showDebugOverlay by remember { mutableStateOf(false) }
 
             MaterialTheme {
                 Surface(
@@ -107,8 +111,19 @@ class PlayerActivity : ComponentActivity() {
                             positionMs = positionMs,
                             videoPath = currentVideoPath,
                             onBack = { finish() },
+                            onToggleDebug = { showDebugOverlay = !showDebugOverlay },
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        if (showDebugOverlay) {
+                            DebugOverlay(
+                                playerEngine = playerEngine,
+                                onClose = { showDebugOverlay = false },
+                                modifier = Modifier
+                                    .padding(top = 80.dp, start = 16.dp)
+                                    .align(Alignment.TopStart)
+                            )
+                        }
                     }
                 }
             }

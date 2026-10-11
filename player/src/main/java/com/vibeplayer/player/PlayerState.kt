@@ -12,6 +12,7 @@ data class Track(
 data class PlayerStats(
     val vo: String = "",
     val hwdecCurrent: String = "",
+    val mode: String = "",
     val videoW: Int = 0,
     val videoH: Int = 0,
     val fps: Double = 0.0,
