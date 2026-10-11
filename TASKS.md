@@ -11,6 +11,14 @@ Format: **ID Title** — description. *Files*: likely touched. *Accept*: checks 
 Clips are in `/sdcard/Movies/vibeplayer-test/` (SPEC.md). Tasks are sequential unless marked
 **[parallel safe]**. "Overlay" means the debug overlay from P1-08.
 
+## Parallel tracks
+- **Main track** (`main`, /home/rava/vibeplayer): all tasks in order, skipping tasks done by a track below.
+- **App track** (`par/app`, /home/rava/vibeplayer-worktrees/app) **[parallel safe]**: P0-07, P2-01,
+  P2-02, P4-01, in that order, then stop. Touches only Gradle files, `app/`, `player/build.gradle.kts`
+  and its PROGRESS.md rows; nothing under `native/` or `player/src/main/cpp`. Uses the SDK at
+  `~/Android/Sdk` via `local.properties`. Where an acceptance item needs playback, skip that item and
+  say so in the note.
+
 ## P0 Native build and first playback
 
 **P0-01 Toolchain and build JDK** — Record host tool versions. Locate Android Studio and point Gradle
