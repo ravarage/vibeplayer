@@ -33,7 +33,7 @@ object MpvNative {
     external fun setPropertyLong(handle: Long, name: String, value: Long): Int
     external fun getPropertyDouble(handle: Long, name: String): Double?
     external fun setPropertyDouble(handle: Long, name: String, value: Double): Int
-    external fun observeProperty(handle: Long, name: String, format: Int): Int
+    external fun observeProperty(handle: Long, replyUserdata: Long, name: String, format: Int): Int
     external fun unobserveProperty(handle: Long, replyUserdata: Long): Int
     external fun attachSurface(handle: Long, surface: Surface)
     external fun detachSurface(handle: Long)

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <math.h>
 #include <android/log.h>
 #include <mpv/client.h>
 #include <libavcodec/jni.h>
@@ -29,6 +30,7 @@ typedef struct {
     jobject callback;
     pthread_mutex_t lock;
     char vo_in_use[32];
+    double last_time_pos;
 } mpv_holder_t;
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
@@ -114,12 +116,28 @@ static void *event_thread_func(void *arg) {
             continue;
         }
 
+        if (event->event_id == MPV_EVENT_SEEK || event->event_id == MPV_EVENT_START_FILE) {
+            holder->last_time_pos = -1000.0;
+        }
+
         pthread_mutex_lock(&holder->lock);
         jobject callback = holder->callback;
         if (callback && g_cb_on_prop && g_cb_on_event) {
             if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
                 mpv_event_property *prop = (mpv_event_property *)event->data;
                 if (prop && prop->name) {
+                    if (strcmp(prop->name, "time-pos") == 0) {
+                        if (prop->data != NULL && prop->format == MPV_FORMAT_DOUBLE) {
+                            double pos = *(double *)prop->data;
+                            if (fabs(pos - holder->last_time_pos) < 0.1) {
+                                pthread_mutex_unlock(&holder->lock);
+                                continue;
+                            }
+                            holder->last_time_pos = pos;
+                        } else {
+                            holder->last_time_pos = -1000.0;
+                        }
+                    }
                     jobject jval = NULL;
                     if (prop->data != NULL) {
                         switch (prop->format) {
@@ -187,6 +205,7 @@ Java_com_vibeplayer_player_MpvNative_create(JNIEnv *env, jobject thiz) {
 
     mpv_holder_t *holder = (mpv_holder_t *)calloc(1, sizeof(mpv_holder_t));
     holder->mpv = mpv;
+    holder->last_time_pos = -1000.0;
     strncpy(holder->vo_in_use, "gpu", sizeof(holder->vo_in_use) - 1);
     pthread_mutex_init(&holder->lock, NULL);
 
@@ -380,11 +399,11 @@ Java_com_vibeplayer_player_MpvNative_setPropertyDouble(JNIEnv *env, jobject thiz
 
 JNIEXPORT jint JNICALL
 Java_com_vibeplayer_player_MpvNative_observeProperty(JNIEnv *env, jobject thiz,
-                                                     jlong handle, jstring name, jint format) {
+                                                     jlong handle, jlong reply_userdata, jstring name, jint format) {
     if (!handle || !name) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
-    int res = mpv_observe_property(holder->mpv, 0, c_name, (mpv_format)format);
+    int res = mpv_observe_property(holder->mpv, (uint64_t)reply_userdata, c_name, (mpv_format)format);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
     return res;
 }
@@ -394,7 +413,27 @@ Java_com_vibeplayer_player_MpvNative_unobserveProperty(JNIEnv *env, jobject thiz
                                                        jlong handle, jlong reply_userdata) {
     if (!handle) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    holder->last_time_pos = -1000.0;
     return mpv_unobserve_property(holder->mpv, (uint64_t)reply_userdata);
+}
+
+static void wait_for_vo_unconfigured(mpv_handle *mpv) {
+    if (!mpv) return;
+    for (int i = 0; i < 50; i++) {
+        char *cur_vo = mpv_get_property_string(mpv, "current-vo");
+        int empty = (!cur_vo || cur_vo[0] == '\0' || strcmp(cur_vo, "null") == 0);
+        if (cur_vo) {
+            mpv_free(cur_vo);
+        }
+        int configured = 0;
+        int res_cfg = mpv_get_property(mpv, "vo-configured", MPV_FORMAT_FLAG, &configured);
+        if (empty || (res_cfg >= 0 && !configured)) {
+            __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "VO unconfigured after %d ms", i * 10);
+            return;
+        }
+        usleep(10000);
+    }
+    __android_log_print(ANDROID_LOG_WARN, LOG_TAG, "VO unconfigured wait timed out (500 ms)");
 }
 
 JNIEXPORT void JNICALL
@@ -415,7 +454,7 @@ Java_com_vibeplayer_player_MpvNative_attachSurface(JNIEnv *env, jobject thiz,
     if (holder->surface_ref) {
         mpv_set_property_string(holder->mpv, "vo", "null");
         mpv_set_property_string(holder->mpv, "force-window", "no");
-        usleep(20000);
+        wait_for_vo_unconfigured(holder->mpv);
         int64_t wid = 0;
         mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
         (*env)->DeleteGlobalRef(env, holder->surface_ref);
@@ -430,6 +469,7 @@ Java_com_vibeplayer_player_MpvNative_attachSurface(JNIEnv *env, jobject thiz,
     }
     mpv_set_property_string(holder->mpv, "force-window", "yes");
     mpv_set_property_string(holder->mpv, "vo", holder->vo_in_use[0] ? holder->vo_in_use : "gpu");
+    mpv_set_property_string(holder->mpv, "vid", "auto");
 }
 
 JNIEXPORT void JNICALL
@@ -439,7 +479,7 @@ Java_com_vibeplayer_player_MpvNative_detachSurface(JNIEnv *env, jobject thiz,
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
     mpv_set_property_string(holder->mpv, "vo", "null");
     mpv_set_property_string(holder->mpv, "force-window", "no");
-    usleep(20000);
+    wait_for_vo_unconfigured(holder->mpv);
     int64_t wid = 0;
     mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
     if (holder->surface_ref) {
@@ -461,6 +501,9 @@ Java_com_vibeplayer_player_MpvNative_destroy(JNIEnv *env, jobject thiz, jlong ha
         holder->thread_running = 0;
     }
     if (holder->surface_ref) {
+        mpv_set_property_string(holder->mpv, "vo", "null");
+        mpv_set_property_string(holder->mpv, "force-window", "no");
+        wait_for_vo_unconfigured(holder->mpv);
         int64_t wid = 0;
         mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
         (*env)->DeleteGlobalRef(env, holder->surface_ref);

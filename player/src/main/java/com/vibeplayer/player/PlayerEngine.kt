@@ -33,6 +33,18 @@ class PlayerEngine {
     private val _stats = MutableStateFlow(PlayerStats())
     val stats: StateFlow<PlayerStats> = _stats.asStateFlow()
 
+    companion object {
+        const val REPLY_PAUSE = 1L
+        const val REPLY_DURATION = 2L
+        const val REPLY_TIME_POS = 3L
+        const val REPLY_HWDEC = 4L
+        const val REPLY_EOF = 5L
+        const val REPLY_BUFFERING = 6L
+        const val REPLY_SPEED = 7L
+        const val REPLY_DWIDTH = 8L
+        const val REPLY_DHEIGHT = 9L
+    }
+
     private val eventCallback = object : MpvNative.EventCallback {
         override fun onPropertyChange(name: String, value: Any?) {
             when (name) {
@@ -44,7 +56,6 @@ class PlayerEngine {
                         else -> false
                     }
                     _state.update { it.copy(paused = paused) }
-                    Log.i("VP", "Flow update - pause: $paused")
                 }
                 "duration" -> {
                     val durationMs = when (value) {
@@ -53,7 +64,6 @@ class PlayerEngine {
                         else -> 0L
                     }
                     _state.update { it.copy(durationMs = durationMs) }
-                    Log.i("VP", "Flow update - duration: $durationMs ms")
                 }
                 "time-pos" -> {
                     val posMs = when (value) {
@@ -62,13 +72,11 @@ class PlayerEngine {
                         else -> 0L
                     }
                     _position.value = posMs
-                    Log.i("VP", "Flow update - position: $posMs ms")
                 }
                 "hwdec-current" -> {
                     val hwdec = (value as? String) ?: "no"
                     val fallback = hwdec == "no"
                     _state.update { it.copy(hwdecCurrent = hwdec, fallback = fallback) }
-                    Log.i("VP", "Flow update - hwdec-current: $hwdec")
                 }
                 "eof-reached" -> {
                     val eof = when (value) {
@@ -77,7 +85,6 @@ class PlayerEngine {
                         else -> false
                     }
                     _state.update { it.copy(eof = eof) }
-                    Log.i("VP", "Flow update - eof: $eof")
                 }
                 "paused-for-cache" -> {
                     val buffering = when (value) {
@@ -146,7 +153,8 @@ class PlayerEngine {
         MpvNative.setEventCallback(handle, eventCallback)
 
         // Default to Path B (efficient mode default per ARCHITECTURE.md)
-        MpvNative.setOptionString(handle, "vo", "gpu")
+        MpvNative.setOptionString(handle, "vo", "null")
+        MpvNative.setOptionString(handle, "force-window", "no")
         MpvNative.setOptionString(handle, "gpu-context", "android")
         MpvNative.setOptionString(handle, "hwdec", "mediacodec")
         MpvNative.setOptionString(handle, "ao", "audiotrack")
@@ -157,19 +165,32 @@ class PlayerEngine {
         val res = MpvNative.initialize(handle)
         Log.i("VP", "MpvNative.initialize returned $res")
 
-        MpvNative.observeProperty(handle, "pause", MpvFormat.FLAG)
-        MpvNative.observeProperty(handle, "duration", MpvFormat.DOUBLE)
-        MpvNative.observeProperty(handle, "time-pos", MpvFormat.DOUBLE)
-        MpvNative.observeProperty(handle, "hwdec-current", MpvFormat.STRING)
-        MpvNative.observeProperty(handle, "eof-reached", MpvFormat.FLAG)
-        MpvNative.observeProperty(handle, "paused-for-cache", MpvFormat.FLAG)
-        MpvNative.observeProperty(handle, "speed", MpvFormat.DOUBLE)
-        MpvNative.observeProperty(handle, "dwidth", MpvFormat.INT64)
-        MpvNative.observeProperty(handle, "dheight", MpvFormat.INT64)
+        MpvNative.observeProperty(handle, REPLY_PAUSE, "pause", MpvFormat.FLAG)
+        MpvNative.observeProperty(handle, REPLY_DURATION, "duration", MpvFormat.DOUBLE)
+        MpvNative.observeProperty(handle, REPLY_TIME_POS, "time-pos", MpvFormat.DOUBLE)
+        MpvNative.observeProperty(handle, REPLY_HWDEC, "hwdec-current", MpvFormat.STRING)
+        MpvNative.observeProperty(handle, REPLY_EOF, "eof-reached", MpvFormat.FLAG)
+        MpvNative.observeProperty(handle, REPLY_BUFFERING, "paused-for-cache", MpvFormat.FLAG)
+        MpvNative.observeProperty(handle, REPLY_SPEED, "speed", MpvFormat.DOUBLE)
+        MpvNative.observeProperty(handle, REPLY_DWIDTH, "dwidth", MpvFormat.INT64)
+        MpvNative.observeProperty(handle, REPLY_DHEIGHT, "dheight", MpvFormat.INT64)
+    }
+
+    fun setControlsVisible(visible: Boolean) {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (handle != 0L) {
+                if (visible) {
+                    MpvNative.observeProperty(handle, REPLY_TIME_POS, "time-pos", MpvFormat.DOUBLE)
+                } else {
+                    MpvNative.unobserveProperty(handle, REPLY_TIME_POS)
+                }
+            }
+        }
     }
 
     fun attachSurface(surface: Surface) {
-        scope.launch {
+        commandExecutor.execute {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.attachSurface(handle, surface)
@@ -179,17 +200,25 @@ class PlayerEngine {
     }
 
     fun detachSurface() {
-        scope.launch {
+        if (commandExecutor.isShutdown) return
+        val future = commandExecutor.submit {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.detachSurface(handle)
                 Log.i("VP", "Surface detached from mpv handle")
             }
         }
+        try {
+            future.get(2, TimeUnit.SECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            Log.e("VP", "detachSurface timed out after 2s: ${e.message}")
+        } catch (e: Exception) {
+            Log.e("VP", "detachSurface failed: ${e.message}", e)
+        }
     }
 
     fun setSurfaceSize(width: Int, height: Int) {
-        scope.launch {
+        commandExecutor.execute {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.setSurfaceSize(handle, width, height)
@@ -213,6 +242,7 @@ class PlayerEngine {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.setPropertyBoolean(handle, "pause", false)
+                Log.i("VP", "play")
             }
         }
     }
@@ -222,6 +252,7 @@ class PlayerEngine {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.setPropertyBoolean(handle, "pause", true)
+                Log.i("VP", "pause")
             }
         }
     }
@@ -231,6 +262,7 @@ class PlayerEngine {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.command(handle, arrayOf("cycle", "pause"))
+                Log.i("VP", "togglePause")
             }
         }
     }
@@ -242,6 +274,7 @@ class PlayerEngine {
                 val sec = (positionMs.toDouble() / 1000.0).toString()
                 val flag = if (exact) "exact" else "keyframes"
                 MpvNative.command(handle, arrayOf("seek", sec, "absolute+$flag"))
+                Log.i("VP", "seekTo $positionMs ms ($flag)")
             }
         }
     }

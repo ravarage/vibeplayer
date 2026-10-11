@@ -49,7 +49,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P0-10 | Play one file | DONE | AGY-1 | b8b3cba | MainActivity with SurfaceView attached to libmpv wid plays ichiban.mp4; hwdec=mediacodec, ao=audiotrack confirmed in log; video and audio play to end (eof reached); pause toggle works; clean exit |
 | P1-01 | Event thread and state | DONE | AGY-1 | 1f6cf15 | Event thread calling onPropertyChange/onEvent JNI callbacks; PlayerEngine exposes state (PlayerState) and position StateFlows; verified on redwood with pause/duration/position flow updates |
 | P1-02 | PlayerEngine API | DONE | AGY-1 | 749ce1a | load, play, pause, seekTo, release executed on VP-Command thread; thread asserts and StrictMode verified; 100x load/seek/release loop verified on device without crash or leak |
-| P1-03 | PlayerActivity and surface lifecycle | DONE | AGY-2 | 97054a8 | Moved playback to PlayerActivity; implemented proper vo null/detach/attach sequence with surface size; verified 10 rotations and 10 home/return cycles without crash or black screen |
+| P1-03 | PlayerActivity and surface lifecycle | DONE | AGY-2 | pending | Black screen fixed (vo=null pre-init, vid=auto on attach); blocking detach & real wait (bounded 500ms); tools/check_video.py verified (start: non_black=24.6% changed=3.9%, after 20 rotations & 20 home/return & power: non_black=25.3% changed=25.2%); 0 EGL/BufferQueue errors |
 | P1-04 | Player screen | IN PROGRESS | AGY-2 | pending | Implementing immersive fullscreen, auto-hiding controls (3s), seek bar, time labels, play/pause, title/back, time-pos 100ms throttle in C, and unobserve when hidden |
 | P1-05 | Scrubbing | TODO | | | |
 | P1-06 | Efficient mode candidates | TODO | | | |
