@@ -87,15 +87,10 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
 | scaling | by the system compositor | cheapest: `profile=fast`, no deband, no dither | default or shader presets (P8) |
 | shaders | never | never | optional (P8) |
 
-- **Efficient mode has two candidate paths; neither is chosen yet.** Path A is the most direct and
-  probably the lowest power, but is believed unable to draw libass subtitles or OSD, and software
-  fallback would need a re-init onto another vo. Path B keeps frames on the GPU without a copy and is
-  believed to support subtitles and in-place software fallback, at some GPU cost. All of this is
-  unverified, including whether path B's zero-copy interop works on this device.
-- **Default is path B** (reviewer decision, 2026-10-11: the user is away and ASS subtitles are a hard
-  requirement). P1-06 measures power and drops for both and P1-10 checks ASS rendering on both; the
-  numbers go into docs/BENCHMARK.md. Agents do not block on this. Path A may later be offered as an
-  automatic choice for files played without subtitles if the measured power gain is above 10%.
+- **Efficient mode candidate paths evaluated (P1-06, P1-10).**
+  - Path A (`mediacodec_embed`): lowest overhead for plain hardware streams, but cannot render libass subtitles or OSD, and cannot display software fallback frames (e.g. Hi10P).
+  - Path B (`gpu` on GLES): zero-copy interop (`aimagereader` / `mediacodec`) verified on Snapdragon 778G with 0 dropped frames; correctly renders styled ASS subtitles (embedded fonts, positioning, karaoke) and supports seamless in-place software fallback.
+- **Default is Path B** (confirmed by P1-06 and P1-10 benchmark results in docs/BENCHMARK.md; ASS subtitles and software fallback are hard requirements).
 - **Software fallback**: mpv falls back to software when hwdec init or decoding fails
   (`hwdec-current` becomes `no`) when the vo is `gpu`/`gpu-next` (**candidate**, P1-07). On path A the
   engine must detect the failure and `reconfigure()` onto path B options at the same position.
