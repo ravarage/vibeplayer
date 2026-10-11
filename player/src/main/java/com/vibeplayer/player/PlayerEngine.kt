@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class PlayerEngine {
 
@@ -125,12 +126,12 @@ class PlayerEngine {
         }
     }
 
-    private fun assertCommandThread() {
+    fun assertCommandThread() {
+        check(Looper.myLooper() != Looper.getMainLooper()) {
+            "mpv call must never run on main thread!"
+        }
         check(Thread.currentThread().name.startsWith("VP-Command")) {
             "mpv call must run on VP-Command thread, but was ${Thread.currentThread().name}"
-        }
-        check(Looper.myLooper() != Looper.getMainLooper()) {
-            "mpv call must never run on main thread"
         }
     }
 
@@ -235,8 +236,8 @@ class PlayerEngine {
         }
     }
 
-    fun release() {
-        val future = commandExecutor.submit {
+    fun release(sync: Boolean = false) {
+        val task = Runnable {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.setEventCallback(handle, null)
@@ -245,11 +246,17 @@ class PlayerEngine {
                 Log.i("VP", "PlayerEngine handle destroyed")
             }
         }
-        try {
-            future.get()
-        } catch (e: Exception) {
-            Log.w("VP", "Exception waiting for handle destroy: ${e.message}")
+        if (sync && Looper.myLooper() != Looper.getMainLooper()) {
+            val future = commandExecutor.submit(task)
+            try {
+                future.get(5, TimeUnit.SECONDS)
+            } catch (e: Exception) {
+                Log.w("VP", "Exception waiting for handle destroy: ${e.message}")
+            }
+            commandExecutor.shutdown()
+        } else {
+            commandExecutor.submit(task)
+            commandExecutor.shutdown()
         }
-        commandExecutor.shutdown()
     }
 }

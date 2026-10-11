@@ -248,23 +248,24 @@ Java_com_vibeplayer_player_MpvNative_command(JNIEnv *env, jobject thiz,
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
     jsize len = (*env)->GetArrayLength(env, args);
     const char **cmd_args = (const char **)calloc(len + 1, sizeof(const char *));
+    jstring *jstrs = (jstring *)calloc(len, sizeof(jstring));
     for (jsize i = 0; i < len; i++) {
-        jstring str = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-        if (str) {
-            cmd_args[i] = (*env)->GetStringUTFChars(env, str, NULL);
+        jstrs[i] = (jstring)(*env)->GetObjectArrayElement(env, args, i);
+        if (jstrs[i]) {
+            cmd_args[i] = (*env)->GetStringUTFChars(env, jstrs[i], NULL);
         }
     }
     cmd_args[len] = NULL;
     int res = mpv_command(holder->mpv, cmd_args);
     for (jsize i = 0; i < len; i++) {
-        if (cmd_args[i]) {
-            jstring str = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-            if (str) {
-                (*env)->ReleaseStringUTFChars(env, str, cmd_args[i]);
-                (*env)->DeleteLocalRef(env, str);
+        if (jstrs[i]) {
+            if (cmd_args[i]) {
+                (*env)->ReleaseStringUTFChars(env, jstrs[i], cmd_args[i]);
             }
+            (*env)->DeleteLocalRef(env, jstrs[i]);
         }
     }
+    free(jstrs);
     free(cmd_args);
     return res;
 }
