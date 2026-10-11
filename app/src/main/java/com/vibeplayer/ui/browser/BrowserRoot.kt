@@ -22,12 +22,27 @@ import kotlinx.coroutines.launch
 @Composable
 fun BrowserRoot(
     modifier: Modifier = Modifier,
-    onPlayVideo: (VideoItem) -> Unit = { item ->
-        Log.d("VP", "Play video requested: ${item.displayName} (${item.path})")
-    },
+    onPlayVideo: ((VideoItem) -> Unit)? = null,
     thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val effectiveOnPlayVideo: (VideoItem) -> Unit = onPlayVideo ?: { item ->
+        val uri = android.net.Uri.fromFile(java.io.File(item.path))
+        Log.i("VP", "Starting ACTION_VIEW intent for Uri: $uri")
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "video/*")
+            setClassName(context.packageName, "com.vibeplayer.ui.player.PlayerActivity")
+            if (context !is android.app.Activity) {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.w("VP", "PlayerActivity not found or failed to start for $uri: ${e.message}")
+            android.widget.Toast.makeText(context, "Player not available: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
     val repository = remember { MediaRepository(context.applicationContext) }
     val preferences = remember { BrowserPreferences(context.applicationContext) }
@@ -70,7 +85,7 @@ fun BrowserRoot(
         repository = repository,
         preferences = preferences,
         thumbnailCache = thumbnailCache,
-        onPlayVideo = onPlayVideo,
+        onPlayVideo = effectiveOnPlayVideo,
         modifier = modifier,
         navController = navController,
         thumbnailContent = thumbnailContent

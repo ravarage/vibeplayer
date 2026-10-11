@@ -63,6 +63,9 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P2-04 | Navigation and refresh | DONE | AGY-1B | pending | BrowserNavGraph in ui/Nav.kt with folders->videos->player routes; ContentObserver auto-refresh verified; DataStore sort order (name/date/size) verified surviving restart |
 | P2-05 | Thumbnail generator | DONE | AGY-1B | pending | FrameExtractor interface & MediaMetadataRetriever extractor implemented (max 2 parallel, cancellable); on device 6 clips extracted, 5 got no thumbnail (av1_4k, hevc10_4k, bocchi, bad girl, clevatess) awaiting mpv fallback |
 | P2-06 | Thumbnail cache | DONE | AGY-1B | pending | ThumbnailCache with disk cache (path+size+mtime WebP) and memory LRU; tested on redwood: instant disk cache HIT on second launch with no extraction, cache miss/regeneration verified on replacing file |
+| P2-07 | Launch player from browser | DONE | AGY-1B | pending | onPlayVideo starts explicit ACTION_VIEW intent for PlayerActivity with file Uri & video/*; missing activity caught and Toast displayed; verified on redwood |
+| P2-08 | Thumbnail robustness | TODO | | | |
+| P2-09 | Settings screen scaffold | TODO | | | |
 | P3-01 | Gesture layer | TODO | | | |
 | P3-02 | Brightness | TODO | | | |
 | P3-03 | Volume | TODO | | | |

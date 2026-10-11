@@ -44,8 +44,18 @@ class MainActivity : ComponentActivity() {
                     BrowserPermissionWrapper {
                         BrowserRoot(
                             onPlayVideo = { item: VideoItem ->
-                                Log.d("VP", "Play video: ${item.displayName} (${item.path})")
-                                Toast.makeText(this, "Playing: ${item.displayName}", Toast.LENGTH_SHORT).show()
+                                val uri = android.net.Uri.fromFile(java.io.File(item.path))
+                                Log.i("VP", "Starting ACTION_VIEW intent for Uri: $uri")
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, "video/*")
+                                    setClassName(packageName, "com.vibeplayer.ui.player.PlayerActivity")
+                                }
+                                try {
+                                    startActivity(intent)
+                                } catch (e: Exception) {
+                                    Log.w("VP", "PlayerActivity not found or failed to start for $uri: ${e.message}")
+                                    Toast.makeText(this@MainActivity, "Player not available: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         )
                     }
