@@ -56,7 +56,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P1-08 | Debug overlay | TODO | | | |
 | P1-09 | Open-with intent | TODO | | | |
 | P1-10 | ASS subtitles and efficient path decision | TODO | | | |
-| P2-01 | MediaStore repository | TODO | | | |
+| P2-01 | MediaStore repository | DONE | AGY-1B | pending | READ_MEDIA_VIDEO flow and MediaRepository query implemented; 9 folders and counts logged matching device gallery |
 | P2-02 | Folder list screen | TODO | | | |
 | P2-03 | Video list screen | TODO | | | |
 | P2-04 | Navigation and refresh | TODO | | | |
