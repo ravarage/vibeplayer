@@ -18,17 +18,27 @@ Newest entry first. Keep entries short; no long logs.
 
 ## Open
 
-## B-03 Device Vulkan 1.1 below libplacebo 1.2 requirement            Status: OPEN
+_none_
+
+## Resolved
+
+## B-04 Device Vulkan 1.1 below libplacebo 1.2 requirement            Status: RESOLVED
 - Task: P6-00
 - Agent / date: AGY-2C / 2026-10-12
 - Problem: Device Adreno 642L reports Vulkan 1.1.128, which is below libplacebo's requirement PL_VK_MIN_VERSION (Vulkan 1.2). Probe with vo=gpu-next, gpu-api=vulkan, gpu-context=androidvk fails: libplacebo reports "Found no suitable device, giving up."
 - Tried: Built libmpv with Vulkan and shaderc (NDK r30); confirmed gpu-context=androidvk and gpu-api=vulkan in option choices; probed on device with com.vibeplayer.vk.
 - Options: Per TASKS.md P6-00, re-scope P6-02, P6-04, and P6-05 to compare vo=gpu-next vs vo=gpu on OpenGL ES. Both vo=gpu and vo=gpu-next confirmed fully working on GLES.
 - Needs from user: Non-blocking; reviewer acknowledgement of P6 re-scoping to gpu-next vs gpu on GLES.
-- Resolution: 
+- Resolution: accepted by the reviewer 2026-10-12. Vulkan cannot work on this device (driver is Vulkan 1.1, libplacebo needs 1.2). P6 compares `gpu-next` vs `gpu` on OpenGL ES. The Vulkan build patch is kept as `native/patches/optional/0004-vulkan-shaderc.patch` and is not applied by default (it doubles libmpv.so for no use).
 
-
-## Resolved
+## B-03 Device disconnected over adb            Status: RESOLVED
+- Task: P4-08
+- Agent / date: AGY-2B / 2026-10-11
+- Problem: Device disconnected over adb (`2fbe93cc: connection terminated: read failed`, `adb devices` shows empty).
+- Tried: Checked `lsusb`, `adb devices`, `adb reconnect`; device not present on USB.
+- Options: User reconnects phone redwood to host via USB / adb.
+- Needs from user: Reconnect phone to USB / enable USB debugging.
+- Resolution: not a fault: the user unplugged the phone to charge it (2026-10-11). P4-08's device check is deferred until P4-06 writes real history; the startup code that seeded fake history rows was removed in the merge.
 
 ## B-02 Missing test clips (AV1 4K and multi-track AC3/PGS)            Status: RESOLVED
 - Task: P0-02

@@ -12,6 +12,10 @@ USER FEEDBACK section of TASKS.md before touching anything.
 
 ## Working a task
 - Only one agent works at a time unless TASKS.md marks tasks as parallel safe.
+- Parallel agents: the main line runs in `/home/rava/vibeplayer` on `main`. A parallel agent works
+  only in its own git worktree and branch (`par/<name>`), takes only the tasks listed for that track
+  in TASKS.md, never commits to `main` and never edits files outside its track's paths (PROGRESS.md
+  rows for its own tasks excepted). The reviewer merges the branch.
 - Work one task at a time, in order (lowest unfinished ID first).
 - Before starting, set the task to `IN PROGRESS` with your agent name in PROGRESS.md.
 - Build after every task. A task is done only when it builds **and** meets its acceptance criteria
@@ -26,6 +30,17 @@ USER FEEDBACK section of TASKS.md before touching anything.
 - Agent column: the name given in your prompt: `AGY-1`, `AGY-2` or `CODEX`.
 - Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`. Only the reviewer edits "Last reviewed commit".
 - Stay inside the task. Ideas and follow-ups go in the PROGRESS.md note, not into code.
+
+## Checking video on the device
+Log lines do not prove a picture is on screen. Any acceptance item that involves video being shown
+(playback, rotation, resume, fallback, subtitles, zoom, PiP) must pass `tools/check_video.py` while the
+clip plays (`--still` when paused): it screencaps the phone and fails on a black or frozen screen.
+State its output line in the PROGRESS.md note. For subtitles, overlays and UI, also save a screenshot
+(`adb exec-out screencap -p > /tmp/x.png`) and look at it. Leave media volume as you found it.
+
+The phone is the user's daily phone and its alarm must ring. Only the media stream (STREAM_MUSIC) may
+be changed. Never change alarm, ring or notification volume, ringer mode, Do Not Disturb, the clock
+app or its alarms, system settings, or reboot the phone.
 
 ## Hard limits
 - Never change the fixed tech decisions in SPEC.md. If something seems wrong, write it in BLOCKERS.md,
@@ -67,6 +82,7 @@ Filled in and kept current by the tasks that create them (P0-06, P0-07).
 | Launch | `adb shell am start -n com.vibeplayer/.MainActivity` |
 | Play a test clip | `adb shell am start -a android.intent.action.VIEW -d file:///sdcard/Movies/vibeplayer-test/h264_1080p.mp4 -t video/* com.vibeplayer` |
 | Logs | `adb logcat -s VP VP-Perf mpv` |
+| Is video really visible? | `tools/check_video.py` (exit 0 = visible, 1 = black/frozen) |
 
 ## Code conventions
 - Follow ARCHITECTURE.md for packages, threading and state flow. If the code must deviate, update

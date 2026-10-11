@@ -11,6 +11,13 @@ Format: **ID Title** — description. *Files*: likely touched. *Accept*: checks 
 Clips are in `/sdcard/Movies/vibeplayer-test/` (SPEC.md). Tasks are sequential unless marked
 **[parallel safe]**. "Overlay" means the debug overlay from P1-08.
 
+## Parallel tracks
+- **Main track** (`main`, /home/rava/vibeplayer): all tasks in order, skipping tasks done by a track below.
+- **App track** (`par/app`, /home/rava/vibeplayer-worktrees/app) **[parallel safe]**: P0-07, P2-01..P2-09,
+  P4-01, P4-08. Touches only Gradle files, `app/`, `player/build.gradle.kts` and its PROGRESS.md rows;
+  nothing under `native/` or `player/src/main/cpp`. Uses the SDK at `~/Android/Sdk` via `local.properties`.
+  Where an acceptance item needs playback, skip that item and say so in the note.
+
 ## P0 Native build and first playback
 
 **P0-01 Toolchain and build JDK** — Record host tool versions. Locate Android Studio and point Gradle
@@ -66,6 +73,41 @@ requested). *Files*: app/.../MainActivity.kt, manifest. *Accept*: video and audi
 `ao` is audiotrack in the log.
 
 ## P1 Player core
+
+_Reviewer notes on P1-01/P1-02 (commits 1f6cf15, 749ce1a). Fix in the task named:_
+- _P1-04: `time-pos` is observed as DOUBLE and logged on every change, i.e. a JNI call, a boxed Double
+  and a logcat line per video frame. Remove the per-update logs (pause/duration/position/eof). Forward
+  `time-pos` from C only when it moved by 100 ms or more, and `observeProperty`/unobserve it with
+  controls visibility (ARCHITECTURE.md: no position updates while controls are hidden). Add
+  `unobserveProperty` to the bridge._
+- _P1-06: the option table is hard-coded in `PlayerEngine.initHandle()`; move it to `PlaybackMode`._
+- _P1-07: `fallback` is set whenever `hwdec-current` is `no`, which is also true before any file is
+  loaded and for AV1 (software by design). Report fallback only when a file is playing, its video codec
+  is in `hwdec-codecs`, and `hwdec-current` is `no`._
+
+_**Reviewer finding 2026-10-12, fix before anything else: the player shows a BLACK SCREEN with audio**
+(the user saw it; `tools/check_video.py` confirms 0% non-black). Log: `[vo/gpu] Failed initializing any
+suitable GPU context!` then `Error opening/initializing the selected video_out (--vo) device.` at file
+load, before `Surface attached`. Cause: the handle starts with `vo=gpu` and the file is loaded before
+the surface exists, so vo init fails and mpv drops the video track; the later attach never brings it
+back. Required behaviour: initialise with `vo=null` and `force-window=no`; the vo for the mode is set
+only in attach (after `wid`), and attach must also restore video if it was dropped (`vid=auto` unless
+the user chose none). Loading before or after the surface exists must both end with a picture. Every
+earlier "verified, no black screen" note was log-based and is void: re-verify P1-03 with
+`tools/check_video.py` (see AGENT_RULES.md, "Checking video on the device") after start, after 5
+rotations and after home/return._
+
+_Reviewer notes on P1-03 (commit 97054a8). Fix first in P1-04, before the player screen work:_
+- _`PlayerEngine.detachSurface()` only posts to the command thread, so `surfaceDestroyed` returns
+  while mpv may still be drawing; Android destroys the Surface as soon as that callback returns.
+  Make detach block the caller until the native detach has finished (run it on the command thread and
+  wait, with a timeout of about 2 s and a log line if it expires). This is the one permitted blocking
+  call on the main thread. Order attach/detach/setSurfaceSize strictly: a detach must never be
+  overtaken by a queued attach of the old surface._
+- _`usleep(20000)` in `attachSurface`/`detachSurface` is a guess. Replace it with a real wait: after
+  setting `vo=null`, poll `current-vo` (or `vo-configured`) until it is empty, bounded to 500 ms._
+- _Re-verify on the device: 20 rotations and 20 home/return cycles and screen off/on during playback,
+  logcat free of EGL/`BufferQueue has been abandoned` errors._
 
 **P1-01 Event thread and state** — Native event loop, `observeProperty`, `PlayerState`, separate
 position flow. *Files*: mpv_jni.c, PlayerEngine.kt, PlayerState.kt. *Accept*: logcat shows pause,
@@ -135,6 +177,19 @@ fallback), max 2 parallel, cancelled when scrolled away. *Files*: data/thumbs/Th
 **P2-06 Thumbnail cache** — Disk cache keyed by path+size+mtime, memory LRU, shown in both lists.
 *Files*: data/thumbs/ThumbnailCache.kt, ui/browser/*. *Accept*: second launch shows thumbnails
 instantly with no extraction in logcat; replacing a file regenerates its thumbnail.
+
+**P2-07 Launch player from browser** — onPlayVideo starts an explicit ACTION_VIEW intent (file Uri,
+type video/*) for class name "com.vibeplayer.ui.player.PlayerActivity" via setClassName; catch exception
+and show Toast if missing. *Files*: ui/browser/*. *Accept*: log shows the intent being fired with the right Uri.
+
+**P2-08 Thumbnail robustness** — Negative cache with marker file (version constant); investigate
+MediaMetadataRetriever failures on hevc10_4k.mp4 and AV1 clips; non-blocking sends in ContentObserver;
+decode disk-cache bitmaps at display size. *Files*: data/thumbs/*, data/media/MediaRepository.kt.
+*Accept*: second launch does no extraction attempts at all (logcat); list scroll stays smooth.
+
+**P2-09 Settings screen scaffold** — ui/settings/SettingsScreen reachable from a gear icon in browser
+top bar; DataStore-backed preferences for playback mode, renderer, gestures, skip seconds, background audio,
+shader preset; exposed as AppSettings Flow. *Files*: ui/settings/*, data/prefs/*. *Accept*: values survive app restart.
 
 ## P3 Gestures
 

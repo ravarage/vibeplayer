@@ -57,7 +57,7 @@ Application id and base package: `com.vibeplayer`.
 ## Threading model
 | Thread | Does | Must never |
 |---|---|---|
-| Main | Compose, surface callbacks, collects state | call blocking mpv functions (`getProperty`, sync commands) |
+| Main | Compose, surface callbacks, collects state | call blocking mpv functions (`getProperty`, sync commands). Only exception: `surfaceDestroyed` waits for the detach to finish |
 | Player command thread (single-thread dispatcher in `PlayerEngine`) | all `command`/`setProperty` calls, init, destroy | touch UI |
 | mpv event thread (native) | reads events, pushes values into `MutableStateFlow`s | call back into mpv synchronously |
 | IO dispatcher | Room, MediaStore, thumbnail disk cache | |
@@ -105,6 +105,8 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
   new option table, reloads the file and seeks.
 
 ## Vulkan status (probe 2026-10-12, task P6-00)
+**Decision (reviewer, 2026-10-12): Vulkan is not usable on this device; every mode uses OpenGL ES.** The default native build does not include Vulkan: the patch lives in `native/patches/optional/0004-vulkan-shaderc.patch` and `fetch.sh` does not apply it (it doubles libmpv.so to 15 MB). In the default build `gpu-context` offers only `android` and `gpu-api` only `opengl`; ignore `androidvk`/`vulkan` in the options table below. P6 compares `gpu-next` vs `gpu` on GLES.
+
 Vulkan support was enabled in the native build (libplacebo v7.360.1 + shaderc 2022.3 from NDK r30 + mpv v0.41.0 via patch `0004-vulkan-shaderc.patch`). The built `libmpv` successfully exposes `gpu-context=auto,android,androidvk` and `gpu-api=auto,opengl,vulkan`.
 
 During device probe on redwood (Adreno 642L), `vo=gpu-next` with `gpu-api=vulkan`, `gpu-context=androidvk` failed to initialize because libplacebo requires Vulkan 1.2 minimum, whereas the device driver provides Vulkan 1.1.128:
