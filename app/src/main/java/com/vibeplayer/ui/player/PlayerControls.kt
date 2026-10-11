@@ -146,6 +146,19 @@ fun PlayerControls(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+
+                    if (playerState.fallback) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "SW FALLBACK",
+                            color = Color(0xFFFF5252),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .background(Color(0x33FF0000), shape = CircleShape)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
                 // Center: Play / Pause toggle

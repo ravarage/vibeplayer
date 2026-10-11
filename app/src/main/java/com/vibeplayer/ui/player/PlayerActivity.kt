@@ -129,6 +129,10 @@ class PlayerActivity : ComponentActivity() {
         val config = resolveConfig()
         val oldPath = currentVideoPath
         resolveVideoPath()
+        val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
+        if (!forceHwdec.isNullOrEmpty()) {
+            playerEngine.setHwdec(forceHwdec)
+        }
         if (config != playerEngine.playbackConfig) {
             playerEngine.reconfigure(config)
         } else if (currentVideoPath != oldPath) {
@@ -182,6 +186,10 @@ class PlayerActivity : ComponentActivity() {
         val file = File(currentVideoPath)
         Log.i("VP", "File access: path=$currentVideoPath exists=${file.exists()} canRead=${file.canRead()} size=${file.length()}")
 
+        val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
+        if (!forceHwdec.isNullOrEmpty()) {
+            playerEngine.setHwdec(forceHwdec)
+        }
         playbackStarted = true
         playerEngine.load(currentVideoPath)
     }

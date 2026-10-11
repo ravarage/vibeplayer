@@ -32,5 +32,6 @@ data class PlayerState(
     val tracks: List<Track> = emptyList(),
     val selectedAudioTrackId: Int? = null,
     val selectedSubTrackId: Int? = null,
+    val videoCodec: String? = null,
     val fallback: Boolean = false
 )

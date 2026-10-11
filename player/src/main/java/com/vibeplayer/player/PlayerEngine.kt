@@ -49,10 +49,15 @@ class PlayerEngine(
         const val REPLY_SPEED = 7L
         const val REPLY_DWIDTH = 8L
         const val REPLY_DHEIGHT = 9L
+        const val REPLY_VIDEO_CODEC = 10L
+        const val REPLY_VIDEO_FORMAT = 11L
     }
 
     private val eventCallback = object : MpvNative.EventCallback {
         override fun onPropertyChange(name: String, value: Any?) {
+            if (name != "time-pos") {
+                Log.i("VP", "onPropertyChange: $name = $value")
+            }
             when (name) {
                 "pause" -> {
                     val paused = when (value) {
@@ -69,7 +74,14 @@ class PlayerEngine(
                         is String -> (value.toDoubleOrNull() ?: 0.0).times(1000).toLong()
                         else -> 0L
                     }
-                    _state.update { it.copy(durationMs = durationMs) }
+                    _state.update { current ->
+                        val fallback = computeFallback(
+                            hwdec = current.hwdecCurrent,
+                            codec = current.videoCodec,
+                            durationMs = durationMs
+                        )
+                        current.copy(durationMs = durationMs, fallback = fallback)
+                    }
                 }
                 "time-pos" -> {
                     val posMs = when (value) {
@@ -81,8 +93,25 @@ class PlayerEngine(
                 }
                 "hwdec-current" -> {
                     val hwdec = (value as? String) ?: "no"
-                    val fallback = hwdec == "no"
-                    _state.update { it.copy(hwdecCurrent = hwdec, fallback = fallback) }
+                    _state.update { current ->
+                        val fallback = computeFallback(
+                            hwdec = hwdec,
+                            codec = current.videoCodec,
+                            durationMs = current.durationMs
+                        )
+                        current.copy(hwdecCurrent = hwdec, fallback = fallback)
+                    }
+                }
+                "video-codec", "video-format" -> {
+                    val codec = value as? String
+                    _state.update { current ->
+                        val fallback = computeFallback(
+                            hwdec = current.hwdecCurrent,
+                            codec = codec,
+                            durationMs = current.durationMs
+                        )
+                        current.copy(videoCodec = codec, fallback = fallback)
+                    }
                 }
                 "eof-reached" -> {
                     val eof = when (value) {
@@ -132,6 +161,15 @@ class PlayerEngine(
                 }
             }
         }
+    }
+
+    private fun computeFallback(hwdec: String, codec: String?, durationMs: Long): Boolean {
+        if (currentFilePath.isEmpty() || durationMs <= 0 || codec.isNullOrEmpty()) {
+            return false
+        }
+        val hwdecCodecs = setOf("h264", "hevc", "vp9")
+        val isHwdecCodec = hwdecCodecs.any { codec.lowercase().contains(it) }
+        return isHwdecCodec && (hwdec == "no" || hwdec.isEmpty())
     }
 
     fun logStats() {
@@ -200,6 +238,8 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_SPEED, "speed", MpvFormat.DOUBLE)
         MpvNative.observeProperty(handle, REPLY_DWIDTH, "dwidth", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_DHEIGHT, "dheight", MpvFormat.INT64)
+        MpvNative.observeProperty(handle, REPLY_VIDEO_CODEC, "video-codec", MpvFormat.STRING)
+        MpvNative.observeProperty(handle, REPLY_VIDEO_FORMAT, "video-format", MpvFormat.STRING)
     }
 
     fun setControlsVisible(visible: Boolean) {
@@ -259,9 +299,20 @@ class PlayerEngine(
         scope.launch {
             assertCommandThread()
             currentFilePath = path
+            _state.update { it.copy(videoCodec = null, fallback = false) }
             if (handle != 0L) {
                 val res = MpvNative.command(handle, arrayOf("loadfile", path))
                 Log.i("VP", "loadfile res=$res for $path")
+            }
+        }
+    }
+
+    fun setHwdec(hwdec: String) {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (handle != 0L) {
+                MpvNative.setPropertyString(handle, "hwdec", hwdec)
+                Log.i("VP", "hwdec set to $hwdec")
             }
         }
     }
