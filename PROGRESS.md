@@ -23,22 +23,22 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | Baseline Profile / Macrobenchmark | | | |
 | NDK | | | |
 | CMake | | | |
-| mpv-android (commit) | | | |
-| mpv | | | |
-| FFmpeg | | | |
-| dav1d | | | |
-| libass | | | |
-| libplacebo | | | |
-| freetype | | | |
-| harfbuzz | | | |
-| fribidi | | | |
+| mpv-android (commit) | c2e02fe111541e4063ab8f868bf629649ed937a3 | https://github.com/mpv-android/mpv-android.git | pinned HEAD from 2026-10-06 |
+| mpv | v0.41.0 | https://github.com/mpv-player/mpv.git | latest stable release |
+| FFmpeg | n9.0.2 | https://github.com/FFmpeg/FFmpeg.git | latest stable release |
+| dav1d | 1.5.4 | https://code.videolan.org/videolan/dav1d.git | latest stable release |
+| libass | 0.17.5 | https://github.com/libass/libass.git | latest stable release |
+| libplacebo | v7.360.1 | https://github.com/haasn/libplacebo.git | latest stable release |
+| freetype | 2.14.3 | https://gitlab.freedesktop.org/freetype/freetype.git | tag VER-2-14-3, latest stable |
+| harfbuzz | 14.6.0 | https://github.com/harfbuzz/harfbuzz.git | latest stable release |
+| fribidi | 1.0.17 | https://github.com/fribidi/fribidi.git | tag v1.0.17, latest stable |
 
 ## Tasks
 | Task | Title | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
 | P0-01 | Toolchain check | DONE | AGY-1 | pending | Host tools recorded (Linux 7.2.9, OpenJDK 27, Gradle 9.8.1, git 2.56.0, CMake 4.4.4, Meson 1.12.1, Ninja 1.13.2, NASM 3.02, Python 3.14.7, adb 1.0.41, 16 cores); JBR 25.0.3 configured in ~/.gradle/gradle.properties |
 | P0-02 | Device check | DONE | AGY-1 | pending | redwood (SDK 37, Vulkan 1.1, GLES 3.2); clips probed and mapped, missing clips recorded in non-blocking B-02 |
-| P0-03 | Fetch mpv-android | TODO | | | |
+| P0-03 | Fetch mpv-android | DONE | AGY-1 | pending | mpv-android pinned at c2e02fe; mpv v0.41.0, FFmpeg n9.0.2, dav1d 1.5.4, libass 0.17.5, libplacebo v7.360.1, harfbuzz 14.6.0 pinned in buildscripts via patch |
 | P0-04 | Download SDK, NDK, deps | TODO | | | |
 | P0-05 | FFmpeg trim | TODO | | | |
 | P0-06 | Build native for arm64 | TODO | | | |

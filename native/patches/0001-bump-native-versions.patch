@@ -1,0 +1,71 @@
+diff --git a/buildscripts/include/depinfo.sh b/buildscripts/include/depinfo.sh
+index 02b3d5e..29522ac 100755
+--- a/buildscripts/include/depinfo.sh
++++ b/buildscripts/include/depinfo.sh
+@@ -11,7 +11,7 @@ v_sdk_build_tools=36.0.0
+ 
+ v_lua=5.2.4
+ v_unibreak=8.0
+-v_harfbuzz=14.5.0
++v_harfbuzz=14.6.0
+ v_fribidi=1.0.17
+ v_freetype=2.14.3
+ v_mbedtls=3.6.7
+@@ -19,6 +19,12 @@ v_libxml2=2.15.4
+ v_fontconfig=2.18.3
+ v_curl=8.22.0
+ 
++v_dav1d=1.5.4
++v_ffmpeg=n9.0.2
++v_libass=0.17.5
++v_libplacebo=v7.360.1
++v_mpv=v0.41.0
++
+ 
+ ## Dependency tree
+ 
+diff --git a/buildscripts/include/download-deps.sh b/buildscripts/include/download-deps.sh
+index b20e9d6..336def4 100755
+--- a/buildscripts/include/download-deps.sh
++++ b/buildscripts/include/download-deps.sh
+@@ -15,12 +15,11 @@ if [ ! -d mbedtls ]; then
+ fi
+ 
+ # dav1d
+-[ ! -d dav1d ] && git clone https://github.com/videolan/dav1d
++[ ! -d dav1d ] && git clone https://code.videolan.org/videolan/dav1d.git dav1d -b "$v_dav1d" --depth=1
+ 
+ # ffmpeg
+ if [ ! -d ffmpeg ]; then
+-	args=()
+-	[ $IN_CI -eq 1 ] && args+=(--depth=1 -b "$v_ci_ffmpeg")
++	args=(--depth=1 -b "$v_ffmpeg")
+ 	git clone https://github.com/FFmpeg/FFmpeg ffmpeg "${args[@]}"
+ fi
+ 
+@@ -63,7 +62,7 @@ if [ ! -d fontconfig ]; then
+ fi
+ 
+ # libass
+-[ ! -d libass ] && git clone https://github.com/libass/libass
++[ ! -d libass ] && git clone https://github.com/libass/libass libass -b "$v_libass" --depth=1
+ 
+ # lua
+ if [ ! -d lua ]; then
+@@ -73,7 +72,7 @@ if [ ! -d lua ]; then
+ fi
+ 
+ # libplacebo
+-[ ! -d libplacebo ] && git clone --recursive https://github.com/haasn/libplacebo
++[ ! -d libplacebo ] && git clone --recursive https://github.com/haasn/libplacebo libplacebo -b "$v_libplacebo" --depth=1
+ 
+ # curl
+ if [ ! -d curl ]; then
+@@ -83,6 +82,6 @@ if [ ! -d curl ]; then
+ fi
+ 
+ # mpv
+-[ ! -d mpv ] && git clone https://github.com/mpv-player/mpv
++[ ! -d mpv ] && git clone https://github.com/mpv-player/mpv mpv -b "$v_mpv" --depth=1
+ 
+ cd ..

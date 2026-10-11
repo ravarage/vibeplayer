@@ -40,3 +40,10 @@ Claude is the architect and reviewer; implementing agents write the code and run
 AGENT_RULES.md (entry point: AGENTS.md, auto-loaded by agy). Planning files: SPEC.md, ARCHITECTURE.md,
 TASKS.md, PROGRESS.md, BLOCKERS.md. When reviewing, read commits after "Last reviewed commit" in
 PROGRESS.md, check them against the task's acceptance criteria, then update that line.
+
+## Parallel agents
+
+The user allows several agy runs at once (2026-10-11) as long as the tasks don't depend on unfinished
+ones. Each parallel agent gets its own git worktree under `/home/rava/vibeplayer-worktrees/<name>` on a
+branch `par/<name>`, with its task list declared under "Parallel tracks" in TASKS.md; Claude merges the
+branch into `main` after review. All runs draw on the same agy account quota.
