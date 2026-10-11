@@ -32,7 +32,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-
     sourceSets {
         getByName("main") {
             jniLibs.directories.add("src/main/jniLibs")

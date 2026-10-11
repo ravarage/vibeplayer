@@ -12,6 +12,10 @@ USER FEEDBACK section of TASKS.md before touching anything.
 
 ## Working a task
 - Only one agent works at a time unless TASKS.md marks tasks as parallel safe.
+- Parallel agents: the main line runs in `/home/rava/vibeplayer` on `main`. A parallel agent works
+  only in its own git worktree and branch (`par/<name>`), takes only the tasks listed for that track
+  in TASKS.md, never commits to `main` and never edits files outside its track's paths (PROGRESS.md
+  rows for its own tasks excepted). The reviewer merges the branch.
 - Work one task at a time, in order (lowest unfinished ID first).
 - Before starting, set the task to `IN PROGRESS` with your agent name in PROGRESS.md.
 - Build after every task. A task is done only when it builds **and** meets its acceptance criteria

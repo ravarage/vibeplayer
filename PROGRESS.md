@@ -20,6 +20,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | Activity | 1.13.0 | https://dl.google.com/dl/android/maven2 | latest stable activity-compose |
 | Lifecycle | 2.11.0 | https://dl.google.com/dl/android/maven2 | latest stable lifecycle-runtime-compose |
 | Navigation | 2.10.2 | https://dl.google.com/dl/android/maven2 | latest stable navigation-compose |
+| DataStore | 1.2.1 | https://dl.google.com/dl/android/maven2 | latest stable DataStore Preferences |
 | Baseline Profile / Macrobenchmark | 1.5.0 | https://dl.google.com/dl/android/maven2 | latest stable benchmark-macro |
 | NDK | r30 (30.0.16248370) | https://github.com/android/ndk/releases | latest stable release |
 | CMake | 4.4.4 | https://github.com/Kitware/CMake/tags | latest stable release (matches host) |
@@ -56,12 +57,15 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P1-08 | Debug overlay | TODO | | | |
 | P1-09 | Open-with intent | TODO | | | |
 | P1-10 | ASS subtitles on both efficient paths | TODO | | | |
-| P2-01 | MediaStore repository | TODO | | | |
-| P2-02 | Folder list screen | TODO | | | |
-| P2-03 | Video list screen | TODO | | | |
-| P2-04 | Navigation and refresh | TODO | | | |
-| P2-05 | Thumbnail generator | TODO | | | |
-| P2-06 | Thumbnail cache | TODO | | | |
+| P2-01 | MediaStore repository | DONE | AGY-1B | pending | READ_MEDIA_VIDEO flow and MediaRepository query implemented; 9 folders and counts logged matching device gallery |
+| P2-02 | Folder list screen | DONE | AGY-1B | pending | FolderListScreen implemented with LazyColumn, folder icon, name, count; verified on redwood showing all 9 folders including vibeplayer-test |
+| P2-03 | Video list screen | DONE | AGY-1B | pending | VideoListScreen implemented with title, duration, size, resolution; tap calls onPlayVideo with VP log/Toast (player acceptance skipped per instructions); back returns to folder list |
+| P2-04 | Navigation and refresh | DONE | AGY-1B | pending | BrowserNavGraph in ui/Nav.kt with folders->videos->player routes; ContentObserver auto-refresh verified; DataStore sort order (name/date/size) verified surviving restart |
+| P2-05 | Thumbnail generator | DONE | AGY-1B | pending | FrameExtractor interface & MediaMetadataRetriever extractor implemented (max 2 parallel, cancellable); on device 6 clips extracted, 5 got no thumbnail (av1_4k, hevc10_4k, bocchi, bad girl, clevatess) awaiting mpv fallback |
+| P2-06 | Thumbnail cache | DONE | AGY-1B | pending | ThumbnailCache with disk cache (path+size+mtime WebP) and memory LRU; tested on redwood: instant disk cache HIT on second launch with no extraction, cache miss/regeneration verified on replacing file |
+| P2-07 | Launch player from browser | DONE | AGY-1B | pending | onPlayVideo starts explicit ACTION_VIEW intent for PlayerActivity with file Uri & video/*; missing activity caught and Toast displayed; verified on redwood |
+| P2-08 | Thumbnail robustness | DONE | AGY-2B | a5b09df | MMR failures investigated (null on 10-bit HEVC & 10-bit/4K AV1; 8-bit AV1 & 8-bit H264/VP8/VP9 succeed); versioned (.failed) negative cache; non-blocking sends in ContentObserver; display-size decode; 0 extractions on 2nd launch |
+| P2-09 | Settings screen scaffold | DONE | AGY-2B | a2f1767 | SettingsScreen scaffold via gear icon in browser top bar; DataStore AppSettings (mode, renderer, gestures, skip seconds, background audio, shaders); values persist across app restart |
 | P3-01 | Gesture layer | TODO | | | |
 | P3-02 | Brightness | TODO | | | |
 | P3-03 | Volume | TODO | | | |
@@ -70,14 +74,14 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P3-06 | Pinch zoom | TODO | | | |
 | P3-07 | Lock | TODO | | | |
 | P3-08 | Haptics | TODO | | | |
-| P4-01 | Room setup | TODO | | | |
+| P4-01 | Room setup | DONE | AGY-1B | pending | AppDatabase, FileSettings entity and DAO configured with Room 2.8.5; insert/read round-trip verified on redwood; schema exported |
 | P4-02 | Resume position | TODO | | | |
 | P4-03 | Audio track picker | TODO | | | |
 | P4-04 | Subtitle picker | TODO | | | |
 | P4-05 | Speed | TODO | | | |
 | P4-06 | Aspect ratio | TODO | | | |
 | P4-07 | Persist per-file choices | TODO | | | |
-| P4-08 | History in browser | TODO | | | |
+| P4-08 | History in browser | IN PROGRESS | AGY-2B | df3500c | Code complete (Continue watching row, progress bars from Room). Next step: after P4-06 writes real history, verify on device and mark DONE. Reviewer removed the fake history seeding from BrowserRoot. |
 | P5-01 | PlaybackService | TODO | | | |
 | P5-02 | MediaSession and notification | TODO | | | |
 | P5-03 | Background audio | TODO | | | |

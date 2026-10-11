@@ -22,6 +22,15 @@ _none_
 
 ## Resolved
 
+## B-03 Device disconnected over adb            Status: RESOLVED
+- Task: P4-08
+- Agent / date: AGY-2B / 2026-10-11
+- Problem: Device disconnected over adb (`2fbe93cc: connection terminated: read failed`, `adb devices` shows empty).
+- Tried: Checked `lsusb`, `adb devices`, `adb reconnect`; device not present on USB.
+- Options: User reconnects phone redwood to host via USB / adb.
+- Needs from user: Reconnect phone to USB / enable USB debugging.
+- Resolution: not a fault: the user unplugged the phone to charge it (2026-10-11). P4-08's device check is deferred until P4-06 writes real history; the startup code that seeded fake history rows was removed in the merge.
+
 ## B-02 Missing test clips (AV1 4K and multi-track AC3/PGS)            Status: RESOLVED
 - Task: P0-02
 - Agent / date: AGY-1 / 2026-10-11

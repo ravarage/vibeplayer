@@ -11,6 +11,13 @@ Format: **ID Title** — description. *Files*: likely touched. *Accept*: checks 
 Clips are in `/sdcard/Movies/vibeplayer-test/` (SPEC.md). Tasks are sequential unless marked
 **[parallel safe]**. "Overlay" means the debug overlay from P1-08.
 
+## Parallel tracks
+- **Main track** (`main`, /home/rava/vibeplayer): all tasks in order, skipping tasks done by a track below.
+- **App track** (`par/app`, /home/rava/vibeplayer-worktrees/app) **[parallel safe]**: P0-07, P2-01..P2-09,
+  P4-01, P4-08. Touches only Gradle files, `app/`, `player/build.gradle.kts` and its PROGRESS.md rows;
+  nothing under `native/` or `player/src/main/cpp`. Uses the SDK at `~/Android/Sdk` via `local.properties`.
+  Where an acceptance item needs playback, skip that item and say so in the note.
+
 ## P0 Native build and first playback
 
 **P0-01 Toolchain and build JDK** — Record host tool versions. Locate Android Studio and point Gradle
@@ -158,6 +165,19 @@ fallback), max 2 parallel, cancelled when scrolled away. *Files*: data/thumbs/Th
 **P2-06 Thumbnail cache** — Disk cache keyed by path+size+mtime, memory LRU, shown in both lists.
 *Files*: data/thumbs/ThumbnailCache.kt, ui/browser/*. *Accept*: second launch shows thumbnails
 instantly with no extraction in logcat; replacing a file regenerates its thumbnail.
+
+**P2-07 Launch player from browser** — onPlayVideo starts an explicit ACTION_VIEW intent (file Uri,
+type video/*) for class name "com.vibeplayer.ui.player.PlayerActivity" via setClassName; catch exception
+and show Toast if missing. *Files*: ui/browser/*. *Accept*: log shows the intent being fired with the right Uri.
+
+**P2-08 Thumbnail robustness** — Negative cache with marker file (version constant); investigate
+MediaMetadataRetriever failures on hevc10_4k.mp4 and AV1 clips; non-blocking sends in ContentObserver;
+decode disk-cache bitmaps at display size. *Files*: data/thumbs/*, data/media/MediaRepository.kt.
+*Accept*: second launch does no extraction attempts at all (logcat); list scroll stays smooth.
+
+**P2-09 Settings screen scaffold** — ui/settings/SettingsScreen reachable from a gear icon in browser
+top bar; DataStore-backed preferences for playback mode, renderer, gestures, skip seconds, background audio,
+shader preset; exposed as AppSettings Flow. *Files*: ui/settings/*, data/prefs/*. *Accept*: values survive app restart.
 
 ## P3 Gestures
 
