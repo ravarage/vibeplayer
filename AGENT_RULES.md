@@ -31,6 +31,13 @@ USER FEEDBACK section of TASKS.md before touching anything.
 - Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`. Only the reviewer edits "Last reviewed commit".
 - Stay inside the task. Ideas and follow-ups go in the PROGRESS.md note, not into code.
 
+## Checking video on the device
+Log lines do not prove a picture is on screen. Any acceptance item that involves video being shown
+(playback, rotation, resume, fallback, subtitles, zoom, PiP) must pass `tools/check_video.py` while the
+clip plays (`--still` when paused): it screencaps the phone and fails on a black or frozen screen.
+State its output line in the PROGRESS.md note. For subtitles, overlays and UI, also save a screenshot
+(`adb exec-out screencap -p > /tmp/x.png`) and look at it. Leave media volume as you found it.
+
 ## Hard limits
 - Never change the fixed tech decisions in SPEC.md. If something seems wrong, write it in BLOCKERS.md,
   set the task to `BLOCKED` and stop.
@@ -71,6 +78,7 @@ Filled in and kept current by the tasks that create them (P0-06, P0-07).
 | Launch | `adb shell am start -n com.vibeplayer/.MainActivity` |
 | Play a test clip | `adb shell am start -a android.intent.action.VIEW -d file:///sdcard/Movies/vibeplayer-test/h264_1080p.mp4 -t video/* com.vibeplayer` |
 | Logs | `adb logcat -s VP VP-Perf mpv` |
+| Is video really visible? | `tools/check_video.py` (exit 0 = visible, 1 = black/frozen) |
 
 ## Code conventions
 - Follow ARCHITECTURE.md for packages, threading and state flow. If the code must deviate, update

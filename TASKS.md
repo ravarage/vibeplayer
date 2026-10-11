@@ -85,6 +85,18 @@ _Reviewer notes on P1-01/P1-02 (commits 1f6cf15, 749ce1a). Fix in the task named
   loaded and for AV1 (software by design). Report fallback only when a file is playing, its video codec
   is in `hwdec-codecs`, and `hwdec-current` is `no`._
 
+_**Reviewer finding 2026-10-12, fix before anything else: the player shows a BLACK SCREEN with audio**
+(the user saw it; `tools/check_video.py` confirms 0% non-black). Log: `[vo/gpu] Failed initializing any
+suitable GPU context!` then `Error opening/initializing the selected video_out (--vo) device.` at file
+load, before `Surface attached`. Cause: the handle starts with `vo=gpu` and the file is loaded before
+the surface exists, so vo init fails and mpv drops the video track; the later attach never brings it
+back. Required behaviour: initialise with `vo=null` and `force-window=no`; the vo for the mode is set
+only in attach (after `wid`), and attach must also restore video if it was dropped (`vid=auto` unless
+the user chose none). Loading before or after the surface exists must both end with a picture. Every
+earlier "verified, no black screen" note was log-based and is void: re-verify P1-03 with
+`tools/check_video.py` (see AGENT_RULES.md, "Checking video on the device") after start, after 5
+rotations and after home/return._
+
 _Reviewer notes on P1-03 (commit 97054a8). Fix first in P1-04, before the player screen work:_
 - _`PlayerEngine.detachSurface()` only posts to the command thread, so `surfaceDestroyed` returns
   while mpv may still be drawing; Android destroys the Surface as soon as that callback returns.
