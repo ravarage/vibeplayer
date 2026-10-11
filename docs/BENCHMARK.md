@@ -24,6 +24,8 @@ Path B is the default per ARCHITECTURE.md.
 
 ## P1-10 ASS Subtitles and Fallback on Efficient Paths
 
+> Reviewer correction (2026-10-12): the Bocchi clip is **AV1 10-bit**, decoded by dav1d (logcat shows `libdav1d`, `yuv420p10`), not Hi10P H.264. So the "software fallback" rows below describe ordinary AV1 software decoding, not a hardware-to-software fallback; karaoke rendering was not checked. Power for P1-06 is still unmeasured (phone was charging) and must be redone on battery.
+
 Tested on `[denisplay] Bocchi the Rock! - S01E01.mkv` (Hi10P 10-bit H.264 1080p with styled ASS subtitles, embedded fonts, dialogue positioning and karaoke):
 
 | Path | VO | Video Output | ASS Subtitle Rendering (Fonts / Positions / Karaoke) | Software Fallback (Hi10P) | Result |

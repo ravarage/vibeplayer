@@ -223,6 +223,14 @@ resets. *Files*: Gestures.kt, PlayerEngine.kt. *Accept*: smooth zoom on 4K; rese
 **P4-01 Room setup** — Database, `FileSettings` entity and DAO per ARCHITECTURE. *Files*: data/db/*.
 *Accept*: insert/read round trip logged on device; schema exported.
 
+_Reviewer notes from the P1 review (2026-10-12):_
+- _P4-02: restore the position with the `start=<seconds>` per-file option of `loadfile`, not with a
+  `seek` sent right after `loadfile` (the file is not loaded yet, so that seek is lost).
+  `PlayerEngine.reconfigure()` has the same bug: fix it there too._
+- _P6-02: remove `Renderer.VULKAN` and its option rows (Vulkan is unusable on this device)._
+- _P7: `libdav1d: Error parsing OBU data` is logged once at the start of every AV1 file; find out
+  whether it is harmless (extradata probe) or costs start time._
+
 **P4-02 Resume position** — Save on pause, every 10 s and on exit; restore on open; restart from 0 if
 within the last 5%. *Files*: PlayerViewModel.kt, data/db/*. *Accept*: force-stop mid-file, reopen,
 resumes within 10 s.
