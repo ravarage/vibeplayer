@@ -437,6 +437,16 @@ static void wait_for_vo_unconfigured(mpv_handle *mpv) {
 }
 
 JNIEXPORT void JNICALL
+Java_com_vibeplayer_player_MpvNative_setVo(JNIEnv *env, jobject thiz,
+                                           jlong handle, jstring vo) {
+    if (!handle || !vo) return;
+    mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    const char *c_vo = (*env)->GetStringUTFChars(env, vo, NULL);
+    strncpy(holder->vo_in_use, c_vo, sizeof(holder->vo_in_use) - 1);
+    (*env)->ReleaseStringUTFChars(env, vo, c_vo);
+}
+
+JNIEXPORT void JNICALL
 Java_com_vibeplayer_player_MpvNative_setSurfaceSize(JNIEnv *env, jobject thiz,
                                                     jlong handle, jint width, jint height) {
     if (!handle) return;

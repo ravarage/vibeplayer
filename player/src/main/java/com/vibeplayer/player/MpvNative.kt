@@ -37,6 +37,7 @@ object MpvNative {
     external fun unobserveProperty(handle: Long, replyUserdata: Long): Int
     external fun attachSurface(handle: Long, surface: Surface)
     external fun detachSurface(handle: Long)
+    external fun setVo(handle: Long, vo: String)
     external fun setSurfaceSize(handle: Long, width: Int, height: Int)
     external fun destroy(handle: Long)
 }

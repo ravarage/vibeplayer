@@ -14,7 +14,9 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-class PlayerEngine {
+class PlayerEngine(
+    initialConfig: PlaybackConfig = PlaybackConfig()
+) {
 
     private val commandExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "VP-Command").apply { isDaemon = true }
@@ -23,6 +25,10 @@ class PlayerEngine {
     private val scope = CoroutineScope(commandDispatcher + SupervisorJob())
 
     private var handle: Long = 0L
+    var playbackConfig: PlaybackConfig = initialConfig
+        private set
+    private var currentFilePath: String = ""
+    private var attachedSurface: Surface? = null
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
@@ -115,6 +121,7 @@ class PlayerEngine {
                     Log.i("VP-Perf", "playback-restart at ${System.currentTimeMillis()}")
                 }
                 MpvEvent.END_FILE -> {
+                    logStats()
                     Log.i("VP", "mpv event end-file")
                 }
                 MpvEvent.FILE_LOADED -> {
@@ -123,6 +130,29 @@ class PlayerEngine {
                 else -> {
                     Log.d("VP", "onEvent: $id")
                 }
+            }
+        }
+    }
+
+    fun logStats() {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (handle != 0L) {
+                val vo = MpvNative.getPropertyString(handle, "current-vo") ?: ""
+                val hwdec = MpvNative.getPropertyString(handle, "hwdec-current") ?: ""
+                val drops = MpvNative.getPropertyLong(handle, "frame-drop-count") ?: 0L
+                val decDrops = MpvNative.getPropertyLong(handle, "decoder-frame-drop-count") ?: 0L
+                val fps = MpvNative.getPropertyDouble(handle, "estimated-vf-fps") ?: 0.0
+                _stats.value = PlayerStats(
+                    vo = vo,
+                    hwdecCurrent = hwdec,
+                    videoW = _state.value.videoWidth,
+                    videoH = _state.value.videoHeight,
+                    fps = fps,
+                    frameDropCount = drops,
+                    decoderFrameDropCount = decDrops
+                )
+                Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec drops=$drops decDrops=$decDrops fps=$fps")
             }
         }
     }
@@ -151,19 +181,15 @@ class PlayerEngine {
         }
 
         MpvNative.setEventCallback(handle, eventCallback)
+        MpvNative.setVo(handle, playbackConfig.vo)
 
-        // Default to Path B (efficient mode default per ARCHITECTURE.md)
-        MpvNative.setOptionString(handle, "vo", "null")
-        MpvNative.setOptionString(handle, "force-window", "no")
-        MpvNative.setOptionString(handle, "gpu-context", "android")
-        MpvNative.setOptionString(handle, "hwdec", "mediacodec")
-        MpvNative.setOptionString(handle, "ao", "audiotrack")
-        MpvNative.setOptionString(handle, "keep-open", "yes")
-        MpvNative.setOptionString(handle, "vd-lavc-threads", "0")
-        MpvNative.setOptionString(handle, "hwdec-codecs", "h264,hevc,vp9")
+        // Options from PlaybackConfig option table
+        for ((key, value) in playbackConfig.getOptionTable()) {
+            MpvNative.setOptionString(handle, key, value)
+        }
 
         val res = MpvNative.initialize(handle)
-        Log.i("VP", "MpvNative.initialize returned $res")
+        Log.i("VP", "MpvNative.initialize returned $res (vo=${playbackConfig.vo}, path=${playbackConfig.efficientPath})")
 
         MpvNative.observeProperty(handle, REPLY_PAUSE, "pause", MpvFormat.FLAG)
         MpvNative.observeProperty(handle, REPLY_DURATION, "duration", MpvFormat.DOUBLE)
@@ -192,6 +218,7 @@ class PlayerEngine {
     fun attachSurface(surface: Surface) {
         commandExecutor.execute {
             assertCommandThread()
+            attachedSurface = surface
             if (handle != 0L) {
                 MpvNative.attachSurface(handle, surface)
                 Log.i("VP", "Surface attached to mpv handle")
@@ -203,6 +230,7 @@ class PlayerEngine {
         if (commandExecutor.isShutdown) return
         val future = commandExecutor.submit {
             assertCommandThread()
+            attachedSurface = null
             if (handle != 0L) {
                 MpvNative.detachSurface(handle)
                 Log.i("VP", "Surface detached from mpv handle")
@@ -230,9 +258,46 @@ class PlayerEngine {
     fun load(path: String) {
         scope.launch {
             assertCommandThread()
+            currentFilePath = path
             if (handle != 0L) {
                 val res = MpvNative.command(handle, arrayOf("loadfile", path))
                 Log.i("VP", "loadfile res=$res for $path")
+            }
+        }
+    }
+
+    fun reconfigure(newConfig: PlaybackConfig) {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (playbackConfig == newConfig) return@execute
+            Log.i("VP", "Reconfiguring engine: ${playbackConfig.efficientPath} -> ${newConfig.efficientPath}")
+            val curPos = _position.value
+            val curPath = currentFilePath
+            val wasPaused = _state.value.paused
+            val surface = attachedSurface
+
+            if (handle != 0L) {
+                MpvNative.detachSurface(handle)
+                MpvNative.destroy(handle)
+                handle = 0L
+            }
+
+            playbackConfig = newConfig
+            initHandle()
+
+            if (surface != null) {
+                MpvNative.attachSurface(handle, surface)
+            }
+
+            if (curPath.isNotEmpty()) {
+                MpvNative.command(handle, arrayOf("loadfile", curPath))
+                if (curPos > 0) {
+                    val sec = (curPos.toDouble() / 1000.0).toString()
+                    MpvNative.command(handle, arrayOf("seek", sec, "absolute+exact"))
+                }
+                if (wasPaused) {
+                    MpvNative.setPropertyBoolean(handle, "pause", true)
+                }
             }
         }
     }

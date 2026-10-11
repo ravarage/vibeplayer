@@ -38,11 +38,27 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
+import com.vibeplayer.player.EfficientPath
+import com.vibeplayer.player.PlaybackConfig
+import com.vibeplayer.player.PlaybackMode
+
 class PlayerActivity : ComponentActivity() {
 
     private val playerEngine = PlayerEngine()
     private var playbackStarted = false
     private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
+
+    private fun resolveConfig(): PlaybackConfig {
+        val pathArg = intent.getStringExtra("efficient_path") ?: intent.getStringExtra("path_mode")
+        val path = when (pathArg?.lowercase()) {
+            "path_a", "a" -> EfficientPath.PATH_A
+            else -> EfficientPath.PATH_B
+        }
+        return PlaybackConfig(
+            mode = PlaybackMode.EFFICIENT,
+            efficientPath = path
+        )
+    }
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -57,6 +73,11 @@ class PlayerActivity : ComponentActivity() {
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
+
+        val config = resolveConfig()
+        if (config != playerEngine.playbackConfig) {
+            playerEngine.reconfigure(config)
+        }
 
         resolveVideoPath()
         checkPermissionAndProceed()
@@ -105,9 +126,12 @@ class PlayerActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        val config = resolveConfig()
         val oldPath = currentVideoPath
         resolveVideoPath()
-        if (currentVideoPath != oldPath) {
+        if (config != playerEngine.playbackConfig) {
+            playerEngine.reconfigure(config)
+        } else if (currentVideoPath != oldPath) {
             playerEngine.load(currentVideoPath)
         }
     }
