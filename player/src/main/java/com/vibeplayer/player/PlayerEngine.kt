@@ -267,7 +267,17 @@ class PlayerEngine {
         }
     }
 
+    @Volatile
+    private var lastKeyframeSeekTime: Long = 0L
+
     fun seekTo(positionMs: Long, exact: Boolean = false) {
+        if (!exact) {
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastKeyframeSeekTime < 50) {
+                return
+            }
+            lastKeyframeSeekTime = now
+        }
         scope.launch {
             assertCommandThread()
             if (handle != 0L) {

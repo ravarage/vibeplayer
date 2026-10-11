@@ -50,8 +50,8 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P1-01 | Event thread and state | DONE | AGY-1 | 1f6cf15 | Event thread calling onPropertyChange/onEvent JNI callbacks; PlayerEngine exposes state (PlayerState) and position StateFlows; verified on redwood with pause/duration/position flow updates |
 | P1-02 | PlayerEngine API | DONE | AGY-1 | 749ce1a | load, play, pause, seekTo, release executed on VP-Command thread; thread asserts and StrictMode verified; 100x load/seek/release loop verified on device without crash or leak |
 | P1-03 | PlayerActivity and surface lifecycle | DONE | AGY-2 | 1acb186 | Black screen fixed (vo=null pre-init, vid=auto on attach); blocking detach & real wait (bounded 500ms); tools/check_video.py verified (start: non_black=24.6% changed=3.9%, after 20 rotations & 20 home/return & power: non_black=25.3% changed=25.2%); 0 EGL/BufferQueue errors |
-| P1-04 | Player screen | DONE | AGY-2 | pending | PlayerControls with play/pause, seek bar, time labels, title, back, 3s auto-hide, tap toggle, immersive fullscreen; time-pos throttled 100ms in C & unobserved when hidden; tools/check_video.py verified (non_black=23.3% changed=20.3%) |
-| P1-05 | Scrubbing | TODO | | | |
+| P1-04 | Player screen | DONE | AGY-2 | 3ef1f1b | PlayerControls with play/pause, seek bar, time labels, title, back, 3s auto-hide, tap toggle, immersive fullscreen; time-pos throttled 100ms in C & unobserved when hidden; tools/check_video.py verified (non_black=23.3% changed=20.3%) |
+| P1-05 | Scrubbing | DONE | AGY-2 | pending | VideoSeekBar with thumb-following position label, 50ms throttled keyframe scrubbing, exact seek on release; verified on hevc10_4k.mp4 on redwood with tools/check_video.py (non_black=21.8% changed=26.5%), exact release within 3ms |
 | P1-06 | Efficient mode candidates | TODO | | | |
 | P1-07 | Software fallback and dav1d threads | TODO | | | |
 | P1-08 | Debug overlay | TODO | | | |

@@ -202,30 +202,22 @@ fun PlayerControls(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    val sliderValue = if (durationMs > 0) {
-                        if (userSeeking) seekProgress else (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-                    } else {
-                        0f
-                    }
-
-                    Slider(
-                        value = sliderValue,
-                        onValueChange = { progress ->
+                    VideoSeekBar(
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        onSeekProgress = { targetMs ->
                             userSeeking = true
-                            seekProgress = progress
+                            if (durationMs > 0) {
+                                seekProgress = (targetMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                            }
                             lastInteraction = System.currentTimeMillis()
-                        },
-                        onValueChangeFinished = {
-                            val targetMs = (seekProgress * durationMs).toLong()
                             playerEngine.seekTo(targetMs, exact = false)
+                        },
+                        onSeekFinished = { targetMs ->
+                            playerEngine.seekTo(targetMs, exact = true)
                             userSeeking = false
                             lastInteraction = System.currentTimeMillis()
                         },
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color.White,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = Color(0x66FFFFFF)
-                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
