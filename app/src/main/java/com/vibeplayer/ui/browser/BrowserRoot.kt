@@ -31,7 +31,11 @@ fun BrowserRoot(
     val db = remember { AppDatabase.getInstance(context.applicationContext) }
 
     var folders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoadingFolders by remember { mutableStateOf(true) }
+
+    var selectedFolder by remember { mutableStateOf<VideoFolder?>(null) }
+    var folderVideos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
+    var isLoadingVideos by remember { mutableStateOf(false) }
 
     // Verify Room round-trip on startup
     LaunchedEffect(Unit) {
@@ -64,17 +68,44 @@ fun BrowserRoot(
     }
 
     LaunchedEffect(Unit) {
-        isLoading = true
+        isLoadingFolders = true
         folders = repository.getFolders()
-        isLoading = false
+        isLoadingFolders = false
     }
 
-    FolderListScreen(
-        folders = folders,
-        isLoading = isLoading,
-        onFolderClick = { folder ->
-            Log.d("VP", "Clicked folder: ${folder.name} (${folder.videoCount} videos)")
-        },
-        modifier = modifier
-    )
+    LaunchedEffect(selectedFolder) {
+        val folder = selectedFolder
+        if (folder != null) {
+            isLoadingVideos = true
+            folderVideos = repository.getVideosInBucket(folder.bucketId)
+            isLoadingVideos = false
+        } else {
+            folderVideos = emptyList()
+        }
+    }
+
+    val currentFolder = selectedFolder
+    if (currentFolder == null) {
+        FolderListScreen(
+            folders = folders,
+            isLoading = isLoadingFolders,
+            onFolderClick = { folder ->
+                Log.d("VP", "Selected folder: ${folder.name} (${folder.videoCount} videos)")
+                selectedFolder = folder
+            },
+            modifier = modifier
+        )
+    } else {
+        VideoListScreen(
+            folder = currentFolder,
+            videos = folderVideos,
+            isLoading = isLoadingVideos,
+            onBack = {
+                Log.d("VP", "Back to folder list from ${currentFolder.name}")
+                selectedFolder = null
+            },
+            onPlayVideo = onPlayVideo,
+            modifier = modifier
+        )
+    }
 }
