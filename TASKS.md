@@ -79,10 +79,10 @@ back; auto-hide after 3 s; immersive fullscreen; keep screen on. *Files*: ui/pla
 follows the thumb. *Files*: ui/player/SeekBar.kt, PlayerEngine.kt. *Accept*: dragging across a 4K
 file stays responsive; released position is exact within 1 s.
 
-**P1-06 Efficient mode** — Apply the confirmed efficient option table; compare `vo=gpu`+`mediacodec`
-against `mediacodec_embed` for 5 minutes each and record power and drops. *Files*: PlaybackMode.kt,
-docs/BENCHMARK.md, ARCHITECTURE.md. *Accept*: `hwdec-current` is a mediacodec variant for the H.264,
-HEVC and VP9 clips; chosen path documented; adopting `mediacodec_embed` requires a BLOCKERS entry.
+**P1-06 Efficient mode candidates** — Implement both efficient paths from ARCHITECTURE.md behind a
+debug switch; play `h264_1080p.mp4` 5 minutes on each and record power and drops. *Files*:
+PlaybackMode.kt, docs/BENCHMARK.md. *Accept*: `hwdec-current` is a mediacodec variant for the H.264,
+HEVC and VP9 clips on each working path; numbers recorded. The choice is made after P1-10.
 
 **P1-07 Software fallback and dav1d threads** — Detect and expose fallback; confirm AV1 uses dav1d on
 all cores. *Files*: PlayerEngine.kt, PlayerState.kt. *Accept*: `av1_1080p.mkv` plays with
@@ -97,9 +97,11 @@ both drop counters. Stats flow observed only while open. *Files*: ui/player/Debu
 follows video aspect. *Files*: manifest, MainActivity.kt, ui/player/*. *Accept*: the "Play a test
 clip" command in AGENT_RULES.md works; opening from a file manager works.
 
-**P1-10 ASS subtitles in efficient mode** — Check styled ASS rendering with embedded fonts.
-*Files*: PlaybackMode.kt. *Accept*: `anime_ass.mkv` shows correct fonts, positions and karaoke in
-efficient mode; if impossible on the chosen path, BLOCKERS entry with options.
+**P1-10 ASS subtitles and efficient path decision** — Check styled ASS (embedded fonts) and software
+fallback on both efficient paths; write the P1-06 numbers and trade-offs into a BLOCKERS entry for the
+user to pick the path. *Files*: BLOCKERS.md, ARCHITECTURE.md. *Accept*: per-path result for
+`anime_ass.mkv` (fonts, positions, karaoke) recorded; task is BLOCKED until the user answers, then
+the chosen path becomes the efficient default and the mode table is updated.
 
 ## P2 Browser and thumbnails
 
@@ -212,11 +214,15 @@ while playing. *Files*: playback/*. *Accept*: none of these crash or leave a sta
 (drops, decoder drops, app CPU %, GPU busy if readable, average battery current, temperature).
 *Files*: app/src/debug/.../Benchmark.kt. *Accept*: one adb command produces a CSV on the device.
 
-**P6-04 Run the matrix** — {Vulkan, GLES} × {H.264 1080p, HEVC 4K, AV1 1080p} × 5 min, unplugged,
-fixed brightness, plus a 30 min stability run each. *Files*: docs/BENCHMARK.md. *Accept*: table of
-results with a recommendation. Needs the user to set up wireless adb, otherwise BLOCKERS.
+**P6-04 Benchmark: short matrix** — {Vulkan, GLES} × {H.264 1080p, HEVC 4K, AV1 1080p} × 5 min,
+unplugged, fixed brightness. Commit after each row so a resumed agent continues mid-matrix.
+*Files*: docs/BENCHMARK.md. *Accept*: 6 result rows. Needs the user to set up wireless adb, otherwise
+BLOCKERS.
 
-**P6-05 Default renderer** — Set the default per the benchmark; record the decision.
+**P6-05 Benchmark: stability** — 30 min run of `hevc10_4k.mkv` on each renderer; note crashes, drops,
+temperature. *Files*: docs/BENCHMARK.md. *Accept*: 2 rows plus a written recommendation.
+
+**P6-06 Default renderer** — Set the default per the benchmark; record the decision.
 *Files*: PlaybackMode.kt, ARCHITECTURE.md. *Accept*: fresh install uses the chosen renderer.
 
 ## P7 Performance pass (release builds only)
@@ -257,8 +263,9 @@ ui/settings/*. *Accept*: each preset loads without shader errors in the mpv log 
 **P8-03 Snapdragon GSR** — Add GSR upscaling shader with a toggle. *Files*: same.
 *Accept*: visible sharpening on 720p content; no errors.
 
-**P8-04 Shader benchmark** — Re-run the P6 harness with each preset. *Files*: docs/BENCHMARK.md.
-*Accept*: results recorded; presets that drop frames on 1080p are labelled "heavy" in settings.
+**P8-04 Shader benchmark** — Run the P6 harness 5 min per preset (3 Anime4K + GSR) on the default
+renderer with a 1080p clip; commit after each row. *Files*: docs/BENCHMARK.md, ui/settings/*.
+*Accept*: 4 rows recorded; presets that drop frames are labelled "heavy" in settings.
 
 ## P9 Optional native tuning
 

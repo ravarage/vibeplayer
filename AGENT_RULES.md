@@ -20,8 +20,10 @@ USER FEEDBACK section of TASKS.md before touching anything.
 - Commit often enough that an interruption loses little work. Intermediate commits use
   `P1-03 wip: <what works>` and update the task's PROGRESS.md note with **the next step**.
   WIP commits must compile unless the note says otherwise.
-- Update PROGRESS.md after each task (status `DONE`, agent, short hash of the previous commit or
-  `this`, notes) and commit it together with the task.
+- Update PROGRESS.md after each task (status `DONE`, agent, notes) and commit it together with the
+  task. Write `pending` in the Commit column; never amend to insert a hash. The next session's first
+  commit (or the reviewer) replaces `pending` with the real short hash.
+- Agent column: tool plus account, e.g. `agy-first`, `agy-second`, `codex`.
 - Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`. Only the reviewer edits "Last reviewed commit".
 - Stay inside the task. Ideas and follow-ups go in the PROGRESS.md note, not into code.
 

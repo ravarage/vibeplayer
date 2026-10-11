@@ -73,22 +73,25 @@ Application id and base package: `com.vibeplayer`.
 Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d uses all 8 cores),
 `hwdec-codecs=h264,hevc,vp9`. AV1 always decodes in software with dav1d.
 
-| | Efficient | Quality |
-|---|---|---|
-| vo | `gpu` | `gpu-next` |
-| context | `gpu-context=android` (GLES) | Vulkan: `gpu-api=vulkan`, `gpu-context=androidvk`; GLES: `gpu-api=opengl`, `gpu-context=android` |
-| hwdec | `mediacodec` (zero-copy, AImageReader interop) | `mediacodec-copy` |
-| scaling | cheapest: `profile=fast`, no deband, no dither | default or shader presets (P8) |
-| shaders | never | optional (P8) |
+| | Efficient, path A | Efficient, path B | Quality |
+|---|---|---|---|
+| vo | `mediacodec_embed` | `gpu` | `gpu-next` |
+| context | none (decoder renders to the surface) | `gpu-context=android` (GLES) | Vulkan: `gpu-api=vulkan`, `gpu-context=androidvk`; GLES: `gpu-api=opengl`, `gpu-context=android` |
+| hwdec | `mediacodec` | `mediacodec` (zero-copy interop) | `mediacodec-copy` |
+| scaling | by the system compositor | cheapest: `profile=fast`, no deband, no dither | default or shader presets (P8) |
+| shaders | never | never | optional (P8) |
 
-- **Why `vo=gpu` + `hwdec=mediacodec` for efficient mode**: frames stay on the GPU with no copy, and
-  libass subtitles and software fallback still work on the same output. The alternative
-  `vo=mediacodec_embed` renders straight to the surface and is believed to have no subtitle/OSD
-  drawing and no software fallback. P1-06 measures both; `mediacodec_embed` may only be adopted if it
-  gives a clear power gain, and then only with a subtitle policy approved by the user via BLOCKERS.md.
+- **Efficient mode has two candidate paths; neither is chosen yet.** Path A is the most direct and
+  probably the lowest power, but is believed unable to draw libass subtitles or OSD, and software
+  fallback would need a re-init onto another vo. Path B keeps frames on the GPU without a copy and is
+  believed to support subtitles and in-place software fallback, at some GPU cost. All of this is
+  unverified, including whether path B's zero-copy interop works on this device.
+- P1-06 measures power and drops for both and P1-10 checks ASS rendering on both. The agent then
+  writes the numbers and the trade-off into BLOCKERS.md and **the user picks**; agents do not choose.
 - **Software fallback**: mpv falls back to software when hwdec init or decoding fails
-  (`hwdec-current` becomes `no`). The engine exposes this in `PlayerState`; no re-init is needed when
-  the vo is `gpu`/`gpu-next`. Verified in P1-07.
+  (`hwdec-current` becomes `no`) when the vo is `gpu`/`gpu-next` (**candidate**, P1-07). On path A the
+  engine must detect the failure and `reconfigure()` onto path B options at the same position.
+  The engine exposes the fallback in `PlayerState`.
 - **Mode or renderer switch**: `vo`, `gpu-api` and `gpu-context` cannot change on a live output.
   `PlayerEngine.reconfigure()` saves position and tracks, destroys and recreates the handle with the
   new option table, reloads the file and seeks.

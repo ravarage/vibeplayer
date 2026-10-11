@@ -21,11 +21,11 @@ Statuses: TODO, IN PROGRESS, DONE, BLOCKED. Notes: one or two lines; for IN PROG
 | P1-03 | Surface lifecycle | TODO | | | |
 | P1-04 | Player screen | TODO | | | |
 | P1-05 | Scrubbing | TODO | | | |
-| P1-06 | Efficient mode | TODO | | | |
+| P1-06 | Efficient mode candidates | TODO | | | |
 | P1-07 | Software fallback and dav1d threads | TODO | | | |
 | P1-08 | Debug overlay | TODO | | | |
 | P1-09 | Open-with intent | TODO | | | |
-| P1-10 | ASS subtitles in efficient mode | TODO | | | |
+| P1-10 | ASS subtitles and efficient path decision | TODO | | | |
 | P2-01 | MediaStore repository | TODO | | | |
 | P2-02 | Folder list screen | TODO | | | |
 | P2-03 | Video list screen | TODO | | | |
@@ -56,8 +56,9 @@ Statuses: TODO, IN PROGRESS, DONE, BLOCKED. Notes: one or two lines; for IN PROG
 | P6-01 | Quality mode | TODO | | | |
 | P6-02 | Renderer switch | TODO | | | |
 | P6-03 | Benchmark harness | TODO | | | |
-| P6-04 | Run the matrix | TODO | | | |
-| P6-05 | Default renderer | TODO | | | |
+| P6-04 | Benchmark: short matrix | TODO | | | |
+| P6-05 | Benchmark: stability | TODO | | | |
+| P6-06 | Default renderer | TODO | | | |
 | P7-01 | Release build | TODO | | | |
 | P7-02 | Start time | TODO | | | |
 | P7-03 | Recomposition | TODO | | | |
