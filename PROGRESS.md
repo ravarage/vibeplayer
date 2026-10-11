@@ -9,7 +9,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 
 | Component | Version used | Source checked | Notes (e.g. fell back from X) |
 |---|---|---|---|
-| Android Studio / JetBrains Runtime (build JDK) | | | not installed, see B-01 |
+| Android Studio / JetBrains Runtime (build JDK) | 25.0.3 (build 25.0.3+-15898627-b508.16) | /home/rava/.local/share/JetBrains/Toolbox/apps/android-studio/jbr | Android Studio 2026.2.1 |
 | compileSdk / targetSdk | | | |
 | Android Gradle Plugin | | | |
 | Gradle | | | |
@@ -36,7 +36,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 ## Tasks
 | Task | Title | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
-| P0-01 | Toolchain check | BLOCKED | AGY-1 | pending | Host tool versions recorded in short form (Linux 7.2.9, OpenJDK 27, Gradle 9.8.1, git 2.56.0, CMake 4.4.4, Meson 1.12.1, Ninja 1.13.2, NASM 3.02, Python 3.14.7, adb 1.0.41, 16 cores); blocked by B-01 |
+| P0-01 | Toolchain check | DONE | AGY-1 | pending | Host tools recorded (Linux 7.2.9, OpenJDK 27, Gradle 9.8.1, git 2.56.0, CMake 4.4.4, Meson 1.12.1, Ninja 1.13.2, NASM 3.02, Python 3.14.7, adb 1.0.41, 16 cores); JBR 25.0.3 configured in ~/.gradle/gradle.properties |
 | P0-02 | Device check | TODO | | | |
 | P0-03 | Fetch mpv-android | TODO | | | |
 | P0-04 | Download SDK, NDK, deps | TODO | | | |
