@@ -44,7 +44,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P0-06 | Build native for arm64 | DONE | AGY-1 | pending | arm64-only native build at -O2 verified (readelf AArch64); 7 .so files copied to player/src/main/jniLibs/arm64-v8a; no libavdevice; build ~43s, incremental no-op ~16s |
 | P0-07 | Gradle skeleton | DONE | AGY-1 | pending | Gradle 9.8.1, AGP 9.4.1, compile/targetSdk 37, minSdk 37; :app and :player with version catalog; installed and ran blank Compose screen on redwood |
 | P0-08 | JNI bridge minimal | DONE | AGY-1 | pending | JNI bridge (mpv_jni.c, CMakeLists.txt, MpvNative.kt); JavaVM passed to FFmpeg in JNI_OnLoad; logcat shows mpv v0.41.0; no crash on exit |
-| P0-09 | Verify mpv options and codecs | TODO | | | |
+| P0-09 | Verify mpv options and codecs | DONE | AGY-1 | pending | Confirmed options: vo (gpu, gpu-next), hwdec (mediacodec, mediacodec-copy), ao (aaudio, audiotrack, opensles); 507 decoders (libdav1d, mediacodec, broad FFmpeg); 367 demuxers; 0 encoders/muxers |
 | P0-10 | Play one file | TODO | | | |
 | P1-01 | Event thread and state | TODO | | | |
 | P1-02 | PlayerEngine API | TODO | | | |

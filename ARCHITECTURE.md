@@ -97,7 +97,30 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
   new option table, reloads the file and seeks.
 
 ## Confirmed mpv options
-_Filled by P0-09 from the built libmpv (`vo`, `hwdec`, `gpu-context`, `gpu-api`, `ao` help lists)._
+_Filled by P0-09 from the built libmpv._
+
+| Option | Confirmed values / choices | Notes |
+|---|---|---|
+| `vo` | `gpu-next`, `gpu`, `mediacodec_embed`, `libmpv`, `null`, `image`, `tct`, `kitty`, `lavc` | Primary output is `gpu` or `gpu-next` |
+| `hwdec` | `mediacodec`, `mediacodec-copy`, `auto`, `auto-safe`, `auto-copy`, `no` | Confirmed `mediacodec` and `mediacodec-copy` accepted |
+| `gpu-context` | `auto`, `android` | `android` for GLES EGL window context |
+| `gpu-api` | `auto`, `opengl` | GLES 3.2 on Adreno 642L |
+| `ao` | `audiotrack`, `aaudio`, `opensles`, `null`, `pcm`, `lavc` | Native Android audio outputs |
+
+## Decoders and demuxers
+_Filled by P0-09 from the built libmpv (`decoder-list`, `demuxer-lavf-list`, `encoder-list`)._
+
+- **Decoders (507 total)**:
+  - AV1: `libdav1d` (software via dav1d 1.5.4), `av1_mediacodec` (hardware)
+  - Hardware: MediaCodec video decoders (`h264_mediacodec`, `hevc_mediacodec`, `av1_mediacodec`, `vp9_mediacodec`, `vp8_mediacodec`, `mpeg2_mediacodec`, `mpeg4_mediacodec`), audio decoders (`aac_mediacodec`, `mp3_mediacodec`, `amrnb_mediacodec`, `amrwb_mediacodec`)
+  - Software video: `h264`, `hevc`, `vp9`, `av1`, `mpeg4`, `mpeg2video`, `vc1`, etc.
+  - Software audio: `ac3`, `eac3`, `dca` (DTS), `truehd`, `aac`, `flac`, `opus`, `vorbis`, `mp3`, etc.
+  - Subtitles: handled via libass / internal mpv subtitle demuxers.
+- **Demuxers (367 total)**:
+  - Broad demuxer coverage: `matroska`/`webm`, `mov`/`mp4`/`m4a`/`3gp`, `mpegts`, `avi`, `flv`, `hls`, `dash`, `aac`, `ac3`, `flac`, `mp3`, `ogg`, `srt`, `ass`, `vobsub`, etc.
+- **Encoders & Muxers**:
+  - `encoder-list`: `[]` (0 encoders)
+  - FFmpeg muxers: disabled (0 muxers)
 
 ## Data layer
 - **MediaStore** (`data.media`): query `MediaStore.Video.Media` (id, data path, bucket id/name,

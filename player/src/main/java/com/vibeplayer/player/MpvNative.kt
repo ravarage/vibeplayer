@@ -17,5 +17,6 @@ object MpvNative {
     external fun setOptionString(handle: Long, name: String, value: String): Int
     external fun initialize(handle: Long): Int
     external fun command(handle: Long, args: Array<String>): Int
+    external fun getPropertyString(handle: Long, name: String): String?
     external fun destroy(handle: Long)
 }

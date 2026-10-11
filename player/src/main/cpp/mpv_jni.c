@@ -143,6 +143,20 @@ Java_com_vibeplayer_player_MpvNative_command(JNIEnv *env, jobject thiz,
     return res;
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_vibeplayer_player_MpvNative_getPropertyString(JNIEnv *env, jobject thiz,
+                                                       jlong handle, jstring name) {
+    if (!handle || !name) return NULL;
+    mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    char *val = mpv_get_property_string(holder->mpv, c_name);
+    (*env)->ReleaseStringUTFChars(env, name, c_name);
+    if (!val) return NULL;
+    jstring res = (*env)->NewStringUTF(env, val);
+    mpv_free(val);
+    return res;
+}
+
 JNIEXPORT void JNICALL
 Java_com_vibeplayer_player_MpvNative_destroy(JNIEnv *env, jobject thiz, jlong handle) {
     if (!handle) return;
