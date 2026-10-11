@@ -1,0 +1,16 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+.idea/
+*.iml
+.kotlin/
+.cxx/
+
+# Native sources and outputs (rebuilt by native/build.sh)
+native/mpv-android/
+player/src/main/jniLibs/
