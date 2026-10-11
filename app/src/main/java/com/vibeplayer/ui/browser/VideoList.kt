@@ -57,6 +57,7 @@ fun VideoListScreen(
     onBack: () -> Unit,
     onPlayVideo: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
+    thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache? = null,
     thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
 ) {
     BackHandler(onBack = onBack)
@@ -187,6 +188,7 @@ fun VideoListScreen(
                             VideoItemRow(
                                 video = video,
                                 onClick = { onPlayVideo(video) },
+                                thumbnailCache = thumbnailCache,
                                 thumbnailContent = thumbnailContent
                             )
                             HorizontalDivider(
@@ -207,6 +209,7 @@ fun VideoItemRow(
     video: VideoItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache? = null,
     thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
 ) {
     Row(
@@ -224,7 +227,19 @@ fun VideoItemRow(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
-            if (thumbnailContent != null) {
+            if (thumbnailCache != null) {
+                com.vibeplayer.data.thumbs.AsyncThumbnail(
+                    path = video.path,
+                    sizeBytes = video.sizeBytes,
+                    mtime = video.dateModified,
+                    cache = thumbnailCache
+                ) {
+                    Text(
+                        text = "🎬",
+                        fontSize = 20.sp
+                    )
+                }
+            } else if (thumbnailContent != null) {
                 thumbnailContent(video)
             } else {
                 Text(

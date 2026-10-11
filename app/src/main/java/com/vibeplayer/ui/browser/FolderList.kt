@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -26,12 +27,14 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vibeplayer.data.media.VideoFolder
+import com.vibeplayer.data.thumbs.AsyncThumbnail
+import com.vibeplayer.data.thumbs.ThumbnailCache
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +42,8 @@ fun FolderListScreen(
     folders: List<VideoFolder>,
     isLoading: Boolean,
     onFolderClick: (VideoFolder) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    thumbnailCache: ThumbnailCache? = null
 ) {
     Scaffold(
         topBar = {
@@ -92,7 +96,8 @@ fun FolderListScreen(
                         ) { folder ->
                             FolderItemRow(
                                 folder = folder,
-                                onClick = { onFolderClick(folder) }
+                                onClick = { onFolderClick(folder) },
+                                thumbnailCache = thumbnailCache
                             )
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
@@ -111,7 +116,8 @@ fun FolderListScreen(
 fun FolderItemRow(
     folder: VideoFolder,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    thumbnailCache: ThumbnailCache? = null
 ) {
     Row(
         modifier = modifier
@@ -120,17 +126,33 @@ fun FolderItemRow(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Folder icon container
+        // Folder thumbnail or icon container
         Surface(
-            shape = MaterialTheme.shapes.small,
+            shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
-            modifier = Modifier.size(44.dp)
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(8.dp))
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = "📁",
-                    fontSize = 22.sp
-                )
+                if (thumbnailCache != null && !folder.firstVideoPath.isNullOrEmpty()) {
+                    AsyncThumbnail(
+                        path = folder.firstVideoPath,
+                        sizeBytes = folder.firstVideoSize,
+                        mtime = folder.firstVideoMtime,
+                        cache = thumbnailCache
+                    ) {
+                        Text(
+                            text = "📁",
+                            fontSize = 24.sp
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "📁",
+                        fontSize = 24.sp
+                    )
+                }
             }
         }
 

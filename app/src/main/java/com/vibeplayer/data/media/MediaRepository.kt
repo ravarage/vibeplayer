@@ -118,11 +118,14 @@ class MediaRepository(private val context: Context) {
         val videos = queryVideos()
         val grouped = videos.groupBy { it.bucketId }
         val folders = grouped.map { (bucketId, list) ->
+            val first = list.firstOrNull()
             VideoFolder(
                 bucketId = bucketId,
-                name = list.firstOrNull()?.bucketName ?: "Unknown",
+                name = first?.bucketName ?: "Unknown",
                 videoCount = list.size,
-                firstVideoPath = list.firstOrNull()?.path
+                firstVideoPath = first?.path,
+                firstVideoSize = first?.sizeBytes ?: 0L,
+                firstVideoMtime = first?.dateModified ?: 0L
             )
         }.sortedBy { it.name.lowercase() }
 

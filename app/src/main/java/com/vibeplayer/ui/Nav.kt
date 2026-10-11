@@ -44,6 +44,7 @@ object NavRoutes {
 fun BrowserNavGraph(
     repository: MediaRepository,
     preferences: BrowserPreferences,
+    thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache,
     onPlayVideo: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
@@ -62,6 +63,7 @@ fun BrowserNavGraph(
             FolderListScreen(
                 folders = folders,
                 isLoading = false,
+                thumbnailCache = thumbnailCache,
                 onFolderClick = { folder ->
                     Log.d("VP", "Navigating to folder ${folder.name} (${folder.bucketId})")
                     navController.navigate(NavRoutes.videos(folder.bucketId, folder.name))
@@ -108,6 +110,7 @@ fun BrowserNavGraph(
                 onPlayVideo = { video ->
                     onPlayVideo(video)
                 },
+                thumbnailCache = thumbnailCache,
                 thumbnailContent = thumbnailContent
             )
         }
