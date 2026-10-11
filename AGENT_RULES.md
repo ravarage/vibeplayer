@@ -38,6 +38,10 @@ clip plays (`--still` when paused): it screencaps the phone and fails on a black
 State its output line in the PROGRESS.md note. For subtitles, overlays and UI, also save a screenshot
 (`adb exec-out screencap -p > /tmp/x.png`) and look at it. Leave media volume as you found it.
 
+The phone is the user's daily phone and its alarm must ring. Only the media stream (STREAM_MUSIC) may
+be changed. Never change alarm, ring or notification volume, ringer mode, Do Not Disturb, the clock
+app or its alarms, system settings, or reboot the phone.
+
 ## Hard limits
 - Never change the fixed tech decisions in SPEC.md. If something seems wrong, write it in BLOCKERS.md,
   set the task to `BLOCKED` and stop.
