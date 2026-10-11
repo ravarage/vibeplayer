@@ -10,17 +10,17 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | Component | Version used | Source checked | Notes (e.g. fell back from X) |
 |---|---|---|---|
 | Android Studio / JetBrains Runtime (build JDK) | 25.0.3 (build 25.0.3+-15898627-b508.16) | /home/rava/.local/share/JetBrains/Toolbox/apps/android-studio/jbr | Android Studio 2026.2.1 |
-| compileSdk / targetSdk | | | |
-| Android Gradle Plugin | | | |
-| Gradle | | | |
-| Kotlin | | | |
-| Compose BOM | | | |
-| Room | | | |
-| Media / MediaSession | | | |
-| Activity | | | |
-| Lifecycle | | | |
-| Navigation | | | |
-| Baseline Profile / Macrobenchmark | | | |
+| compileSdk / targetSdk | 37 / 37 | platforms;android-37.1 / build-tools 37.0.0 | Matches redwood device Android 17 (SDK 37) |
+| Android Gradle Plugin | 9.4.1 | https://dl.google.com/dl/android/maven2 | latest stable AGP release |
+| Gradle | 9.8.1 | https://services.gradle.org/distributions/ | latest stable Gradle release |
+| Kotlin | 2.4.21 | https://repo1.maven.org/maven2 | latest stable release (built-in AGP 9.4.1) |
+| Compose BOM | 2026.09.00 | https://dl.google.com/dl/android/maven2 | latest stable BOM |
+| Room | 2.8.5 | https://dl.google.com/dl/android/maven2 | latest stable release |
+| Media / MediaSession | 1.11.1 | https://dl.google.com/dl/android/maven2 | latest stable Media3 session |
+| Activity | 1.13.0 | https://dl.google.com/dl/android/maven2 | latest stable activity-compose |
+| Lifecycle | 2.11.0 | https://dl.google.com/dl/android/maven2 | latest stable lifecycle-runtime-compose |
+| Navigation | 2.10.2 | https://dl.google.com/dl/android/maven2 | latest stable navigation-compose |
+| Baseline Profile / Macrobenchmark | 1.5.0 | https://dl.google.com/dl/android/maven2 | latest stable benchmark-macro |
 | NDK | r30 (30.0.16248370) | https://github.com/android/ndk/releases | latest stable release |
 | CMake | 4.4.4 | https://github.com/Kitware/CMake/tags | latest stable release (matches host) |
 | mpv-android (commit) | c2e02fe111541e4063ab8f868bf629649ed937a3 | https://github.com/mpv-android/mpv-android.git | pinned HEAD from 2026-10-06 |
@@ -42,7 +42,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P0-04 | Download SDK, NDK, deps | DONE | AGY-1 | pending | SDK platform 36/build-tools 36.0.0, NDK r30 (30.0.16248370), CMake 4.4.4 recorded; all deps downloaded at pinned versions |
 | P0-05 | FFmpeg trim | DONE | AGY-1 | pending | Patch 0002 trims FFmpeg (0 encoders/muxers, no avdevice, libdav1d enabled); mpv built without avdevice; patches apply cleanly on fresh fetch |
 | P0-06 | Build native for arm64 | DONE | AGY-1 | pending | arm64-only native build at -O2 verified (readelf AArch64); 7 .so files copied to player/src/main/jniLibs/arm64-v8a; no libavdevice; build ~43s, incremental no-op ~16s |
-| P0-07 | Gradle skeleton | TODO | | | |
+| P0-07 | Gradle skeleton | DONE | AGY-1 | pending | Gradle 9.8.1, AGP 9.4.1, compile/targetSdk 37, minSdk 37; :app and :player with version catalog; installed and ran blank Compose screen on redwood |
 | P0-08 | JNI bridge minimal | TODO | | | |
 | P0-09 | Verify mpv options and codecs | TODO | | | |
 | P0-10 | Play one file | TODO | | | |
