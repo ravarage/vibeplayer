@@ -28,6 +28,10 @@ The user has 3 Antigravity accounts and switches between them manually. Accounts
 
 - agy: the limit error format has not been observed yet. Treat a JSON `status` other than `SUCCESS`,
   a non-zero exit, or usage/quota/rate-limit wording in `response` or stderr as a limit hit.
+- **Exception granted 2026-10-12 (user going to sleep, overnight run):** if the current agy account hits
+  its limit, Claude may log agy out and log in with the user's "arvid" account, whose OAuth session is
+  already set up in the Brave browser (origin profile). This covers that one switch only; for any
+  later limit hit, the rule below applies again unless the user says otherwise.
 - When that happens: stop delegating to agy, tell the user it hit the limit and the
   reset time if one was printed, and wait for them to switch accounts. Do not switch accounts, add
   profiles, change models, or retry in a loop to get around it.
