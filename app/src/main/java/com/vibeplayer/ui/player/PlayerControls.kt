@@ -65,6 +65,9 @@ fun PlayerControls(
     isLocked: Boolean = false,
     onToggleLock: () -> Unit = {},
     onEnterPip: () -> Unit = {},
+    onSelectAudioTrack: ((Int?) -> Unit)? = null,
+    onSelectSubTrack: ((Int?) -> Unit)? = null,
+    onSelectSpeed: ((Double) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var userSeeking by remember { mutableStateOf(false) }
@@ -391,7 +394,11 @@ fun PlayerControls(
                 tracks = playerState.tracks,
                 selectedTrackId = playerState.selectedAudioTrackId,
                 onSelectTrack = { id ->
-                    playerEngine.setAudioTrack(id)
+                    if (onSelectAudioTrack != null) {
+                        onSelectAudioTrack(id)
+                    } else {
+                        playerEngine.setAudioTrack(id)
+                    }
                 },
                 onDismiss = {
                     showAudioTrackSheet = false
@@ -405,7 +412,11 @@ fun PlayerControls(
                 tracks = playerState.tracks,
                 selectedTrackId = playerState.selectedSubTrackId,
                 onSelectTrack = { id ->
-                    playerEngine.setSubtitleTrack(id)
+                    if (onSelectSubTrack != null) {
+                        onSelectSubTrack(id)
+                    } else {
+                        playerEngine.setSubtitleTrack(id)
+                    }
                 },
                 onDismiss = {
                     showSubTrackSheet = false
@@ -418,7 +429,11 @@ fun PlayerControls(
             SpeedSheet(
                 currentSpeed = playerState.speed,
                 onSpeedChanged = { speed ->
-                    playerEngine.setSpeed(speed)
+                    if (onSelectSpeed != null) {
+                        onSelectSpeed(speed)
+                    } else {
+                        playerEngine.setSpeed(speed)
+                    }
                 },
                 onDismiss = {
                     showSpeedSheet = false

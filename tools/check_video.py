@@ -8,7 +8,10 @@ Usage: tools/check_video.py [--still]   (--still: paused video, skip the motion 
 import subprocess, sys, time
 
 def grab():
-    raw = subprocess.run(["adb", "exec-out", "screencap"], capture_output=True, timeout=30).stdout
+    subprocess.run(["adb", "shell", "screencap", "/data/local/tmp/sc.raw"], timeout=30, check=True)
+    subprocess.run(["adb", "pull", "/data/local/tmp/sc.raw", "/tmp/sc.raw"], timeout=30, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with open("/tmp/sc.raw", "rb") as f:
+        raw = f.read()
     if len(raw) < 16:
         sys.exit(2)
     w, h = int.from_bytes(raw[0:4], "little"), int.from_bytes(raw[4:8], "little")

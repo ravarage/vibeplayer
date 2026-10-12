@@ -354,21 +354,60 @@ class PlayerEngine(
         }
     }
 
-    fun load(path: String, startPositionMs: Long = 0L) {
+    fun load(
+        path: String,
+        startPositionMs: Long = 0L,
+        audioTrackId: Int? = null,
+        audioEnabled: Boolean = true,
+        subTrackId: Int? = null,
+        subEnabled: Boolean = true,
+        speed: Double = 1.0,
+        aspect: String? = null
+    ) {
         scope.launch {
             assertCommandThread()
             currentFilePath = path
             _zoomState.value = 0.0
             currentPanX = 0.0
             currentPanY = 0.0
-            _state.update { it.copy(videoCodec = null, fallback = false) }
+            _state.update { it.copy(videoCodec = null, fallback = false, aspect = aspect) }
             if (handle != 0L) {
-                val cmd = if (startPositionMs > 0) {
+                val options = mutableListOf<String>()
+                if (startPositionMs > 0L) {
                     val sec = String.format(java.util.Locale.US, "%.3f", startPositionMs / 1000.0)
-                    Log.i("VP", "Loading $path with start=$sec")
-                    arrayOf("loadfile", path, "replace", "-1", "start=$sec")
+                    options.add("start=$sec")
+                }
+                if (!audioEnabled) {
+                    options.add("aid=no")
+                } else if (audioTrackId != null) {
+                    options.add("aid=$audioTrackId")
+                }
+
+                if (!subEnabled) {
+                    options.add("sid=no")
+                } else if (subTrackId != null) {
+                    options.add("sid=$subTrackId")
+                }
+
+                if (speed != 1.0) {
+                    val spd = String.format(java.util.Locale.US, "%.2f", speed)
+                    options.add("speed=$spd")
+                }
+
+                when (aspect?.lowercase()) {
+                    "16:9" -> options.add("video-aspect-override=16:9")
+                    "4:3" -> options.add("video-aspect-override=4:3")
+                    "crop" -> options.add("panscan=1.0")
+                    "stretch" -> options.add("video-aspect-override=0")
+                    "fit" -> options.add("video-aspect-override=-1")
+                }
+
+                val cmd = if (options.isNotEmpty()) {
+                    val optStr = options.joinToString(",")
+                    Log.i("VP", "Loading $path with options: $optStr")
+                    arrayOf("loadfile", path, "replace", "-1", optStr)
                 } else {
-                    Log.i("VP", "Loading $path from start")
+                    Log.i("VP", "Loading $path from start without options")
                     arrayOf("loadfile", path, "replace")
                 }
                 val res = MpvNative.command(handle, cmd)
@@ -415,10 +454,37 @@ class PlayerEngine(
             }
 
             if (curPath.isNotEmpty()) {
-                val cmd = if (curPos > 0) {
+                val options = mutableListOf<String>()
+                if (curPos > 0) {
                     val sec = String.format(java.util.Locale.US, "%.3f", curPos / 1000.0)
-                    Log.i("VP", "Reconfiguring: loading $curPath with start=$sec")
-                    arrayOf("loadfile", curPath, "replace", "-1", "start=$sec")
+                    options.add("start=$sec")
+                }
+                val curAid = _state.value.selectedAudioTrackId
+                if (curAid != null) {
+                    options.add("aid=$curAid")
+                }
+                val curSid = _state.value.selectedSubTrackId
+                if (curSid != null) {
+                    options.add("sid=$curSid")
+                } else {
+                    options.add("sid=no")
+                }
+                val curSpeed = _state.value.speed
+                if (curSpeed != 1.0) {
+                    options.add("speed=${String.format(java.util.Locale.US, "%.2f", curSpeed)}")
+                }
+                val curAspect = _state.value.aspect
+                when (curAspect?.lowercase()) {
+                    "16:9" -> options.add("video-aspect-override=16:9")
+                    "4:3" -> options.add("video-aspect-override=4:3")
+                    "crop" -> options.add("panscan=1.0")
+                    "stretch" -> options.add("video-aspect-override=0")
+                    "fit" -> options.add("video-aspect-override=-1")
+                }
+                val cmd = if (options.isNotEmpty()) {
+                    val optStr = options.joinToString(",")
+                    Log.i("VP", "Reconfiguring: loading $curPath with options=$optStr")
+                    arrayOf("loadfile", curPath, "replace", "-1", optStr)
                 } else {
                     arrayOf("loadfile", curPath, "replace")
                 }
@@ -460,6 +526,36 @@ class PlayerEngine(
         }
     }
 
+    private var pendingTargetAid: Int? = null
+    private var pendingTargetAudioLang: String? = null
+    private var pendingTargetAudioTitle: String? = null
+    private var pendingTargetSid: Int? = null
+    private var pendingTargetSubLang: String? = null
+    private var pendingTargetSubTitle: String? = null
+    private var pendingSubEnabled: Boolean = true
+
+    fun setPendingTrackMatch(
+        targetAid: Int?,
+        targetAudioLang: String?,
+        targetAudioTitle: String?,
+        targetSid: Int?,
+        targetSubLang: String?,
+        targetSubTitle: String?,
+        subEnabled: Boolean
+    ) {
+        commandExecutor.execute {
+            assertCommandThread()
+            pendingTargetAid = targetAid
+            pendingTargetAudioLang = targetAudioLang
+            pendingTargetAudioTitle = targetAudioTitle
+            pendingTargetSid = targetSid
+            pendingTargetSubLang = targetSubLang
+            pendingTargetSubTitle = targetSubTitle
+            pendingSubEnabled = subEnabled
+            Log.i("VP", "Pending track match set: aid=$targetAid ($targetAudioLang, $targetAudioTitle), sid=$targetSid ($targetSubLang, $targetSubTitle), subEnabled=$subEnabled")
+        }
+    }
+
     fun updateTracks() {
         commandExecutor.execute {
             assertCommandThread()
@@ -498,7 +594,66 @@ class PlayerEngine(
                 )
             }
             Log.i("VP", "Updated tracks (${trackList.size}): aid=$currentAid, sid=$currentSid")
+
+            if (trackList.isNotEmpty()) {
+                checkPendingTrackMatch(trackList, currentAid, currentSid)
+            }
         }
+    }
+
+    private fun checkPendingTrackMatch(trackList: List<Track>, currentAid: Int?, currentSid: Int?) {
+        assertCommandThread()
+        val aid = pendingTargetAid
+        if (aid != null) {
+            val hasAid = trackList.any { it.type == "audio" && it.id == aid }
+            if (!hasAid) {
+                val fallbackTrack = findFallbackTrack(trackList, "audio", pendingTargetAudioLang, pendingTargetAudioTitle)
+                if (fallbackTrack != null) {
+                    Log.i("VP", "Audio track id $aid missing. Fallback to track ${fallbackTrack.id} (${fallbackTrack.lang}, ${fallbackTrack.title})")
+                    setAudioTrack(fallbackTrack.id)
+                }
+            }
+            pendingTargetAid = null
+        }
+
+        if (pendingSubEnabled) {
+            val sid = pendingTargetSid
+            if (sid != null) {
+                val hasSid = trackList.any { it.type == "sub" && it.id == sid }
+                if (!hasSid) {
+                    val fallbackTrack = findFallbackTrack(trackList, "sub", pendingTargetSubLang, pendingTargetSubTitle)
+                    if (fallbackTrack != null) {
+                        Log.i("VP", "Sub track id $sid missing. Fallback to track ${fallbackTrack.id} (${fallbackTrack.lang}, ${fallbackTrack.title})")
+                        setSubtitleTrack(fallbackTrack.id)
+                    }
+                }
+                pendingTargetSid = null
+            }
+        }
+    }
+
+    private fun findFallbackTrack(tracks: List<Track>, type: String, targetLang: String?, targetTitle: String?): Track? {
+        val candidates = tracks.filter { it.type == type }
+        if (!targetLang.isNullOrEmpty() && !targetTitle.isNullOrEmpty()) {
+            val exact = candidates.firstOrNull {
+                it.lang?.equals(targetLang, ignoreCase = true) == true &&
+                it.title?.equals(targetTitle, ignoreCase = true) == true
+            }
+            if (exact != null) return exact
+        }
+        if (!targetLang.isNullOrEmpty()) {
+            val byLang = candidates.firstOrNull {
+                it.lang?.equals(targetLang, ignoreCase = true) == true
+            }
+            if (byLang != null) return byLang
+        }
+        if (!targetTitle.isNullOrEmpty()) {
+            val byTitle = candidates.firstOrNull {
+                it.title?.equals(targetTitle, ignoreCase = true) == true
+            }
+            if (byTitle != null) return byTitle
+        }
+        return null
     }
 
     fun setAudioTrack(trackId: Int?) {
@@ -533,6 +688,38 @@ class PlayerEngine(
                 MpvNative.setPropertyDouble(handle, "speed", clamped)
                 Log.i("VP", "setSpeed: speed=$clamped")
                 _state.update { it.copy(speed = clamped) }
+            }
+        }
+    }
+
+    fun setAspect(aspect: String?) {
+        commandExecutor.execute {
+            assertCommandThread()
+            _state.update { it.copy(aspect = aspect) }
+            if (handle != 0L) {
+                when (aspect?.lowercase()) {
+                    "16:9" -> {
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "16:9")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                    }
+                    "4:3" -> {
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "4:3")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                    }
+                    "crop" -> {
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                        MpvNative.setPropertyDouble(handle, "panscan", 1.0)
+                    }
+                    "stretch" -> {
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "0")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                    }
+                    else -> { // "fit" or null
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                    }
+                }
+                Log.i("VP", "setAspect: $aspect")
             }
         }
     }

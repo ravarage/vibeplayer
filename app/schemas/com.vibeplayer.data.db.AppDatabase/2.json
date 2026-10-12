@@ -1,0 +1,102 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "aa5b97f7c843d6823fc5b5b1a42562f3",
+    "entities": [
+      {
+        "tableName": "file_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `audioTrackId` INTEGER, `audioTrackTitle` TEXT, `audioTrackLang` TEXT, `audioEnabled` INTEGER NOT NULL, `subTrackId` INTEGER, `subTrackTitle` TEXT, `subTrackLang` TEXT, `subEnabled` INTEGER NOT NULL, `speed` REAL NOT NULL, `aspect` TEXT, `lastPlayedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "positionMs",
+            "columnName": "positionMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "audioTrackId",
+            "columnName": "audioTrackId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "audioTrackTitle",
+            "columnName": "audioTrackTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "audioTrackLang",
+            "columnName": "audioTrackLang",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "audioEnabled",
+            "columnName": "audioEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subTrackId",
+            "columnName": "subTrackId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "subTrackTitle",
+            "columnName": "subTrackTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subTrackLang",
+            "columnName": "subTrackLang",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subEnabled",
+            "columnName": "subEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "speed",
+            "columnName": "speed",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aspect",
+            "columnName": "aspect",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastPlayedAt",
+            "columnName": "lastPlayedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'aa5b97f7c843d6823fc5b5b1a42562f3')"
+    ]
+  }
+}

@@ -280,6 +280,9 @@ class PlayerActivity : ComponentActivity() {
                                 onToggleDebug = { showDebugOverlay = !showDebugOverlay },
                                 onHideControls = { controlsVisible = false },
                                 onEnterPip = { enterPip() },
+                                onSelectAudioTrack = { viewModel.setAudioTrack(it) },
+                                onSelectSubTrack = { viewModel.setSubtitleTrack(it) },
+                                onSelectSpeed = { viewModel.setSpeed(it) },
                                 modifier = Modifier.fillMaxSize()
                             )
 

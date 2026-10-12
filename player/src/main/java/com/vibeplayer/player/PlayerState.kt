@@ -36,5 +36,6 @@ data class PlayerState(
     val selectedAudioTrackId: Int? = null,
     val selectedSubTrackId: Int? = null,
     val videoCodec: String? = null,
-    val fallback: Boolean = false
+    val fallback: Boolean = false,
+    val aspect: String? = null
 )
