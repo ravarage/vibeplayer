@@ -191,6 +191,24 @@ decode disk-cache bitmaps at display size. *Files*: data/thumbs/*, data/media/Me
 top bar; DataStore-backed preferences for playback mode, renderer, gestures, skip seconds, background audio,
 shader preset; exposed as AppSettings Flow. *Files*: ui/settings/*, data/prefs/*. *Accept*: values survive app restart.
 
+**P2-10 Thumbnails for every video (software fallback)** — **User request (2026-10-12): low priority,
+but required. Do after P5, before P7.** `MediaMetadataRetriever` returns nothing for AV1 10-bit, 4K AV1
+and 10-bit HEVC on this phone, so those files show a placeholder. Replace the placeholder
+`MpvFallbackFrameExtractor` with a real one: a second mpv handle (never the playback handle) with
+`vo=null`, `ao=null`, `aid=no`, `sid=no`, `hwdec=no`, `pause=yes`, `start=10%` (not a black first
+frame), `vd-lavc-threads=2`, `vd-lavc-skiploopfilter=all`, `vd-lavc-fast=yes`, `hr-seek=no`; load the
+file, wait for the first frame, grab it with `screenshot-raw` scaled to the thumbnail size
+(`vf=scale=320:-2` or equivalent), convert BGR0 to a `Bitmap`, destroy the handle. Add the JNI call
+needed to return the `screenshot-raw` node (width, height, stride, byte array). One extraction at a
+time on the thumbnail worker, cancellable, with a 10 s timeout that writes the negative-cache marker;
+bump `NEGATIVE_CACHE_VERSION` so files that failed before are retried. Must not run while a video is
+playing in the player (pause the queue), and must not make scrolling the list janky.
+*Files*: mpv_jni.c, MpvNative.kt, a small ThumbnailEngine in :player, data/thumbs/*.
+*Accept*: every clip in the test folder shows a real picture (screenshot of the list, no placeholders),
+including `av1_4k.mp4`, `hevc10_4k.mp4`, Bocchi, Clevatess and Bad Girl; time per software thumbnail
+logged under `VP-Perf`; `dumpsys gfxinfo` shows no jank spike while they generate; no leaked handles
+after 50 generations.
+
 ## P3 Gestures
 
 **P3-01 Gesture layer** — One `pointerInput` layer with zones (left half, right half, horizontal),
