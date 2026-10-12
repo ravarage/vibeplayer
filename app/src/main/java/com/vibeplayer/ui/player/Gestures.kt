@@ -53,6 +53,10 @@ fun GestureLayer(
     maxVolume: Int = 20,
     triggerVolumeIndicatorFlow: StateFlow<Long> = MutableStateFlow(0L),
     onVolumeChanged: (Int) -> Unit = {},
+    currentPositionMs: Long = 0L,
+    durationMs: Long = 0L,
+    onSeekPreview: (targetMs: Long) -> Unit = {},
+    onSeekCommit: (targetMs: Long) -> Unit = {},
     onSingleTap: () -> Unit = {},
     onDoubleTap: (isLeft: Boolean) -> Unit = {},
     onGestureTypeChanged: (GestureType) -> Unit = {},
@@ -75,6 +79,14 @@ fun GestureLayer(
     var localVolumeFraction by remember(currentVolume) { mutableFloatStateOf(currentVolume.toFloat()) }
     var showVolumeIndicator by remember { mutableStateOf(false) }
     var hideVolumeJob by remember { mutableStateOf<Job?>(null) }
+
+    var swipeSeekStartPositionMs by remember { mutableStateOf(0L) }
+    var swipeSeekDeltaSeconds by remember { mutableStateOf(0L) }
+    var swipeSeekTargetMs by remember { mutableStateOf(0L) }
+    var totalSwipeDx by remember { mutableFloatStateOf(0f) }
+    var lastPreviewSeekTime by remember { mutableStateOf(0L) }
+    var showSwipeSeekIndicator by remember { mutableStateOf(false) }
+    var hideSwipeSeekJob by remember { mutableStateOf<Job?>(null) }
 
     LaunchedEffect(triggerVolumeIndicatorFlow) {
         triggerVolumeIndicatorFlow.collect { timestamp ->
@@ -145,6 +157,16 @@ fun GestureLayer(
                             if (absDx > absDy) {
                                 lockedGesture = GestureType.HORIZONTAL
                                 Log.i("VP", "Gesture detected: HORIZONTAL")
+                                swipeSeekStartPositionMs = currentPositionMs
+                                totalSwipeDx = totalDx
+                                val deltaMs = (totalDx * 40f).toLong()
+                                val targetMs = (swipeSeekStartPositionMs + deltaMs).coerceIn(0L, durationMs)
+                                swipeSeekTargetMs = targetMs
+                                swipeSeekDeltaSeconds = (targetMs - swipeSeekStartPositionMs) / 1000L
+                                showSwipeSeekIndicator = true
+                                hideSwipeSeekJob?.cancel()
+                                lastPreviewSeekTime = SystemClock.uptimeMillis()
+                                onSeekPreview(targetMs)
                             } else {
                                 if (isLeftZone) {
                                     lockedGesture = GestureType.LEFT_VERTICAL
@@ -163,6 +185,18 @@ fun GestureLayer(
                         change.consume()
                         when (lockedGesture) {
                             GestureType.HORIZONTAL -> {
+                                totalSwipeDx += dx
+                                val deltaMs = (totalSwipeDx * 40f).toLong()
+                                val targetMs = (swipeSeekStartPositionMs + deltaMs).coerceIn(0L, durationMs)
+                                swipeSeekTargetMs = targetMs
+                                swipeSeekDeltaSeconds = (targetMs - swipeSeekStartPositionMs) / 1000L
+                                showSwipeSeekIndicator = true
+                                hideSwipeSeekJob?.cancel()
+                                val now = SystemClock.uptimeMillis()
+                                if (now - lastPreviewSeekTime >= 50L) {
+                                    lastPreviewSeekTime = now
+                                    onSeekPreview(targetMs)
+                                }
                                 onHorizontalDrag(dx)
                             }
                             GestureType.LEFT_VERTICAL -> {
@@ -223,6 +257,14 @@ fun GestureLayer(
                     }
                 } else {
                     Log.i("VP", "Gesture ended: $lockedGesture")
+                    if (lockedGesture == GestureType.HORIZONTAL) {
+                        onSeekCommit(swipeSeekTargetMs)
+                        hideSwipeSeekJob?.cancel()
+                        hideSwipeSeekJob = coroutineScope.launch {
+                            delay(800L)
+                            showSwipeSeekIndicator = false
+                        }
+                    }
                     if (lockedGesture == GestureType.LEFT_VERTICAL) {
                         hideIndicatorJob?.cancel()
                         hideIndicatorJob = coroutineScope.launch {
@@ -260,6 +302,14 @@ fun GestureLayer(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 64.dp)
+        )
+
+        SwipeSeekIndicator(
+            visible = showSwipeSeekIndicator,
+            deltaSeconds = swipeSeekDeltaSeconds,
+            targetPositionMs = swipeSeekTargetMs,
+            durationMs = durationMs,
+            modifier = Modifier.align(Alignment.Center)
         )
     }
 }

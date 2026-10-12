@@ -144,3 +144,39 @@ fun VolumeIndicator(
         }
     }
 }
+
+@Composable
+fun SwipeSeekIndicator(
+    visible: Boolean,
+    deltaSeconds: Long,
+    targetPositionMs: Long,
+    durationMs: Long,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier
+    ) {
+        val sign = if (deltaSeconds >= 0) "+" else "-"
+        val absSec = kotlin.math.abs(deltaSeconds)
+        val deltaFormatted = String.format(java.util.Locale.US, "%s%02d:%02d", sign, absSec / 60, absSec % 60)
+        val targetFormatted = formatTime(targetPositionMs)
+
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xCC1E1E1E))
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$deltaFormatted / $targetFormatted",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+    }
+}

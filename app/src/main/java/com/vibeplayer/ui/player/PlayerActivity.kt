@@ -197,6 +197,14 @@ class PlayerActivity : ComponentActivity() {
                                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
                                 _volumeFlow.value = newVol
                             },
+                            currentPositionMs = positionMs,
+                            durationMs = playerState.durationMs,
+                            onSeekPreview = { targetMs ->
+                                playerEngine.seekTo(targetMs, exact = false)
+                            },
+                            onSeekCommit = { targetMs ->
+                                playerEngine.seekTo(targetMs, exact = true)
+                            },
                             onSingleTap = {
                                 controlsVisible = !controlsVisible
                             }
