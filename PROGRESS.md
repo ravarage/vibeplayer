@@ -67,6 +67,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P2-07 | Launch player from browser | DONE | AGY-1B | pending | onPlayVideo starts explicit ACTION_VIEW intent for PlayerActivity with file Uri & video/*; missing activity caught and Toast displayed; verified on redwood |
 | P2-08 | Thumbnail robustness | DONE | AGY-2B | a5b09df | MMR failures investigated (null on 10-bit HEVC & 10-bit/4K AV1; 8-bit AV1 & 8-bit H264/VP8/VP9 succeed); versioned (.failed) negative cache; non-blocking sends in ContentObserver; display-size decode; 0 extractions on 2nd launch |
 | P2-09 | Settings screen scaffold | DONE | AGY-2B | a2f1767 | SettingsScreen scaffold via gear icon in browser top bar; DataStore AppSettings (mode, renderer, gestures, skip seconds, background audio, shaders); values persist across app restart |
+| P2-10 | Thumbnails for every video (software fallback) | TODO | | | Low priority, required: after P5, before P7 |
 | P3-01 | Gesture layer | DONE | AGY-2 | 00f96d9 | GestureLayer with zones (left/right/horizontal), slop direction lock, single-tap toggle; controls clickable; check_video.py verified (non_black=80.0% changed=41.6%) |
 | P3-02 | Brightness | DONE | AGY-2 | b9edb4d | Left vertical swipe adjusts window brightness; BrightnessIndicator overlay with 1s fade-out verified; full swipe covers min-max; reset on exit verified; check_video.py verified (non_black=80.0% changed=76.1%) |
 | P3-03 | Volume | DONE | AGY-2 | bfe95aa | Right vertical swipe sets STREAM_MUSIC; VolumeIndicator overlay; tracks hardware volume keys both ways; media volume restored to 0; check_video.py verified (non_black=78.5% changed=76.5%) |
@@ -80,7 +81,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P4-03 | Audio track picker | DONE | AGY-2 | 1182cf1 | AudioTrackSheet bottom sheet with language, codec, channels; verified switching on multi_track.mkv (AC3 5.1, E-AC3 5.1, DTS 5.1 all playing); check_video.py verified (non_black=61.6% changed=54.0%); screencaps inspected |
 | P4-04 | Subtitle picker | DONE | AGY-2 | d1ff25b | SubtitleTrackSheet bottom sheet with Off option and external indicator; sub-auto=fuzzy loads external subtitles; verified ASS (Bocchi), PGS and SRT (multi_track.mkv), and external SRT; Off hides subtitles; check_video.py verified (non_black=60.7% changed=79.9%); screencaps inspected |
 | P4-05 | Speed | DONE | AGY-2 | a7ac63a | Speed control 0.25x to 4x with pitch correction via SpeedSheet; audio-pitch-correction=yes enables scaletempo2 filter; topbar pill reflects speed; verified at 2x and 0.5x, video stays in sync; check_video.py verified (exit 0, non_black=72.5% changed=78.3%); volume verified 0 |
-| P4-06 | Aspect ratio | IN PROGRESS | AGY-2 | pending | Stopped at the 06:45 cut-off on 2026-10-12 before any code was written. Next step: implement aspect cycling (fit, crop, stretch, 16:9, 4:3) with label, verify on a 4:3 and a 21:9 source. |
+| P4-06 | Aspect ratio | TODO | | | Deferred after P4-10 per user priority order. Next step: implement aspect cycling (fit, crop, stretch, 16:9, 4:3) with label, verify on a 4:3 and a 21:9 source. |
 | P4-07 | Persist per-file choices | TODO | | | |
 | P4-08 | History in browser | IN PROGRESS | AGY-2B | df3500c | Code complete (Continue watching row, progress bars from Room). Next step: after P4-06 writes real history, verify on device and mark DONE. Reviewer removed the fake history seeding from BrowserRoot. |
 | P4-09 | Name, icon and version | DONE | AGY-2 | pending | App label 'Vibe Player' (launcher, recents, settings title, browser top bar); adaptive icon with background, safe-zone foreground, monochrome vector, and legacy PNG mipmaps from branding/icon.svg; rootProject.name = 'VibePlayer', versionName = 0.4.0, versionCode = 2; About section in Settings displaying 'Vibe Player 0.4.0' from BuildConfig; verified by launcher search and settings screenshots |
@@ -88,7 +89,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P5-01 | PlaybackService | TODO | | | |
 | P5-02 | MediaSession and notification | TODO | | | |
 | P5-03 | Background audio | TODO | | | |
-| P5-04 | Picture-in-picture | TODO | | | |
+| P5-04 | Picture-in-picture | DONE | AGY-2 | pending | Android PiP on PlayerActivity (supportsPictureInPicture, resizeableActivity); PipHelper with aspect ratio clamping [1:2.39..2.39:1], sourceRectHint, seamlessResize, autoEnter on playing; controls/gestures hidden in PiP; remote actions rewind 10s, play/pause, forward 10s; verified 16:9, 4:3, and 9:16 vertical clips on device over home and Settings; cropped pixel diff confirmed playing (92.3% on 16:9, 14.8% on 9:16); broadcast actions verified; return to fullscreen verified (check_video exit 0) |
 | P5-05 | Lifecycle edge cases | TODO | | | |
 | P6-00 | Vulkan-enabled native build | DONE | AGY-2C | 0624988 | Built libplacebo v7.360.1 + shaderc 2022.3 + mpv v0.41.0 with Vulkan; patch optional/0004 (not applied by default) captures buildscripts; options confirmed; probe showed device Vulkan 1.1 < required 1.2; GLES playback confirmed |
 | P6-01 | Quality mode | TODO | | | |

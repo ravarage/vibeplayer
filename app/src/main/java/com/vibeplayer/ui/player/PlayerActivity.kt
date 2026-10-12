@@ -58,6 +58,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.view.KeyEvent
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,9 +72,30 @@ class PlayerActivity : ComponentActivity() {
     private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
     private var currentVideoTitle: String = "ichiban.mp4"
 
+    private val _isInPipFlow = MutableStateFlow(false)
+
     private lateinit var audioManager: AudioManager
     private val _volumeFlow = MutableStateFlow(0)
     private val _triggerVolumeIndicatorFlow = MutableStateFlow(0L)
+
+    private val pipReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                PipHelper.ACTION_REWIND -> {
+                    Log.i("VP", "PiP Action: Rewind 10s")
+                    playerEngine.seekRelative(-10.0, exact = true)
+                }
+                PipHelper.ACTION_PLAY_PAUSE -> {
+                    Log.i("VP", "PiP Action: Play/Pause")
+                    playerEngine.togglePause()
+                }
+                PipHelper.ACTION_FORWARD -> {
+                    Log.i("VP", "PiP Action: Forward 10s")
+                    playerEngine.seekRelative(10.0, exact = true)
+                }
+            }
+        }
+    }
 
     private val volumeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -152,11 +174,18 @@ class PlayerActivity : ComponentActivity() {
                     } else {
                         ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                     }
-                    if (requestedOrientation != targetOrientation) {
+                    if (!isInPictureInPictureMode && !_isInPipFlow.value && requestedOrientation != targetOrientation) {
                         Log.i("VP", "Auto-orienting: ${w}x${h} -> orientation=$targetOrientation")
                         requestedOrientation = targetOrientation
                     }
                 }
+            }
+        }
+
+        // Maintain up-to-date PiP params as playback/file state changes
+        lifecycleScope.launch {
+            playerEngine.state.collect { state ->
+                updatePipParams(state)
             }
         }
 
@@ -178,11 +207,12 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             val playerState by playerEngine.state.collectAsState()
             val zoom by playerEngine.zoomState.collectAsState()
+            val isInPip by _isInPipFlow.collectAsState()
             var showDebugOverlay by remember { mutableStateOf(false) }
             var controlsVisible by remember { mutableStateOf(true) }
             var isLocked by remember { mutableStateOf(false) }
 
-            BackHandler(enabled = isLocked) {
+            BackHandler(enabled = isLocked && !isInPip) {
                 Log.i("VP", "Back press ignored: screen is locked")
             }
 
@@ -197,68 +227,71 @@ class PlayerActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        GestureLayer(
-                            modifier = Modifier.fillMaxSize(),
-                            isLocked = isLocked,
-                            initialBrightness = window.attributes.screenBrightness.let { if (it < 0f) 0.5f else it },
-                            onBrightnessChanged = { b ->
-                                val lp = window.attributes
-                                lp.screenBrightness = b
-                                window.attributes = lp
-                            },
-                            volumeFlow = _volumeFlow.asStateFlow(),
-                            maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-                            triggerVolumeIndicatorFlow = _triggerVolumeIndicatorFlow.asStateFlow(),
-                            onVolumeChanged = { newVol ->
-                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                                _volumeFlow.value = newVol
-                            },
-                            getCurrentPositionMs = { playerEngine.currentPositionMs() },
-                            durationMs = playerState.durationMs,
-                            zoom = zoom,
-                            onZoomChange = { z -> playerEngine.setVideoZoom(z, commit = false) },
-                            onPanChange = { px, py -> playerEngine.setVideoPan(px, py, commit = false) },
-                            onZoomCommit = { z -> playerEngine.setVideoZoom(z, commit = true) },
-                            onPanCommit = { px, py -> playerEngine.setVideoPan(px, py, commit = true) },
-                            onResetZoom = { playerEngine.resetZoomAndPan() },
-                            onSeekRelative = { deltaSec, exact ->
-                                playerEngine.seekRelative(deltaSec, exact)
-                            },
-                            onSingleTap = {
-                                controlsVisible = !controlsVisible
-                            },
-                            onDoubleTap = { isLeft ->
-                                controlsVisible = false
-                            }
-                        )
-
-                        PlayerControls(
-                            playerEngine = playerEngine,
-                            playerState = playerState,
-                            videoPath = currentVideoTitle,
-                            controlsVisible = controlsVisible,
-                            isLocked = isLocked,
-                            onToggleLock = {
-                                isLocked = !isLocked
-                                Log.i("VP", "Lock toggled: isLocked=$isLocked")
-                                if (isLocked) {
+                        if (!isInPip) {
+                            GestureLayer(
+                                modifier = Modifier.fillMaxSize(),
+                                isLocked = isLocked,
+                                initialBrightness = window.attributes.screenBrightness.let { if (it < 0f) 0.5f else it },
+                                onBrightnessChanged = { b ->
+                                    val lp = window.attributes
+                                    lp.screenBrightness = b
+                                    window.attributes = lp
+                                },
+                                volumeFlow = _volumeFlow.asStateFlow(),
+                                maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                                triggerVolumeIndicatorFlow = _triggerVolumeIndicatorFlow.asStateFlow(),
+                                onVolumeChanged = { newVol ->
+                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                    _volumeFlow.value = newVol
+                                },
+                                getCurrentPositionMs = { playerEngine.currentPositionMs() },
+                                durationMs = playerState.durationMs,
+                                zoom = zoom,
+                                onZoomChange = { z -> playerEngine.setVideoZoom(z, commit = false) },
+                                onPanChange = { px, py -> playerEngine.setVideoPan(px, py, commit = false) },
+                                onZoomCommit = { z -> playerEngine.setVideoZoom(z, commit = true) },
+                                onPanCommit = { px, py -> playerEngine.setVideoPan(px, py, commit = true) },
+                                onResetZoom = { playerEngine.resetZoomAndPan() },
+                                onSeekRelative = { deltaSec, exact ->
+                                    playerEngine.seekRelative(deltaSec, exact)
+                                },
+                                onSingleTap = {
+                                    controlsVisible = !controlsVisible
+                                },
+                                onDoubleTap = { isLeft ->
                                     controlsVisible = false
                                 }
-                            },
-                            onBack = { finish() },
-                            onToggleDebug = { showDebugOverlay = !showDebugOverlay },
-                            onHideControls = { controlsVisible = false },
-                            modifier = Modifier.fillMaxSize()
-                        )
-
-                        if (showDebugOverlay) {
-                            DebugOverlay(
-                                playerEngine = playerEngine,
-                                onClose = { showDebugOverlay = false },
-                                modifier = Modifier
-                                    .padding(top = 80.dp, start = 16.dp)
-                                    .align(Alignment.TopStart)
                             )
+
+                            PlayerControls(
+                                playerEngine = playerEngine,
+                                playerState = playerState,
+                                videoPath = currentVideoTitle,
+                                controlsVisible = controlsVisible,
+                                isLocked = isLocked,
+                                onToggleLock = {
+                                    isLocked = !isLocked
+                                    Log.i("VP", "Lock toggled: isLocked=$isLocked")
+                                    if (isLocked) {
+                                        controlsVisible = false
+                                    }
+                                },
+                                onBack = { finish() },
+                                onToggleDebug = { showDebugOverlay = !showDebugOverlay },
+                                onHideControls = { controlsVisible = false },
+                                onEnterPip = { enterPip() },
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            if (showDebugOverlay) {
+                                DebugOverlay(
+                                    playerEngine = playerEngine,
+                                    onClose = { showDebugOverlay = false },
+                                    modifier = Modifier
+                                        .padding(top = 80.dp, start = 16.dp)
+                                        .align(Alignment.TopStart)
+                                )
+                            }
                         }
                     }
                 }
@@ -287,7 +320,7 @@ class PlayerActivity : ComponentActivity() {
         if (config != playerEngine.playbackConfig) {
             playerEngine.reconfigure(config)
         } else if (currentVideoPath != oldPath) {
-            playerEngine.load(currentVideoPath)
+            viewModel.openVideo(currentVideoPath)
         }
     }
 
@@ -438,6 +471,64 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    fun enterPip() {
+        val bounds = windowManager.currentWindowMetrics.bounds
+        val state = playerEngine.state.value
+        val params = PipHelper.buildPipParams(
+            context = this,
+            videoWidth = state.videoWidth,
+            videoHeight = state.videoHeight,
+            windowWidth = bounds.width(),
+            windowHeight = bounds.height(),
+            isPaused = state.paused,
+            hasDuration = state.durationMs > 0L
+        )
+        try {
+            val success = enterPictureInPictureMode(params)
+            Log.i("VP", "enterPictureInPictureMode: success=$success")
+        } catch (e: Exception) {
+            Log.e("VP", "Failed to enter Picture-in-Picture: ${e.message}", e)
+        }
+    }
+
+    private fun updatePipParams(state: com.vibeplayer.player.PlayerState = playerEngine.state.value) {
+        val bounds = windowManager.currentWindowMetrics.bounds
+        val params = PipHelper.buildPipParams(
+            context = this,
+            videoWidth = state.videoWidth,
+            videoHeight = state.videoHeight,
+            windowWidth = bounds.width(),
+            windowHeight = bounds.height(),
+            isPaused = state.paused,
+            hasDuration = state.durationMs > 0L
+        )
+        try {
+            setPictureInPictureParams(params)
+        } catch (e: Exception) {
+            Log.w("VP", "Failed to setPictureInPictureParams: ${e.message}")
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!playerEngine.state.value.paused && playerEngine.state.value.durationMs > 0L) {
+            Log.i("VP", "onUserLeaveHint: entering PiP")
+            enterPip()
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        Log.i("VP", "onPictureInPictureModeChanged: isInPictureInPictureMode=$isInPictureInPictureMode")
+        _isInPipFlow.value = isInPictureInPictureMode
+        if (!isInPictureInPictureMode) {
+            hideSystemBars()
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         Log.i("VP", "PlayerActivity onStart")
@@ -446,6 +537,16 @@ class PlayerActivity : ComponentActivity() {
             ContextCompat.registerReceiver(this, volumeReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
         } catch (e: Exception) {
             Log.w("VP", "Failed to register volume receiver: ${e.message}")
+        }
+        try {
+            val pipFilter = IntentFilter().apply {
+                addAction(PipHelper.ACTION_REWIND)
+                addAction(PipHelper.ACTION_PLAY_PAUSE)
+                addAction(PipHelper.ACTION_FORWARD)
+            }
+            ContextCompat.registerReceiver(this, pipReceiver, pipFilter, ContextCompat.RECEIVER_EXPORTED)
+        } catch (e: Exception) {
+            Log.w("VP", "Failed to register pip receiver: ${e.message}")
         }
     }
 
@@ -464,16 +565,24 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        Log.i("VP", "PlayerActivity onPause")
+        Log.i("VP", "PlayerActivity onPause (isInPip=$isInPictureInPictureMode)")
         viewModel.saveCurrentPosition()
     }
 
     override fun onStop() {
         super.onStop()
-        Log.i("VP", "PlayerActivity onStop")
-        viewModel.saveCurrentPosition()
+        Log.i("VP", "PlayerActivity onStop (isInPip=$isInPictureInPictureMode, wasInPip=${_isInPipFlow.value})")
+        if (isInPictureInPictureMode || _isInPipFlow.value) {
+            Log.i("VP", "PiP dismissed/closed onStop -> stopping playback")
+            playerEngine.pause()
+            _isInPipFlow.value = false
+        }
+        viewModel.saveCurrentPosition(forceSync = true)
         try {
             unregisterReceiver(volumeReceiver)
+        } catch (_: Exception) {}
+        try {
+            unregisterReceiver(pipReceiver)
         } catch (_: Exception) {}
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE

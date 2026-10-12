@@ -179,6 +179,7 @@ class PlayerEngine(
                 }
                 MpvEvent.FILE_LOADED -> {
                     Log.i("VP", "mpv event file-loaded")
+                    _state.update { it.copy(paused = false) }
                     updateTracks()
                 }
                 MpvEvent.TRACKS_CHANGED -> {
