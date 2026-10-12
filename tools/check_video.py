@@ -8,14 +8,22 @@ Usage: tools/check_video.py [--still]   (--still: paused video, skip the motion 
 import subprocess, sys, time
 
 def grab():
-    subprocess.run(["adb", "shell", "screencap", "/data/local/tmp/sc.raw"], timeout=30, check=True)
-    subprocess.run(["adb", "pull", "/data/local/tmp/sc.raw", "/tmp/sc.raw"], timeout=30, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    with open("/tmp/sc.raw", "rb") as f:
-        raw = f.read()
-    if len(raw) < 16:
+    # Screenshot as PNG on the phone, then pull the file: `exec-out` streams hang on a slow
+    # Wi-Fi adb link, and PNG is far smaller than the raw dump.
+    from PIL import Image
+    import os, tempfile
+    remote = "/data/local/tmp/vp_check.png"
+    local = os.path.join(tempfile.gettempdir(), f"vp_check_{os.getpid()}.png")
+    try:
+        subprocess.run(["adb", "shell", "screencap", "-p", remote], timeout=30, check=True)
+        subprocess.run(["adb", "pull", remote, local], timeout=180, check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        img = Image.open(local).convert("RGBA")
+    except Exception as e:
+        print(f"adb screenshot failed: {e}")
         sys.exit(2)
-    w, h = int.from_bytes(raw[0:4], "little"), int.from_bytes(raw[4:8], "little")
-    return w, h, raw[len(raw) - w * h * 4:]
+    w, h = img.size
+    return w, h, img.tobytes()
 
 def stats(w, h, px):
     lit, sample = 0, []
