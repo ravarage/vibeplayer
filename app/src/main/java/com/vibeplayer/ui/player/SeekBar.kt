@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -39,8 +40,10 @@ fun VideoSeekBar(
     onSeekFinished: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val view = LocalView.current
     var isDragging by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableFloatStateOf(0f) }
+    var lastEndHit by remember { mutableStateOf<Int?>(null) }
 
     val currentProgress = if (durationMs > 0) {
         if (isDragging) dragProgress else (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
@@ -110,12 +113,26 @@ fun VideoSeekBar(
                     isDragging = true
                     dragProgress = progress
                     val targetMs = (progress * durationMs).toLong()
+                    if (progress <= 0.02f) {
+                        if (lastEndHit != -1) {
+                            lastEndHit = -1
+                            HapticFeedbackHelper.triggerTick(view, "seek bar start")
+                        }
+                    } else if (progress >= 0.98f) {
+                        if (lastEndHit != 1) {
+                            lastEndHit = 1
+                            HapticFeedbackHelper.triggerTick(view, "seek bar end")
+                        }
+                    } else if (progress in 0.05f..0.95f) {
+                        lastEndHit = null
+                    }
                     onSeekProgress(targetMs)
                 },
                 onValueChangeFinished = {
                     val targetMs = (dragProgress * durationMs).toLong()
                     onSeekFinished(targetMs)
                     isDragging = false
+                    lastEndHit = null
                 },
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,

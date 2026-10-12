@@ -23,6 +23,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -74,6 +75,7 @@ fun GestureLayer(
     onGestureEnded: (GestureType) -> Unit = {},
     content: @Composable () -> Unit = {}
 ) {
+    val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     var pendingSingleTapJob by remember { mutableStateOf<Job?>(null) }
     var lastTapTime by remember { mutableStateOf(0L) }
@@ -231,6 +233,7 @@ fun GestureLayer(
                                 val targetMs = (swipeSeekStartPositionMs + deltaMs).coerceIn(0L, durationMs)
                                 swipeSeekTargetMs = targetMs
                                 swipeSeekDeltaSeconds = (targetMs - swipeSeekStartPositionMs) / 1000L
+                                HapticFeedbackHelper.triggerTick(view, "swipe-seek step")
                                 showSwipeSeekIndicator = true
                                 hideSwipeSeekJob?.cancel()
                                 lastPreviewSeekTime = SystemClock.uptimeMillis()
@@ -257,7 +260,11 @@ fun GestureLayer(
                                 val deltaMs = (totalSwipeDx * 40f).toLong()
                                 val targetMs = (swipeSeekStartPositionMs + deltaMs).coerceIn(0L, durationMs)
                                 swipeSeekTargetMs = targetMs
-                                swipeSeekDeltaSeconds = (targetMs - swipeSeekStartPositionMs) / 1000L
+                                val newDeltaSec = (targetMs - swipeSeekStartPositionMs) / 1000L
+                                if (newDeltaSec != swipeSeekDeltaSeconds) {
+                                    swipeSeekDeltaSeconds = newDeltaSec
+                                    HapticFeedbackHelper.triggerTick(view, "swipe-seek step")
+                                }
                                 showSwipeSeekIndicator = true
                                 hideSwipeSeekJob?.cancel()
                                 val now = SystemClock.uptimeMillis()
@@ -311,6 +318,7 @@ fun GestureLayer(
                             Log.i("VP", "Double-tap streak accumulate: isLeft=$doubleTapIsLeft, sec=$doubleTapAccumulatedSec, target=$targetMs")
                             onSeekCommit(targetMs)
                             onDoubleTap(doubleTapIsLeft)
+                            HapticFeedbackHelper.triggerTick(view, "skip")
                             doubleTapHideJob = coroutineScope.launch {
                                 delay(700L)
                                 doubleTapStreakActive = false
@@ -336,6 +344,7 @@ fun GestureLayer(
                                 Log.i("VP", "Gesture detected: $gType, target=$targetMs")
                                 onSeekCommit(targetMs)
                                 onDoubleTap(isLeft)
+                                HapticFeedbackHelper.triggerTick(view, "skip")
                                 doubleTapHideJob = coroutineScope.launch {
                                     delay(700L)
                                     doubleTapStreakActive = false
