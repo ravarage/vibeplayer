@@ -381,6 +381,14 @@ the PiP bounds (`dumpsys activity activities | grep -i pip` / `dumpsys window`) 
 between two captures; actions work via `adb shell` broadcast or `input tap` on them; the full player
 returns with playback continuing.
 
+_Reviewer notes on P5-04 (commit 55e6192), fix in P5-05:_
+- _`pipReceiver` and `volumeReceiver` are registered `RECEIVER_EXPORTED`: any app can send the
+  play/pause/skip broadcasts. Register `RECEIVER_NOT_EXPORTED` and give the PiP `PendingIntent`s
+  `setPackage(packageName)`._
+- _`onStop` outside PiP (screen off or another app on top while the full player is playing) leaves
+  playback running. Until P5-03 adds the background-audio setting, pause in `onStop` when not in PiP;
+  after P5-03, pause only if background audio is off._
+
 **P5-05 Lifecycle edge cases** — PiP ↔ fullscreen, PiP close, swipe from recents, opening a new file
 while playing. *Files*: playback/*. *Accept*: none of these crash or leave a stale notification.
 
