@@ -14,8 +14,8 @@ android {
         applicationId = "com.vibeplayer"
         minSdk = 37
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "0.4.0"
 
         ndk {
             abiFilters.add("arm64-v8a")
@@ -42,6 +42,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

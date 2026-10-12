@@ -58,7 +58,7 @@ fun FolderListScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Folders (${folders.size})",
+                        text = "Vibe Player",
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )
