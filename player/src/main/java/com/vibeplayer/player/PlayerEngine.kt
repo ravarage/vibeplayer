@@ -519,6 +519,18 @@ class PlayerEngine(
         }
     }
 
+    fun setSpeed(speed: Double) {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (handle != 0L) {
+                val clamped = speed.coerceIn(0.25, 4.0)
+                MpvNative.setPropertyDouble(handle, "speed", clamped)
+                Log.i("VP", "setSpeed: speed=$clamped")
+                _state.update { it.copy(speed = clamped) }
+            }
+        }
+    }
+
     @Volatile
     private var lastKeyframeSeekTime: Long = 0L
 

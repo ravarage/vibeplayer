@@ -38,6 +38,7 @@ data class PlaybackConfig(
         options["vd-lavc-threads"] = "0"
         options["hwdec-codecs"] = "h264,hevc,vp9"
         options["sub-auto"] = "fuzzy"
+        options["audio-pitch-correction"] = "yes"
 
         when (mode) {
             PlaybackMode.EFFICIENT -> {

@@ -79,10 +79,11 @@ fun PlayerControls(
 
     var showAudioTrackSheet by remember { mutableStateOf(false) }
     var showSubTrackSheet by remember { mutableStateOf(false) }
+    var showSpeedSheet by remember { mutableStateOf(false) }
 
     // Auto-hide controls after 3 seconds of inactivity (paused while sheet is open)
-    LaunchedEffect(controlsVisible, lastInteraction, userSeeking, playerState.paused, showAudioTrackSheet, showSubTrackSheet) {
-        if (controlsVisible && !userSeeking && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet) {
+    LaunchedEffect(controlsVisible, lastInteraction, userSeeking, playerState.paused, showAudioTrackSheet, showSubTrackSheet, showSpeedSheet) {
+        if (controlsVisible && !userSeeking && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet && !showSpeedSheet) {
             delay(3000)
             onHideControls()
         }
@@ -217,6 +218,32 @@ fun PlayerControls(
                                 modifier = Modifier
                                     .background(Color(0x33FF0000), shape = CircleShape)
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (playerState.speed != 1.0) Color(0x33BB86FC) else Color(0x22FFFFFF))
+                                .clickable {
+                                    lastInteraction = System.currentTimeMillis()
+                                    showSpeedSheet = true
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val speedText = if (playerState.speed % 1.0 == 0.0) {
+                                "${playerState.speed.toInt()}x"
+                            } else {
+                                "${playerState.speed}x"
+                            }
+                            Text(
+                                text = speedText,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (playerState.speed != 1.0) Color(0xFFBB86FC) else Color.White
                             )
                         }
 
@@ -368,6 +395,19 @@ fun PlayerControls(
                 },
                 onDismiss = {
                     showSubTrackSheet = false
+                    lastInteraction = System.currentTimeMillis()
+                }
+            )
+        }
+
+        if (showSpeedSheet) {
+            SpeedSheet(
+                currentSpeed = playerState.speed,
+                onSpeedChanged = { speed ->
+                    playerEngine.setSpeed(speed)
+                },
+                onDismiss = {
+                    showSpeedSheet = false
                     lastInteraction = System.currentTimeMillis()
                 }
             )
