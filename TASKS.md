@@ -331,6 +331,22 @@ Japanese audio + full subtitles on one file in a folder makes another file in th
 same way (use copies of a test clip in a second folder if needed); the picker sheet screenshot shows
 the selected rows.
 
+**P4-11 Review fixes (correctness)** — Fix the correctness defects from `docs/REVIEW_UI_2026-10-12.md`.
+Confirm each one in the code first (the review was by reading only), then fix:
+item 1 (volume indicator pops up on every recomposition), item 3 (gesture layer uses stale zoom /
+brightness / volume / duration state: zoom snaps back after reset, swipe seek clamps to the old file's
+duration), item 4 (`RejectedExecutionException` after `release()`: crash when leaving the player with
+the debug overlay open), item 5 (blocking save on the main thread in `onStop`/`onCleared`), item 6
+(single tap delayed 200 ms; double-tap window mismatch), item 13 (resume and folder keys for
+`content://` files are built from a file-descriptor number), item 14 (`time-pos` observed twice /
+left on in the mini player), item 16 (two quick opens can load the wrong file or save under the wrong
+key), and the three "unverified" notes in item 20 if they turn out to be real.
+*Files*: ui/player/*, PlayerViewModel.kt, PlayerEngine.kt. *Accept*: for each item a line in the
+PROGRESS.md note saying "fixed", "not a bug because ..." or "could not reproduce"; on the device:
+zoom, reset, zoom again keeps working; swipe seek on a second file opened from the mini player uses
+the new duration; leaving the player with the debug overlay open does not crash (20 times); a
+`content://` video resumes after reopen; mini player and all gestures still pass their checks.
+
 **P4-08 History in browser** — Progress bar on thumbnails, "Continue watching" row.
 *Files*: ui/browser/*. *Accept*: partially watched clips show progress; row order = most recent first.
 
@@ -434,7 +450,7 @@ installs and passes a smoke test of P1 to P5 features.
 engine, lazy UI, no blocking IO). *Files*: PlayerEngine.kt, ui/player/*. *Accept*: median of 10 cold
 opens of `h264_1080p.mp4` under 1000 ms.
 
-**P7-03 Recomposition** — Verify only the seek bar and time label recompose on position ticks; fix
+**P7-03 Recomposition** — _Start from `docs/REVIEW_UI_2026-10-12.md` items 2, 7, 12 and 19._ Verify only the seek bar and time label recompose on position ticks; fix
 unstable parameters. *Files*: ui/player/*. *Accept*: recomposition counts (Layout Inspector or
 logged) for other controls stay flat during 60 s playback.
 
@@ -442,11 +458,11 @@ logged) for other controls stay flat during 60 s playback.
 *Files*: baselineprofile/*, app/build.gradle.kts. *Accept*: profile generated on device and packaged;
 cold start improves or stays equal (numbers in docs/BENCHMARK.md).
 
-**P7-05 Browser smoothness** — Fix list jank (image decoding off main, stable keys).
+**P7-05 Browser smoothness** — _Start from `docs/REVIEW_UI_2026-10-12.md` items 9, 10, 11, 15, 17 and 19._ Fix list jank (image decoding off main, stable keys).
 *Files*: ui/browser/*. *Accept*: `dumpsys gfxinfo` janky frames under 5% for a fast scroll of a
 100+ item folder.
 
-**P7-06 Idle cost** — No position/stat updates or recomposition while controls are hidden.
+**P7-06 Idle cost** — _Start from `docs/REVIEW_UI_2026-10-12.md` items 8, 14 and 18._ No position/stat updates or recomposition while controls are hidden.
 *Files*: PlayerEngine.kt, ui/player/*. *Accept*: efficient-mode power for a 10 min clip is not higher
 than the P1-06 figure.
 
