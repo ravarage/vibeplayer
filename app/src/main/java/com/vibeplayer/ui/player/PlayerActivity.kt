@@ -15,6 +15,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,7 +65,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class PlayerActivity : ComponentActivity() {
 
-    private val playerEngine = PlayerEngine()
+    private val viewModel: PlayerViewModel by viewModels()
+    private val playerEngine: PlayerEngine get() = viewModel.playerEngine
     private var playbackStarted = false
     private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
     private var currentVideoTitle: String = "ichiban.mp4"
@@ -390,7 +392,7 @@ class PlayerActivity : ComponentActivity() {
             playerEngine.setHwdec(forceHwdec)
         }
         playbackStarted = true
-        playerEngine.load(currentVideoPath)
+        viewModel.openVideo(currentVideoPath)
     }
 
     private fun runP102Test() {
@@ -468,11 +470,13 @@ class PlayerActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         Log.i("VP", "PlayerActivity onPause")
+        viewModel.saveCurrentPosition()
     }
 
     override fun onStop() {
         super.onStop()
         Log.i("VP", "PlayerActivity onStop")
+        viewModel.saveCurrentPosition()
         try {
             unregisterReceiver(volumeReceiver)
         } catch (_: Exception) {}

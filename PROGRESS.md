@@ -76,7 +76,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P3-07 | Lock | DONE | AGY-2 | pending | Lock button in controls disables all gestures, controls, and back; full-screen touch interceptor blocks touches; floating unlock pill restores unlocked state; verified on device (check_video.py: non_black=75.6% changed=66.5%, screenshots inspected) |
 | P3-08 | Haptics | DONE | AGY-2 | pending | Haptic tick on skip, swipe-seek steps, and seek bar ends (0% & 100%); none while locked; calls verified in logcat; needs user to feel it; video playback confirmed (check_video.py: non_black=69.9% changed=77.0%) |
 | P4-01 | Room setup | DONE | AGY-1B | pending | AppDatabase, FileSettings entity and DAO configured with Room 2.8.5; insert/read round-trip verified on redwood; schema exported |
-| P4-02 | Resume position | TODO | | | |
+| P4-02 | Resume position | DONE | AGY-2 | pending | Position saved on pause, every 10s, and exit; restored with loadfile start=<seconds> option; restart from 0 within last 5%; PlayerEngine.reconfigure() fixed; verified on device (force-stop mid-file resumed within 10s, check_video.py: non_black=79.8% changed=74.6%) |
 | P4-03 | Audio track picker | TODO | | | |
 | P4-04 | Subtitle picker | TODO | | | |
 | P4-05 | Speed | TODO | | | |

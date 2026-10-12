@@ -321,7 +321,7 @@ class PlayerEngine(
         }
     }
 
-    fun load(path: String) {
+    fun load(path: String, startPositionMs: Long = 0L) {
         scope.launch {
             assertCommandThread()
             currentFilePath = path
@@ -330,7 +330,15 @@ class PlayerEngine(
             currentPanY = 0.0
             _state.update { it.copy(videoCodec = null, fallback = false) }
             if (handle != 0L) {
-                val res = MpvNative.command(handle, arrayOf("loadfile", path))
+                val cmd = if (startPositionMs > 0) {
+                    val sec = String.format(java.util.Locale.US, "%.3f", startPositionMs / 1000.0)
+                    Log.i("VP", "Loading $path with start=$sec")
+                    arrayOf("loadfile", path, "replace", "-1", "start=$sec")
+                } else {
+                    Log.i("VP", "Loading $path from start")
+                    arrayOf("loadfile", path, "replace")
+                }
+                val res = MpvNative.command(handle, cmd)
                 Log.i("VP", "loadfile res=$res for $path")
             }
         }
@@ -370,11 +378,14 @@ class PlayerEngine(
             }
 
             if (curPath.isNotEmpty()) {
-                MpvNative.command(handle, arrayOf("loadfile", curPath))
-                if (curPos > 0) {
-                    val sec = (curPos.toDouble() / 1000.0).toString()
-                    MpvNative.command(handle, arrayOf("seek", sec, "absolute+exact"))
+                val cmd = if (curPos > 0) {
+                    val sec = String.format(java.util.Locale.US, "%.3f", curPos / 1000.0)
+                    Log.i("VP", "Reconfiguring: loading $curPath with start=$sec")
+                    arrayOf("loadfile", curPath, "replace", "-1", "start=$sec")
+                } else {
+                    arrayOf("loadfile", curPath, "replace")
                 }
+                MpvNative.command(handle, cmd)
                 if (wasPaused) {
                     MpvNative.setPropertyBoolean(handle, "pause", true)
                 }
