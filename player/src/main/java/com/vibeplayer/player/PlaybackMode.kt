@@ -37,6 +37,7 @@ data class PlaybackConfig(
         options["keep-open"] = "yes"
         options["vd-lavc-threads"] = "0"
         options["hwdec-codecs"] = "h264,hevc,vp9"
+        options["sub-auto"] = "fuzzy"
 
         when (mode) {
             PlaybackMode.EFFICIENT -> {

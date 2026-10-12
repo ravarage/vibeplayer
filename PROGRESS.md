@@ -77,8 +77,8 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P3-08 | Haptics | DONE | AGY-2 | ff152bf | Haptic tick on skip, swipe-seek steps, and seek bar ends (0% & 100%); none while locked; calls verified in logcat; needs user to feel it; video playback confirmed (check_video.py: non_black=69.9% changed=77.0%) |
 | P4-01 | Room setup | DONE | AGY-1B | pending | AppDatabase, FileSettings entity and DAO configured with Room 2.8.5; insert/read round-trip verified on redwood; schema exported |
 | P4-02 | Resume position | DONE | AGY-2 | 45303b4 | Position saved on pause, every 10s, and exit; restored with loadfile start=<seconds> option; restart from 0 within last 5%; PlayerEngine.reconfigure() fixed; verified on device (force-stop mid-file resumed within 10s, check_video.py: non_black=79.8% changed=74.6%) |
-| P4-03 | Audio track picker | DONE | AGY-2 | pending | AudioTrackSheet bottom sheet with language, codec, channels; verified switching on multi_track.mkv (AC3 5.1, E-AC3 5.1, DTS 5.1 all playing); check_video.py verified (non_black=61.6% changed=54.0%); screencaps inspected |
-| P4-04 | Subtitle picker | TODO | | | |
+| P4-03 | Audio track picker | DONE | AGY-2 | 1182cf1 | AudioTrackSheet bottom sheet with language, codec, channels; verified switching on multi_track.mkv (AC3 5.1, E-AC3 5.1, DTS 5.1 all playing); check_video.py verified (non_black=61.6% changed=54.0%); screencaps inspected |
+| P4-04 | Subtitle picker | DONE | AGY-2 | pending | SubtitleTrackSheet bottom sheet with Off option and external indicator; sub-auto=fuzzy loads external subtitles; verified ASS (Bocchi), PGS and SRT (multi_track.mkv), and external SRT; Off hides subtitles; check_video.py verified (non_black=60.7% changed=79.9%); screencaps inspected |
 | P4-05 | Speed | TODO | | | |
 | P4-06 | Aspect ratio | TODO | | | |
 | P4-07 | Persist per-file choices | TODO | | | |

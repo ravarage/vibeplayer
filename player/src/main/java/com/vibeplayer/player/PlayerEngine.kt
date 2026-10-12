@@ -468,6 +468,7 @@ class PlayerEngine(
                 val codec = MpvNative.getPropertyString(handle, "track-list/$i/codec")
                 val channels = MpvNative.getPropertyLong(handle, "track-list/$i/audio-channels")?.toInt()
                 val selected = MpvNative.getPropertyBoolean(handle, "track-list/$i/selected") ?: false
+                val external = MpvNative.getPropertyBoolean(handle, "track-list/$i/external") ?: false
                 trackList.add(
                     Track(
                         id = id,
@@ -476,6 +477,7 @@ class PlayerEngine(
                         lang = lang,
                         codec = codec,
                         channels = channels,
+                        external = external,
                         selected = selected
                     )
                 )

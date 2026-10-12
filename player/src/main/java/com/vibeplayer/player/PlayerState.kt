@@ -7,6 +7,7 @@ data class Track(
     val lang: String? = null,
     val codec: String? = null,
     val channels: Int? = null,
+    val external: Boolean = false,
     val selected: Boolean = false
 )
 

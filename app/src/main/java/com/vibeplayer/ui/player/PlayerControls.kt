@@ -78,10 +78,11 @@ fun PlayerControls(
     }
 
     var showAudioTrackSheet by remember { mutableStateOf(false) }
+    var showSubTrackSheet by remember { mutableStateOf(false) }
 
     // Auto-hide controls after 3 seconds of inactivity (paused while sheet is open)
-    LaunchedEffect(controlsVisible, lastInteraction, userSeeking, playerState.paused, showAudioTrackSheet) {
-        if (controlsVisible && !userSeeking && !playerState.paused && !showAudioTrackSheet) {
+    LaunchedEffect(controlsVisible, lastInteraction, userSeeking, playerState.paused, showAudioTrackSheet, showSubTrackSheet) {
+        if (controlsVisible && !userSeeking && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet) {
             delay(3000)
             onHideControls()
         }
@@ -240,6 +241,22 @@ fun PlayerControls(
                         IconButton(
                             onClick = {
                                 lastInteraction = System.currentTimeMillis()
+                                showSubTrackSheet = true
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Text(
+                                text = "💬",
+                                fontSize = 20.sp,
+                                color = if (playerState.selectedSubTrackId != null) Color(0xFFBB86FC) else Color.White
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        IconButton(
+                            onClick = {
+                                lastInteraction = System.currentTimeMillis()
                                 onToggleLock()
                             },
                             modifier = Modifier.size(48.dp)
@@ -337,6 +354,20 @@ fun PlayerControls(
                 },
                 onDismiss = {
                     showAudioTrackSheet = false
+                    lastInteraction = System.currentTimeMillis()
+                }
+            )
+        }
+
+        if (showSubTrackSheet) {
+            SubtitleTrackSheet(
+                tracks = playerState.tracks,
+                selectedTrackId = playerState.selectedSubTrackId,
+                onSelectTrack = { id ->
+                    playerEngine.setSubtitleTrack(id)
+                },
+                onDismiss = {
+                    showSubTrackSheet = false
                     lastInteraction = System.currentTimeMillis()
                 }
             )

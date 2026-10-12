@@ -94,6 +94,86 @@ fun AudioTrackSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SubtitleTrackSheet(
+    tracks: List<Track>,
+    selectedTrackId: Int?,
+    onSelectTrack: (Int?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val subTracks = tracks.filter { it.type == "sub" }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1E1E1E),
+        contentColor = Color.White,
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = "Subtitles",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    val isOff = (selectedTrackId == null)
+                    TrackRow(
+                        title = "Off",
+                        subtitle = "Disable subtitles",
+                        isSelected = isOff,
+                        onClick = {
+                            onSelectTrack(null)
+                            onDismiss()
+                        }
+                    )
+                }
+
+                items(subTracks) { track ->
+                    val isSelected = (selectedTrackId != null && track.id == selectedTrackId)
+                    val lang = track.lang?.uppercase() ?: ""
+                    val rawCodec = track.codec
+                    val codec = when (rawCodec?.lowercase()) {
+                        "subrip" -> "SRT"
+                        "ass" -> "ASS"
+                        "ssa" -> "SSA"
+                        "hdmv_pgs_subtitle", "pgssub" -> "PGS"
+                        "vtt", "webvtt" -> "VTT"
+                        null -> ""
+                        else -> rawCodec.uppercase()
+                    }
+                    val ext = if (track.external) "External" else ""
+                    val details = listOf(lang, codec, ext).filter { it.isNotEmpty() }.joinToString(" • ")
+                    val title = track.title ?: "Subtitle #${track.id}"
+
+                    TrackRow(
+                        title = title,
+                        subtitle = details,
+                        isSelected = isSelected,
+                        onClick = {
+                            onSelectTrack(track.id)
+                            onDismiss()
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
 @Composable
 fun TrackRow(
     title: String,
