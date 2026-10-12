@@ -3,7 +3,9 @@
 ## External agent CLIs
 
 Delegate to `agy` from the shell. Call the binary by absolute path (the Bash tool runs zsh, where the
-fish wrapper doesn't exist). Do not use `codex` in this project (user's instruction, 2026-10-11).
+fish wrapper doesn't exist). `codex` may be used again (user's instruction, 2026-10-12, replacing the
+2026-10-11 "do not use codex"): `codex exec "<task>"`; if it reports a usage limit, tell the user, who
+resets it. Observed limit text: `ERROR: You've hit your usage limit ... try again at <date>`.
 
 ### agy (Antigravity CLI) — `/home/rava/.local/bin/agy`
 
