@@ -57,6 +57,12 @@ fun GestureLayer(
     onVolumeChanged: (Int) -> Unit = {},
     currentPositionMs: Long = 0L,
     durationMs: Long = 0L,
+    zoom: Double = 0.0,
+    onZoomChange: (Double) -> Unit = {},
+    onPanChange: (panX: Double, panY: Double) -> Unit = { _, _ -> },
+    onZoomCommit: (Double) -> Unit = {},
+    onPanCommit: (panX: Double, panY: Double) -> Unit = { _, _ -> },
+    onResetZoom: () -> Unit = {},
     onSeekPreview: (targetMs: Long) -> Unit = {},
     onSeekCommit: (targetMs: Long) -> Unit = {},
     onSingleTap: () -> Unit = {},
@@ -72,6 +78,15 @@ fun GestureLayer(
     var pendingSingleTapJob by remember { mutableStateOf<Job?>(null) }
     var lastTapTime by remember { mutableStateOf(0L) }
     var lastTapPos by remember { mutableStateOf(Offset.Zero) }
+
+    var currentLocalZoom by remember(zoom) { mutableStateOf(zoom) }
+    var currentLocalPanX by remember { mutableStateOf(0.0) }
+    var currentLocalPanY by remember { mutableStateOf(0.0) }
+    var initialPinchDistance by remember { mutableFloatStateOf(0f) }
+    var initialPinchCenter by remember { mutableStateOf(Offset.Zero) }
+    var baseZoom by remember { mutableStateOf(0.0) }
+    var basePanX by remember { mutableStateOf(0.0) }
+    var basePanY by remember { mutableStateOf(0.0) }
 
     var brightnessLevel by remember(initialBrightness) { mutableFloatStateOf(initialBrightness) }
     var showBrightnessIndicator by remember { mutableStateOf(false) }
@@ -137,12 +152,48 @@ fun GestureLayer(
                     }
 
                     if (activePointers.size >= 2) {
+                        val p1 = activePointers[0]
+                        val p2 = activePointers[1]
+                        val pDiffX = p1.position.x - p2.position.x
+                        val pDiffY = p1.position.y - p2.position.y
+                        val currentDistance = sqrt(pDiffX * pDiffX + pDiffY * pDiffY)
+                        val currentCenter = Offset((p1.position.x + p2.position.x) / 2f, (p1.position.y + p2.position.y) / 2f)
+
                         if (!directionLocked || lockedGesture == GestureType.PINCH) {
                             if (lockedGesture != GestureType.PINCH) {
                                 lockedGesture = GestureType.PINCH
                                 directionLocked = true
                                 Log.i("VP", "Gesture detected: PINCH")
                                 onGestureTypeChanged(GestureType.PINCH)
+                                initialPinchDistance = currentDistance
+                                initialPinchCenter = currentCenter
+                                baseZoom = currentLocalZoom
+                                basePanX = currentLocalPanX
+                                basePanY = currentLocalPanY
+                                pendingSingleTapJob?.cancel()
+                                pendingSingleTapJob = null
+                                lastTapTime = 0L
+                                if (doubleTapStreakActive) {
+                                    doubleTapStreakActive = false
+                                    doubleTapAccumulatedSec = 0
+                                    doubleTapHideJob?.cancel()
+                                }
+                            } else {
+                                if (initialPinchDistance > 10f && currentDistance > 10f) {
+                                    val ratio = (currentDistance / initialPinchDistance).coerceAtLeast(0.01f)
+                                    val zoomDelta = kotlin.math.ln(ratio.toDouble()) / kotlin.math.ln(2.0)
+                                    val newZoom = (baseZoom + zoomDelta).coerceIn(0.0, 3.0)
+                                    currentLocalZoom = newZoom
+                                    onZoomChange(newZoom)
+
+                                    val panDx = (currentCenter.x - initialPinchCenter.x) / width
+                                    val panDy = (currentCenter.y - initialPinchCenter.y) / height
+                                    val newPanX = (basePanX + panDx.toDouble()).coerceIn(-1.5, 1.5)
+                                    val newPanY = (basePanY + panDy.toDouble()).coerceIn(-1.5, 1.5)
+                                    currentLocalPanX = newPanX
+                                    currentLocalPanY = newPanY
+                                    onPanChange(newPanX, newPanY)
+                                }
                             }
                             activePointers.forEach { it.consume() }
                         }
@@ -332,6 +383,17 @@ fun GestureLayer(
                             showVolumeIndicator = false
                         }
                     }
+                    if (lockedGesture == GestureType.PINCH) {
+                        if (currentLocalZoom < 0.05) {
+                            currentLocalZoom = 0.0
+                            currentLocalPanX = 0.0
+                            currentLocalPanY = 0.0
+                            onResetZoom()
+                        } else {
+                            onZoomCommit(currentLocalZoom)
+                            onPanCommit(currentLocalPanX, currentLocalPanY)
+                        }
+                    }
                     onGestureEnded(lockedGesture)
                     onGestureTypeChanged(GestureType.NONE)
                 }
@@ -371,6 +433,20 @@ fun GestureLayer(
             seconds = doubleTapAccumulatedSec,
             rippleTrigger = doubleTapRippleTrigger,
             modifier = Modifier.align(if (doubleTapIsLeft) Alignment.CenterStart else Alignment.CenterEnd)
+        )
+
+        ResetZoomButton(
+            visible = zoom > 0.01,
+            zoom = zoom,
+            onReset = {
+                currentLocalZoom = 0.0
+                currentLocalPanX = 0.0
+                currentLocalPanY = 0.0
+                onResetZoom()
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 70.dp, end = 24.dp)
         )
     }
 }

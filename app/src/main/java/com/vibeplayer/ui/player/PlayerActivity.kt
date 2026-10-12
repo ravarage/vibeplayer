@@ -6,11 +6,15 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
+import android.view.InputDevice
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -164,10 +168,14 @@ class PlayerActivity : ComponentActivity() {
         if (intent.getStringExtra("test") == "p1_02") {
             runP102Test()
         }
+        if (intent.getStringExtra("test") == "p3_06") {
+            runP306Test()
+        }
 
         setContent {
             val playerState by playerEngine.state.collectAsState()
             val positionMs by playerEngine.position.collectAsState()
+            val zoom by playerEngine.zoomState.collectAsState()
             var showDebugOverlay by remember { mutableStateOf(false) }
             var controlsVisible by remember { mutableStateOf(true) }
 
@@ -199,6 +207,12 @@ class PlayerActivity : ComponentActivity() {
                             },
                             currentPositionMs = positionMs,
                             durationMs = playerState.durationMs,
+                            zoom = zoom,
+                            onZoomChange = { z -> playerEngine.setVideoZoom(z, commit = false) },
+                            onPanChange = { px, py -> playerEngine.setVideoPan(px, py, commit = false) },
+                            onZoomCommit = { z -> playerEngine.setVideoZoom(z, commit = true) },
+                            onPanCommit = { px, py -> playerEngine.setVideoPan(px, py, commit = true) },
+                            onResetZoom = { playerEngine.resetZoomAndPan() },
                             onSeekPreview = { targetMs ->
                                 playerEngine.seekTo(targetMs, exact = false)
                             },
@@ -451,6 +465,77 @@ class PlayerActivity : ComponentActivity() {
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = lp
         Log.i("VP", "Reset window brightness override on exit")
+    }
+
+    private fun runP306Test() {
+        lifecycleScope.launch(Dispatchers.Main) {
+            delay(1500)
+            Log.i("VP", "=== Starting P3-06 Multi-touch Pinch Zoom & Pan Test ===")
+
+            val downTime = SystemClock.uptimeMillis()
+            val pp0 = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }
+            val pp1 = MotionEvent.PointerProperties().apply { id = 1; toolType = MotionEvent.TOOL_TYPE_FINGER }
+            val properties = arrayOf(pp0, pp1)
+
+            val pc0 = MotionEvent.PointerCoords().apply { x = 1000f; y = 500f }
+            val pc1 = MotionEvent.PointerCoords().apply { x = 1400f; y = 500f }
+            val coords = arrayOf(pc0, pc1)
+
+            // Pointer 0 DOWN
+            var eventTime = SystemClock.uptimeMillis()
+            var event = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_DOWN, 1, arrayOf(pp0), arrayOf(pc0), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            window.decorView.dispatchTouchEvent(event)
+            event.recycle()
+
+            delay(30)
+            // Pointer 1 POINTER_DOWN (pointer index 1)
+            eventTime = SystemClock.uptimeMillis()
+            val actionPointerDown = MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+            event = MotionEvent.obtain(downTime, eventTime, actionPointerDown, 2, properties, coords, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            window.decorView.dispatchTouchEvent(event)
+            event.recycle()
+
+            // Move apart: pinch zoom in
+            for (step in 1..10) {
+                delay(30)
+                eventTime = SystemClock.uptimeMillis()
+                pc0.x = 1000f - step * 30f
+                pc1.x = 1400f + step * 30f
+                event = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_MOVE, 2, properties, coords, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+                window.decorView.dispatchTouchEvent(event)
+                event.recycle()
+            }
+
+            // Two-finger pan
+            for (step in 1..5) {
+                delay(30)
+                eventTime = SystemClock.uptimeMillis()
+                pc0.x += 20f
+                pc0.y += 15f
+                pc1.x += 20f
+                pc1.y += 15f
+                event = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_MOVE, 2, properties, coords, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+                window.decorView.dispatchTouchEvent(event)
+                event.recycle()
+            }
+
+            // Pointer 1 POINTER_UP (pointer index 1)
+            delay(30)
+            eventTime = SystemClock.uptimeMillis()
+            val actionPointerUp = MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+            event = MotionEvent.obtain(downTime, eventTime, actionPointerUp, 2, properties, coords, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            window.decorView.dispatchTouchEvent(event)
+            event.recycle()
+
+            // Pointer 0 UP
+            delay(30)
+            eventTime = SystemClock.uptimeMillis()
+            event = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_UP, 1, arrayOf(pp0), arrayOf(pc0), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            window.decorView.dispatchTouchEvent(event)
+            event.recycle()
+
+            Log.i("VP", "=== P3-06 Multi-touch Pinch Zoom Dispatched; ZoomState=${playerEngine.zoomState.value} ===")
+        }
     }
 
     override fun onDestroy() {

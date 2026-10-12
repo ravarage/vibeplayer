@@ -325,6 +325,9 @@ class PlayerEngine(
         scope.launch {
             assertCommandThread()
             currentFilePath = path
+            _zoomState.value = 0.0
+            currentPanX = 0.0
+            currentPanY = 0.0
             _state.update { it.copy(videoCodec = null, fallback = false) }
             if (handle != 0L) {
                 val res = MpvNative.command(handle, arrayOf("loadfile", path))
@@ -411,6 +414,68 @@ class PlayerEngine(
 
     @Volatile
     private var lastKeyframeSeekTime: Long = 0L
+
+    private val _zoomState = MutableStateFlow(0.0)
+    val zoomState: StateFlow<Double> = _zoomState.asStateFlow()
+
+    private var currentPanX = 0.0
+    private var currentPanY = 0.0
+
+    @Volatile
+    private var lastZoomUpdateTime = 0L
+
+    fun setVideoZoom(zoom: Double, commit: Boolean = false) {
+        val clampedZoom = zoom.coerceIn(0.0, 3.0)
+        _zoomState.value = clampedZoom
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!commit && now - lastZoomUpdateTime < 25L) {
+            return
+        }
+        lastZoomUpdateTime = now
+        scope.launch {
+            assertCommandThread()
+            if (handle != 0L) {
+                MpvNative.setPropertyDouble(handle, "video-zoom", clampedZoom)
+                Log.i("VP", "video-zoom set to $clampedZoom (commit=$commit)")
+            }
+        }
+    }
+
+    @Volatile
+    private var lastPanUpdateTime = 0L
+
+    fun setVideoPan(panX: Double, panY: Double, commit: Boolean = false) {
+        currentPanX = panX.coerceIn(-1.5, 1.5)
+        currentPanY = panY.coerceIn(-1.5, 1.5)
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!commit && now - lastPanUpdateTime < 25L) {
+            return
+        }
+        lastPanUpdateTime = now
+        scope.launch {
+            assertCommandThread()
+            if (handle != 0L) {
+                MpvNative.setPropertyDouble(handle, "video-pan-x", currentPanX)
+                MpvNative.setPropertyDouble(handle, "video-pan-y", currentPanY)
+                Log.i("VP", "video-pan set to $currentPanX, $currentPanY (commit=$commit)")
+            }
+        }
+    }
+
+    fun resetZoomAndPan() {
+        _zoomState.value = 0.0
+        currentPanX = 0.0
+        currentPanY = 0.0
+        scope.launch {
+            assertCommandThread()
+            if (handle != 0L) {
+                MpvNative.setPropertyDouble(handle, "video-zoom", 0.0)
+                MpvNative.setPropertyDouble(handle, "video-pan-x", 0.0)
+                MpvNative.setPropertyDouble(handle, "video-pan-y", 0.0)
+                Log.i("VP", "resetZoomAndPan executed")
+            }
+        }
+    }
 
     fun seekTo(positionMs: Long, exact: Boolean = false) {
         if (!exact) {

@@ -31,6 +31,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 @Composable
@@ -264,6 +267,47 @@ fun DoubleTapSkipIndicator(
                     text = "$sign$seconds s",
                     fontSize = 20.sp,
                     color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ResetZoomButton(
+    visible: Boolean,
+    zoom: Double,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier
+    ) {
+        val percent = (2.0.pow(zoom) * 100).roundToInt()
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xCC1E1E1E))
+                .clickable { onReset() }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "🔍",
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = "Reset Zoom ($percent%)",
+                    color = Color.White,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
