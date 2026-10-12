@@ -54,6 +54,8 @@ class PlayerEngine(
         const val REPLY_DHEIGHT = 9L
         const val REPLY_VIDEO_CODEC = 10L
         const val REPLY_VIDEO_FORMAT = 11L
+        const val REPLY_AID = 12L
+        const val REPLY_SID = 13L
     }
 
     private val eventCallback = object : MpvNative.EventCallback {
@@ -144,6 +146,24 @@ class PlayerEngine(
                     val h = (value as? Number)?.toInt() ?: 0
                     _state.update { it.copy(videoHeight = h) }
                 }
+                "aid" -> {
+                    val aid = when (value) {
+                        is Number -> value.toInt()
+                        is String -> value.toIntOrNull()
+                        else -> null
+                    }
+                    _state.update { it.copy(selectedAudioTrackId = aid) }
+                    updateTracks()
+                }
+                "sid" -> {
+                    val sid = when (value) {
+                        is Number -> value.toInt()
+                        is String -> value.toIntOrNull()
+                        else -> null
+                    }
+                    _state.update { it.copy(selectedSubTrackId = sid) }
+                    updateTracks()
+                }
             }
         }
 
@@ -158,6 +178,15 @@ class PlayerEngine(
                 }
                 MpvEvent.FILE_LOADED -> {
                     Log.i("VP", "mpv event file-loaded")
+                    updateTracks()
+                }
+                MpvEvent.TRACKS_CHANGED -> {
+                    Log.i("VP", "mpv event tracks-changed")
+                    updateTracks()
+                }
+                MpvEvent.TRACK_SWITCHED -> {
+                    Log.i("VP", "mpv event track-switched")
+                    updateTracks()
                 }
                 else -> {
                     Log.d("VP", "onEvent: $id")
@@ -266,6 +295,8 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_DHEIGHT, "dheight", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_VIDEO_CODEC, "video-codec", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_VIDEO_FORMAT, "video-format", MpvFormat.STRING)
+        MpvNative.observeProperty(handle, REPLY_AID, "aid", MpvFormat.STRING)
+        MpvNative.observeProperty(handle, REPLY_SID, "sid", MpvFormat.STRING)
     }
 
     fun setControlsVisible(visible: Boolean) {
@@ -419,6 +450,69 @@ class PlayerEngine(
             if (handle != 0L) {
                 MpvNative.command(handle, arrayOf("cycle", "pause"))
                 Log.i("VP", "togglePause")
+            }
+        }
+    }
+
+    fun updateTracks() {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (handle == 0L) return@execute
+            val count = MpvNative.getPropertyLong(handle, "track-list/count") ?: 0L
+            val trackList = mutableListOf<Track>()
+            for (i in 0 until count) {
+                val id = MpvNative.getPropertyLong(handle, "track-list/$i/id")?.toInt() ?: continue
+                val type = MpvNative.getPropertyString(handle, "track-list/$i/type") ?: continue
+                val title = MpvNative.getPropertyString(handle, "track-list/$i/title")
+                val lang = MpvNative.getPropertyString(handle, "track-list/$i/lang")
+                val codec = MpvNative.getPropertyString(handle, "track-list/$i/codec")
+                val channels = MpvNative.getPropertyLong(handle, "track-list/$i/audio-channels")?.toInt()
+                val selected = MpvNative.getPropertyBoolean(handle, "track-list/$i/selected") ?: false
+                trackList.add(
+                    Track(
+                        id = id,
+                        type = type,
+                        title = title,
+                        lang = lang,
+                        codec = codec,
+                        channels = channels,
+                        selected = selected
+                    )
+                )
+            }
+            val currentAid = MpvNative.getPropertyString(handle, "aid")?.toIntOrNull()
+            val currentSid = MpvNative.getPropertyString(handle, "sid")?.toIntOrNull()
+            _state.update {
+                it.copy(
+                    tracks = trackList,
+                    selectedAudioTrackId = currentAid,
+                    selectedSubTrackId = currentSid
+                )
+            }
+            Log.i("VP", "Updated tracks (${trackList.size}): aid=$currentAid, sid=$currentSid")
+        }
+    }
+
+    fun setAudioTrack(trackId: Int?) {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (handle != 0L) {
+                val value = trackId?.toString() ?: "no"
+                MpvNative.setPropertyString(handle, "aid", value)
+                Log.i("VP", "setAudioTrack: aid=$value")
+                updateTracks()
+            }
+        }
+    }
+
+    fun setSubtitleTrack(trackId: Int?) {
+        commandExecutor.execute {
+            assertCommandThread()
+            if (handle != 0L) {
+                val value = trackId?.toString() ?: "no"
+                MpvNative.setPropertyString(handle, "sid", value)
+                Log.i("VP", "setSubtitleTrack: sid=$value")
+                updateTracks()
             }
         }
     }

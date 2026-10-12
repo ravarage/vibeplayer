@@ -77,9 +77,11 @@ fun PlayerControls(
         }
     }
 
-    // Auto-hide controls after 3 seconds of inactivity
-    LaunchedEffect(controlsVisible, lastInteraction, userSeeking, playerState.paused) {
-        if (controlsVisible && !userSeeking && !playerState.paused) {
+    var showAudioTrackSheet by remember { mutableStateOf(false) }
+
+    // Auto-hide controls after 3 seconds of inactivity (paused while sheet is open)
+    LaunchedEffect(controlsVisible, lastInteraction, userSeeking, playerState.paused, showAudioTrackSheet) {
+        if (controlsVisible && !userSeeking && !playerState.paused && !showAudioTrackSheet) {
             delay(3000)
             onHideControls()
         }
@@ -222,6 +224,22 @@ fun PlayerControls(
                         IconButton(
                             onClick = {
                                 lastInteraction = System.currentTimeMillis()
+                                showAudioTrackSheet = true
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Text(
+                                text = "🎵",
+                                fontSize = 20.sp,
+                                color = Color.White
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        IconButton(
+                            onClick = {
+                                lastInteraction = System.currentTimeMillis()
                                 onToggleLock()
                             },
                             modifier = Modifier.size(48.dp)
@@ -308,6 +326,20 @@ fun PlayerControls(
                     )
                 }
             }
+        }
+
+        if (showAudioTrackSheet) {
+            AudioTrackSheet(
+                tracks = playerState.tracks,
+                selectedTrackId = playerState.selectedAudioTrackId,
+                onSelectTrack = { id ->
+                    playerEngine.setAudioTrack(id)
+                },
+                onDismiss = {
+                    showAudioTrackSheet = false
+                    lastInteraction = System.currentTimeMillis()
+                }
+            )
         }
     }
 }
