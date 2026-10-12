@@ -126,6 +126,8 @@ OpenGL ES playback was verified after the rebuild:
 - `vo=gpu` (`gpu-api=opengl`, `gpu-context=android`, `hwdec=mediacodec`): functional and smooth.
 - `vo=gpu-next` (`gpu-api=opengl`, `gpu-context=android`, `hwdec=mediacodec-copy`): functional and smooth.
 
+**Future Vulkan (user note 2026-10-12):** the phone may later get a driver with Vulkan 1.2 or 1.3. The renderer choice stays in the design: at runtime Vulkan is offered only if the device reports 1.2+ and libmpv was built with it (`VULKAN=1 native/build.sh`). Until then nothing may depend on Vulkan.
+
 ## Surface handling (required sequence, from mpv-android)
 - Attach: set `wid` to the surface ref, then set property `vo` to the mode's vo (and `force-window=yes`).
 - Detach: set property `vo=null` and `force-window=no` **first**, wait for it to take effect, then set

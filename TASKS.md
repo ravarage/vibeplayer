@@ -223,11 +223,33 @@ resets. *Files*: Gestures.kt, PlayerEngine.kt. *Accept*: smooth zoom on 4K; rese
 **P4-01 Room setup** — Database, `FileSettings` entity and DAO per ARCHITECTURE. *Files*: data/db/*.
 *Accept*: insert/read round trip logged on device; schema exported.
 
+_**Reviewer findings on P3 and P4-02..05 (2026-10-12), fix first, commit as `P4-02 fix: ...`:**_
+- _**Stale position.** `time-pos` is unobserved while the controls are hidden, but
+  `PlayerViewModel.saveCurrentPosition()`, swipe seek and double-tap skip all read
+  `playerEngine.position.value`. With controls hidden (the normal case) resume saves the position from
+  the last time the controls were visible, and swipe seek starts from it. Fix: add
+  `suspend fun currentPositionMs(): Long` to `PlayerEngine` that reads `time-pos` on the command thread;
+  use it for saving. Make swipe seek and double-tap skip use relative seeks (`seek <delta> relative`),
+  with the overlay's base position taken from `currentPositionMs()` at gesture start. Verify: play with
+  controls hidden for 40 s, press back, reopen: it must resume within 10 s of where it stopped; a
+  swipe seek with hidden controls must land at old position + delta._
+- _**Whole player recomposes on every tick.** `PlayerActivity` collects `playerEngine.position` at the
+  root of `setContent` and passes `positionMs` down. Pass the `StateFlow` (or a lambda) instead and
+  collect it only inside the seek bar and time labels._
+- _`saveCurrentPosition(forceSync = true)` in `onCleared` uses `runBlocking` on the main thread: also
+  save in `onStop` asynchronously so `onCleared` rarely has anything left to write; keep the blocking
+  save bounded (timeout 500 ms)._
+
 _Reviewer notes from the P1 review (2026-10-12):_
 - _P4-02: restore the position with the `start=<seconds>` per-file option of `loadfile`, not with a
   `seek` sent right after `loadfile` (the file is not loaded yet, so that seek is lost).
   `PlayerEngine.reconfigure()` has the same bug: fix it there too._
-- _P6-02: remove `Renderer.VULKAN` and its option rows (Vulkan is unusable on this device)._
+- _P6-02: keep `Renderer.VULKAN` in the code but offer it only when the device reports Vulkan 1.2 or
+  newer (`PackageManager.FEATURE_VULKAN_HARDWARE_VERSION`) **and** the loaded libmpv lists `vulkan` in
+  its `gpu-api` choices; otherwise hide the choice and use GLES. The user plans a system upgrade that
+  may bring Vulkan 1.2/1.3, so the path must light up without code changes: rebuild with
+  `VULKAN=1 native/build.sh` (applies `native/patches/optional/0004-vulkan-shaderc.patch`) and re-run
+  the P6 benchmark. Add that switch to `native/build.sh` in P6-02._
 - _P7: `libdav1d: Error parsing OBU data` is logged once at the start of every AV1 file; find out
   whether it is harmless (extradata probe) or costs start time._
 
@@ -253,6 +275,17 @@ audio; AC3/EAC3/DTS track plays.
 
 **P4-08 History in browser** — Progress bar on thumbnails, "Continue watching" row.
 *Files*: ui/browser/*. *Accept*: partially watched clips show progress; row order = most recent first.
+
+**P4-09 Name, icon and version** — App label "Vibe Player" (launcher, recents, settings title, browser
+top bar). Launcher icon from `branding/icon.svg` (512 px artwork with its own rounded background):
+build an adaptive icon (`mipmap-anydpi-v26/ic_launcher.xml` with foreground and background layers, the
+play mark inside the 66% safe zone, plus a monochrome layer for themed icons) and legacy PNG mipmaps;
+use it for `android:icon` and `android:roundIcon`. `rootProject.name = "VibePlayer"`. Version scheme:
+`versionName` = `0.<highest finished phase>.<patch>` (now `0.4.0`; `1.0.0` when P9 is done),
+`versionCode` increases by 1 with every versionName change; show "Vibe Player 0.4.0" in the settings
+screen from `BuildConfig`. Keep `applicationId` and package `com.vibeplayer`. *Files*: app/build.gradle.kts,
+settings.gradle.kts, res/mipmap-*, res/values/strings.xml, manifest, ui/settings/*. *Accept*: screenshot
+of the launcher shows the new icon and the name "Vibe Player"; settings shows the version.
 
 ## P5 PiP and background
 

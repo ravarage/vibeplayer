@@ -1,6 +1,6 @@
 # PROGRESS
 
-Last reviewed commit: 7bb2e71
+Last reviewed commit: a7ac63a
 
 Statuses: TODO, IN PROGRESS, DONE, BLOCKED. Notes: one or two lines; for IN PROGRESS always state the next step.
 
@@ -83,6 +83,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P4-06 | Aspect ratio | IN PROGRESS | AGY-2 | pending | Stopped at the 06:45 cut-off on 2026-10-12 before any code was written. Next step: implement aspect cycling (fit, crop, stretch, 16:9, 4:3) with label, verify on a 4:3 and a 21:9 source. |
 | P4-07 | Persist per-file choices | TODO | | | |
 | P4-08 | History in browser | IN PROGRESS | AGY-2B | df3500c | Code complete (Continue watching row, progress bars from Room). Next step: after P4-06 writes real history, verify on device and mark DONE. Reviewer removed the fake history seeding from BrowserRoot. |
+| P4-09 | Name, icon and version | TODO | | | |
 | P5-01 | PlaybackService | TODO | | | |
 | P5-02 | MediaSession and notification | TODO | | | |
 | P5-03 | Background audio | TODO | | | |
