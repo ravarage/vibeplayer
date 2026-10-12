@@ -41,4 +41,6 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    testImplementation(kotlin("test"))
+    testImplementation("junit:junit:4.13.2")
 }

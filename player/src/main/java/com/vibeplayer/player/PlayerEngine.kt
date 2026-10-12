@@ -526,33 +526,23 @@ class PlayerEngine(
         }
     }
 
-    private var pendingTargetAid: Int? = null
-    private var pendingTargetAudioLang: String? = null
-    private var pendingTargetAudioTitle: String? = null
-    private var pendingTargetSid: Int? = null
-    private var pendingTargetSubLang: String? = null
-    private var pendingTargetSubTitle: String? = null
-    private var pendingSubEnabled: Boolean = true
+    data class PendingTrackSelection(
+        val fileChoice: FileTrackChoice?,
+        val folderChoice: FolderTrackChoice?,
+        val preferences: LanguagePreferences
+    )
 
-    fun setPendingTrackMatch(
-        targetAid: Int?,
-        targetAudioLang: String?,
-        targetAudioTitle: String?,
-        targetSid: Int?,
-        targetSubLang: String?,
-        targetSubTitle: String?,
-        subEnabled: Boolean
+    private var pendingTrackSelection: PendingTrackSelection? = null
+
+    fun setPendingTrackSelection(
+        fileChoice: FileTrackChoice?,
+        folderChoice: FolderTrackChoice?,
+        preferences: LanguagePreferences
     ) {
         commandExecutor.execute {
             assertCommandThread()
-            pendingTargetAid = targetAid
-            pendingTargetAudioLang = targetAudioLang
-            pendingTargetAudioTitle = targetAudioTitle
-            pendingTargetSid = targetSid
-            pendingTargetSubLang = targetSubLang
-            pendingTargetSubTitle = targetSubTitle
-            pendingSubEnabled = subEnabled
-            Log.i("VP", "Pending track match set: aid=$targetAid ($targetAudioLang, $targetAudioTitle), sid=$targetSid ($targetSubLang, $targetSubTitle), subEnabled=$subEnabled")
+            pendingTrackSelection = PendingTrackSelection(fileChoice, folderChoice, preferences)
+            Log.i("VP", "Pending track selection set: file=$fileChoice, folder=$folderChoice, prefs=$preferences")
         }
     }
 
@@ -571,6 +561,7 @@ class PlayerEngine(
                 val channels = MpvNative.getPropertyLong(handle, "track-list/$i/audio-channels")?.toInt()
                 val selected = MpvNative.getPropertyBoolean(handle, "track-list/$i/selected") ?: false
                 val external = MpvNative.getPropertyBoolean(handle, "track-list/$i/external") ?: false
+                val forced = MpvNative.getPropertyBoolean(handle, "track-list/$i/forced") ?: false
                 trackList.add(
                     Track(
                         id = id,
@@ -580,7 +571,8 @@ class PlayerEngine(
                         codec = codec,
                         channels = channels,
                         external = external,
-                        selected = selected
+                        selected = selected,
+                        forced = forced
                     )
                 )
             }
@@ -594,66 +586,54 @@ class PlayerEngine(
                 )
             }
             Log.i("VP", "Updated tracks (${trackList.size}): aid=$currentAid, sid=$currentSid")
-
-            if (trackList.isNotEmpty()) {
-                checkPendingTrackMatch(trackList, currentAid, currentSid)
+            for (t in trackList) {
+                Log.i("VP-Track", "id=${t.id} type=${t.type} lang=${t.lang} title=${t.title} forced=${t.forced} kind=${TrackSelector.getSubtitleKind(t)}")
             }
-        }
-    }
 
-    private fun checkPendingTrackMatch(trackList: List<Track>, currentAid: Int?, currentSid: Int?) {
-        assertCommandThread()
-        val aid = pendingTargetAid
-        if (aid != null) {
-            val hasAid = trackList.any { it.type == "audio" && it.id == aid }
-            if (!hasAid) {
-                val fallbackTrack = findFallbackTrack(trackList, "audio", pendingTargetAudioLang, pendingTargetAudioTitle)
-                if (fallbackTrack != null) {
-                    Log.i("VP", "Audio track id $aid missing. Fallback to track ${fallbackTrack.id} (${fallbackTrack.lang}, ${fallbackTrack.title})")
-                    setAudioTrack(fallbackTrack.id)
+            val pending = pendingTrackSelection
+            if (pending != null && trackList.isNotEmpty()) {
+                pendingTrackSelection = null
+                val result = TrackSelector.selectTracks(
+                    tracks = trackList,
+                    fileChoice = pending.fileChoice,
+                    folderChoice = pending.folderChoice,
+                    preferences = pending.preferences
+                )
+                Log.i("VP", "TrackSelector resolved: aid=${result.selectedAudioTrackId} (audioEnabled=${result.audioEnabled}), sid=${result.selectedSubTrackId} (subEnabled=${result.subEnabled})")
+
+                var changed = false
+                if (!result.audioEnabled) {
+                    if (currentAid != null) {
+                        MpvNative.setPropertyString(handle, "aid", "no")
+                        changed = true
+                    }
+                } else if (result.selectedAudioTrackId != null && result.selectedAudioTrackId != currentAid) {
+                    MpvNative.setPropertyString(handle, "aid", result.selectedAudioTrackId.toString())
+                    changed = true
                 }
-            }
-            pendingTargetAid = null
-        }
 
-        if (pendingSubEnabled) {
-            val sid = pendingTargetSid
-            if (sid != null) {
-                val hasSid = trackList.any { it.type == "sub" && it.id == sid }
-                if (!hasSid) {
-                    val fallbackTrack = findFallbackTrack(trackList, "sub", pendingTargetSubLang, pendingTargetSubTitle)
-                    if (fallbackTrack != null) {
-                        Log.i("VP", "Sub track id $sid missing. Fallback to track ${fallbackTrack.id} (${fallbackTrack.lang}, ${fallbackTrack.title})")
-                        setSubtitleTrack(fallbackTrack.id)
+                if (!result.subEnabled) {
+                    if (currentSid != null) {
+                        MpvNative.setPropertyString(handle, "sid", "no")
+                        changed = true
+                    }
+                } else if (result.selectedSubTrackId != null && result.selectedSubTrackId != currentSid) {
+                    MpvNative.setPropertyString(handle, "sid", result.selectedSubTrackId.toString())
+                    changed = true
+                }
+
+                if (changed) {
+                    val newAid = MpvNative.getPropertyString(handle, "aid")?.toIntOrNull()
+                    val newSid = MpvNative.getPropertyString(handle, "sid")?.toIntOrNull()
+                    _state.update {
+                        it.copy(
+                            selectedAudioTrackId = newAid,
+                            selectedSubTrackId = newSid
+                        )
                     }
                 }
-                pendingTargetSid = null
             }
         }
-    }
-
-    private fun findFallbackTrack(tracks: List<Track>, type: String, targetLang: String?, targetTitle: String?): Track? {
-        val candidates = tracks.filter { it.type == type }
-        if (!targetLang.isNullOrEmpty() && !targetTitle.isNullOrEmpty()) {
-            val exact = candidates.firstOrNull {
-                it.lang?.equals(targetLang, ignoreCase = true) == true &&
-                it.title?.equals(targetTitle, ignoreCase = true) == true
-            }
-            if (exact != null) return exact
-        }
-        if (!targetLang.isNullOrEmpty()) {
-            val byLang = candidates.firstOrNull {
-                it.lang?.equals(targetLang, ignoreCase = true) == true
-            }
-            if (byLang != null) return byLang
-        }
-        if (!targetTitle.isNullOrEmpty()) {
-            val byTitle = candidates.firstOrNull {
-                it.title?.equals(targetTitle, ignoreCase = true) == true
-            }
-            if (byTitle != null) return byTitle
-        }
-        return null
     }
 
     fun setAudioTrack(trackId: Int?) {

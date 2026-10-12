@@ -6,10 +6,19 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vibeplayer.data.db.AppDatabase
 import com.vibeplayer.data.db.FileSettings
+import com.vibeplayer.data.db.FolderSettings
+import com.vibeplayer.data.prefs.AppSettingsRepository
+import com.vibeplayer.data.prefs.SubtitlePreferenceMode
+import com.vibeplayer.player.FileTrackChoice
+import com.vibeplayer.player.FolderTrackChoice
+import com.vibeplayer.player.LanguagePreferences
 import com.vibeplayer.player.PlayerEngine
+import com.vibeplayer.player.SubtitleMode
+import com.vibeplayer.player.TrackSelector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -20,6 +29,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val playerEngine = PlayerEngine()
     private val db = AppDatabase.getInstance(application)
     private val dao = db.fileSettingsDao()
+    private val folderDao = db.folderSettingsDao()
+    private val appSettingsRepository = AppSettingsRepository(application)
 
     private var currentKey: String? = null
     private var currentVideoPath: String? = null
@@ -62,13 +73,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         currentKey = key
 
         viewModelScope.launch {
-            val settings = withContext(Dispatchers.IO) {
+            val folderPath = File(path).parent ?: ""
+            val fileSettings = withContext(Dispatchers.IO) {
                 dao.getByKey(key) ?: dao.getByKey(path)
             }
+            val folderSettings = withContext(Dispatchers.IO) {
+                if (folderPath.isNotEmpty()) folderDao.getByPath(folderPath) else null
+            }
+            val appSettings = appSettingsRepository.appSettingsFlow.first()
 
-            val startPositionMs = if (settings != null) {
-                val dur = settings.durationMs
-                val pos = settings.positionMs
+            val startPositionMs = if (fileSettings != null) {
+                val dur = fileSettings.durationMs
+                val pos = fileSettings.positionMs
                 if (dur > 0L && pos >= (dur * 0.95)) {
                     Log.i("VP", "Resume: pos $pos ms is in last 5% of duration $dur ms -> restarting from 0")
                     0L
@@ -82,29 +98,61 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 0L
             }
 
-            val audioTrackId = settings?.audioTrackId
-            val audioEnabled = settings?.audioEnabled ?: true
-            val subTrackId = settings?.subTrackId
-            val subEnabled = settings?.subEnabled ?: true
-            val speed = settings?.speed?.toDouble() ?: 1.0
-            val aspect = settings?.aspect
+            val fileChoice = fileSettings?.let {
+                FileTrackChoice(
+                    audioTrackId = it.audioTrackId,
+                    audioTrackTitle = it.audioTrackTitle,
+                    audioTrackLang = it.audioTrackLang,
+                    audioEnabled = it.audioEnabled,
+                    subTrackId = it.subTrackId,
+                    subTrackTitle = it.subTrackTitle,
+                    subTrackLang = it.subTrackLang,
+                    subEnabled = it.subEnabled
+                )
+            }
 
-            playerEngine.setPendingTrackMatch(
-                targetAid = audioTrackId,
-                targetAudioLang = settings?.audioTrackLang,
-                targetAudioTitle = settings?.audioTrackTitle,
-                targetSid = subTrackId,
-                targetSubLang = settings?.subTrackLang,
-                targetSubTitle = settings?.subTrackTitle,
-                subEnabled = subEnabled
+            val folderChoice = folderSettings?.let {
+                FolderTrackChoice(
+                    audioLang = it.audioLang,
+                    audioTitle = it.audioTitle,
+                    subLang = it.subLang,
+                    subTitle = it.subTitle,
+                    subKind = it.subKind,
+                    subEnabled = it.subEnabled
+                )
+            }
+
+            val subMode = when (appSettings.subtitleMode) {
+                SubtitlePreferenceMode.FORCED_ONLY -> SubtitleMode.FORCED_ONLY
+                SubtitlePreferenceMode.FULL -> SubtitleMode.FULL
+                SubtitlePreferenceMode.OFF -> SubtitleMode.OFF
+            }
+
+            val preferences = LanguagePreferences(
+                preferredAudioLanguages = appSettings.preferredAudioLanguages,
+                preferredSubtitleLanguages = appSettings.preferredSubtitleLanguages,
+                subtitleMode = subMode
             )
+
+            playerEngine.setPendingTrackSelection(
+                fileChoice = fileChoice,
+                folderChoice = folderChoice,
+                preferences = preferences
+            )
+
+            val audioTrackId = fileChoice?.audioTrackId
+            val audioEnabled = fileChoice?.audioEnabled ?: true
+            val subTrackId = fileChoice?.subTrackId
+            val subEnabled = fileChoice?.subEnabled ?: true
+            val speed = fileSettings?.speed?.toDouble() ?: 1.0
+            val aspect = fileSettings?.aspect
 
             playerEngine.load(
                 path = path,
                 startPositionMs = startPositionMs,
                 audioTrackId = if (audioEnabled) audioTrackId else null,
                 audioEnabled = audioEnabled,
-                subTrackId = subTrackId,
+                subTrackId = if (subEnabled) subTrackId else null,
                 subEnabled = subEnabled,
                 speed = speed,
                 aspect = aspect
@@ -115,6 +163,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setAudioTrack(trackId: Int?) {
         playerEngine.setAudioTrack(trackId)
         val key = currentKey ?: return
+        val path = currentVideoPath
         viewModelScope.launch(Dispatchers.IO) {
             val track = if (trackId != null) {
                 playerEngine.state.value.tracks.firstOrNull { it.id == trackId && it.type == "audio" }
@@ -136,13 +185,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 lastPlayedAt = System.currentTimeMillis()
             )
             dao.upsert(updated)
-            Log.i("VP", "Persisted audioTrackId=$trackId, audioEnabled=$isEnabled (${track?.lang}, ${track?.title}) for key=$key")
+            Log.i("VP", "Persisted file audioTrackId=$trackId, audioEnabled=$isEnabled (${track?.lang}, ${track?.title}) for key=$key")
+
+            val folderPath = path?.let { File(it).parent }
+            if (!folderPath.isNullOrEmpty()) {
+                val existingFolder = folderDao.getByPath(folderPath)
+                val updatedFolder = existingFolder?.copy(
+                    audioLang = track?.lang,
+                    audioTitle = track?.title,
+                    updatedAt = System.currentTimeMillis()
+                ) ?: FolderSettings(
+                    folderPath = folderPath,
+                    audioLang = track?.lang,
+                    audioTitle = track?.title,
+                    updatedAt = System.currentTimeMillis()
+                )
+                folderDao.upsert(updatedFolder)
+                Log.i("VP", "Persisted folder audio: lang=${track?.lang}, title=${track?.title} for folder=$folderPath")
+            }
         }
     }
 
     fun setSubtitleTrack(trackId: Int?) {
         playerEngine.setSubtitleTrack(trackId)
         val key = currentKey ?: return
+        val path = currentVideoPath
         viewModelScope.launch(Dispatchers.IO) {
             val track = if (trackId != null) {
                 playerEngine.state.value.tracks.firstOrNull { it.id == trackId && it.type == "sub" }
@@ -164,7 +231,29 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 lastPlayedAt = System.currentTimeMillis()
             )
             dao.upsert(updated)
-            Log.i("VP", "Persisted subTrackId=$trackId, subEnabled=$isEnabled (${track?.lang}, ${track?.title}) for key=$key")
+            Log.i("VP", "Persisted file subTrackId=$trackId, subEnabled=$isEnabled (${track?.lang}, ${track?.title}) for key=$key")
+
+            val folderPath = path?.let { File(it).parent }
+            if (!folderPath.isNullOrEmpty()) {
+                val subKind = if (track != null) TrackSelector.getSubtitleKind(track).name else null
+                val existingFolder = folderDao.getByPath(folderPath)
+                val updatedFolder = existingFolder?.copy(
+                    subLang = track?.lang,
+                    subTitle = track?.title,
+                    subKind = subKind,
+                    subEnabled = isEnabled,
+                    updatedAt = System.currentTimeMillis()
+                ) ?: FolderSettings(
+                    folderPath = folderPath,
+                    subLang = track?.lang,
+                    subTitle = track?.title,
+                    subKind = subKind,
+                    subEnabled = isEnabled,
+                    updatedAt = System.currentTimeMillis()
+                )
+                folderDao.upsert(updatedFolder)
+                Log.i("VP", "Persisted folder sub: lang=${track?.lang}, title=${track?.title}, kind=$subKind, enabled=$isEnabled for folder=$folderPath")
+            }
         }
     }
 

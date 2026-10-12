@@ -8,7 +8,8 @@ data class Track(
     val codec: String? = null,
     val channels: Int? = null,
     val external: Boolean = false,
-    val selected: Boolean = false
+    val selected: Boolean = false,
+    val forced: Boolean = false
 )
 
 data class PlayerStats(

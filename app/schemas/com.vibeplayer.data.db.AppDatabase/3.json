@@ -1,0 +1,157 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "8babcefc8f060f07e67cc11409288756",
+    "entities": [
+      {
+        "tableName": "file_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `audioTrackId` INTEGER, `audioTrackTitle` TEXT, `audioTrackLang` TEXT, `audioEnabled` INTEGER NOT NULL, `subTrackId` INTEGER, `subTrackTitle` TEXT, `subTrackLang` TEXT, `subEnabled` INTEGER NOT NULL, `speed` REAL NOT NULL, `aspect` TEXT, `lastPlayedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "positionMs",
+            "columnName": "positionMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "audioTrackId",
+            "columnName": "audioTrackId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "audioTrackTitle",
+            "columnName": "audioTrackTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "audioTrackLang",
+            "columnName": "audioTrackLang",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "audioEnabled",
+            "columnName": "audioEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subTrackId",
+            "columnName": "subTrackId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "subTrackTitle",
+            "columnName": "subTrackTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subTrackLang",
+            "columnName": "subTrackLang",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subEnabled",
+            "columnName": "subEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "speed",
+            "columnName": "speed",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aspect",
+            "columnName": "aspect",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastPlayedAt",
+            "columnName": "lastPlayedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      },
+      {
+        "tableName": "folder_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`folderPath` TEXT NOT NULL, `audioLang` TEXT, `audioTitle` TEXT, `subLang` TEXT, `subTitle` TEXT, `subKind` TEXT, `subEnabled` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`folderPath`))",
+        "fields": [
+          {
+            "fieldPath": "folderPath",
+            "columnName": "folderPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "audioLang",
+            "columnName": "audioLang",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "audioTitle",
+            "columnName": "audioTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subLang",
+            "columnName": "subLang",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subTitle",
+            "columnName": "subTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subKind",
+            "columnName": "subKind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subEnabled",
+            "columnName": "subEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "folderPath"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8babcefc8f060f07e67cc11409288756')"
+    ]
+  }
+}

@@ -18,6 +18,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -39,6 +40,7 @@ import com.vibeplayer.data.prefs.AppSettings
 import com.vibeplayer.data.prefs.PlaybackModeOption
 import com.vibeplayer.data.prefs.RendererOption
 import com.vibeplayer.data.prefs.ShaderPresetOption
+import com.vibeplayer.data.prefs.SubtitlePreferenceMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +56,9 @@ fun SettingsScreen(
     var showRendererDialog by remember { mutableStateOf(false) }
     var showSkipDialog by remember { mutableStateOf(false) }
     var showShaderDialog by remember { mutableStateOf(false) }
+    var showAudioLangDialog by remember { mutableStateOf(false) }
+    var showSubLangDialog by remember { mutableStateOf(false) }
+    var showSubtitleModeDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -137,6 +142,35 @@ fun SettingsScreen(
                 subtitle = "${settings.skipSeconds} seconds",
                 description = "Time skipped when double-tapping left or right screen edges",
                 onClick = { showSkipDialog = true }
+            )
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+
+            // Category: Languages
+            SettingsSectionHeader(title = "Languages")
+
+            SettingsClickableRow(
+                title = "Preferred Audio Languages",
+                subtitle = settings.preferredAudioLanguages.joinToString(", "),
+                description = "Priority order of preferred audio languages (e.g. en, ja)",
+                onClick = { showAudioLangDialog = true }
+            )
+
+            SettingsClickableRow(
+                title = "Preferred Subtitle Languages",
+                subtitle = settings.preferredSubtitleLanguages.joinToString(", "),
+                description = "Priority order of preferred subtitle languages (e.g. en, ja)",
+                onClick = { showSubLangDialog = true }
+            )
+
+            SettingsClickableRow(
+                title = "Subtitle Mode",
+                subtitle = settings.subtitleMode.displayName,
+                description = settings.subtitleMode.description,
+                onClick = { showSubtitleModeDialog = true }
             )
 
             HorizontalDivider(
@@ -351,6 +385,134 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showShaderDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    // Audio Language Dialog
+    if (showAudioLangDialog) {
+        var textValue by remember { mutableStateOf(settings.preferredAudioLanguages.joinToString(", ")) }
+        AlertDialog(
+            onDismissRequest = { showAudioLangDialog = false },
+            title = { Text("Preferred Audio Languages") },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter comma-separated language codes in priority order:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = textValue,
+                        onValueChange = { textValue = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val langs = textValue.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            .ifEmpty { listOf("en") }
+                        onUpdateSettings(settings.copy(preferredAudioLanguages = langs))
+                        showAudioLangDialog = false
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAudioLangDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Subtitle Language Dialog
+    if (showSubLangDialog) {
+        var textValue by remember { mutableStateOf(settings.preferredSubtitleLanguages.joinToString(", ")) }
+        AlertDialog(
+            onDismissRequest = { showSubLangDialog = false },
+            title = { Text("Preferred Subtitle Languages") },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter comma-separated language codes in priority order:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = textValue,
+                        onValueChange = { textValue = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val langs = textValue.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            .ifEmpty { listOf("en") }
+                        onUpdateSettings(settings.copy(preferredSubtitleLanguages = langs))
+                        showSubLangDialog = false
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSubLangDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Subtitle Mode Dialog
+    if (showSubtitleModeDialog) {
+        AlertDialog(
+            onDismissRequest = { showSubtitleModeDialog = false },
+            title = { Text("Subtitle Mode") },
+            text = {
+                Column {
+                    SubtitlePreferenceMode.entries.forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onUpdateSettings(settings.copy(subtitleMode = option))
+                                    showSubtitleModeDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = (option == settings.subtitleMode),
+                                onClick = {
+                                    onUpdateSettings(settings.copy(subtitleMode = option))
+                                    showSubtitleModeDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(text = option.displayName, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = option.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSubtitleModeDialog = false }) {
                     Text("Close")
                 }
             }

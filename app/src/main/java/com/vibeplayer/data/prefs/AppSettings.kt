@@ -27,13 +27,22 @@ enum class ShaderPresetOption(val displayName: String, val description: String) 
     GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution")
 }
 
+enum class SubtitlePreferenceMode(val displayName: String, val description: String) {
+    FORCED_ONLY("Forced / Signs & Songs only", "Only show forced or signs/songs subtitles when audio is in a preferred language"),
+    FULL("Full subtitles", "Always show full subtitles in the preferred language"),
+    OFF("Off", "Turn off subtitles when audio is in a preferred language")
+}
+
 data class AppSettings(
     val playbackMode: PlaybackModeOption = PlaybackModeOption.EFFICIENT,
     val renderer: RendererOption = RendererOption.OPENGL,
     val gesturesEnabled: Boolean = true,
     val skipSeconds: Int = 10,
     val backgroundAudio: Boolean = false,
-    val shaderPreset: ShaderPresetOption = ShaderPresetOption.NONE
+    val shaderPreset: ShaderPresetOption = ShaderPresetOption.NONE,
+    val preferredAudioLanguages: List<String> = listOf("en"),
+    val preferredSubtitleLanguages: List<String> = listOf("en"),
+    val subtitleMode: SubtitlePreferenceMode = SubtitlePreferenceMode.FORCED_ONLY
 )
 
 val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
@@ -46,6 +55,9 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_SKIP_SECONDS = intPreferencesKey("skip_seconds")
         private val KEY_BACKGROUND_AUDIO = booleanPreferencesKey("background_audio")
         private val KEY_SHADER_PRESET = stringPreferencesKey("shader_preset")
+        private val KEY_PREFERRED_AUDIO_LANGS = stringPreferencesKey("preferred_audio_langs")
+        private val KEY_PREFERRED_SUB_LANGS = stringPreferencesKey("preferred_sub_langs")
+        private val KEY_SUBTITLE_MODE = stringPreferencesKey("subtitle_mode")
     }
 
     val appSettingsFlow: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -67,13 +79,30 @@ class AppSettingsRepository(private val context: Context) {
             ShaderPresetOption.NONE
         }
 
+        val audioLangsStr = prefs[KEY_PREFERRED_AUDIO_LANGS] ?: "en"
+        val preferredAudioLanguages = audioLangsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            .ifEmpty { listOf("en") }
+
+        val subLangsStr = prefs[KEY_PREFERRED_SUB_LANGS] ?: "en"
+        val preferredSubtitleLanguages = subLangsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            .ifEmpty { listOf("en") }
+
+        val subtitleMode = try {
+            SubtitlePreferenceMode.valueOf(prefs[KEY_SUBTITLE_MODE] ?: SubtitlePreferenceMode.FORCED_ONLY.name)
+        } catch (_: Exception) {
+            SubtitlePreferenceMode.FORCED_ONLY
+        }
+
         AppSettings(
             playbackMode = playbackMode,
             renderer = renderer,
             gesturesEnabled = prefs[KEY_GESTURES_ENABLED] ?: true,
             skipSeconds = prefs[KEY_SKIP_SECONDS] ?: 10,
             backgroundAudio = prefs[KEY_BACKGROUND_AUDIO] ?: false,
-            shaderPreset = shaderPreset
+            shaderPreset = shaderPreset,
+            preferredAudioLanguages = preferredAudioLanguages,
+            preferredSubtitleLanguages = preferredSubtitleLanguages,
+            subtitleMode = subtitleMode
         )
     }
 
@@ -101,6 +130,18 @@ class AppSettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { it[KEY_SHADER_PRESET] = preset.name }
     }
 
+    suspend fun setPreferredAudioLanguages(langs: List<String>) {
+        context.settingsDataStore.edit { it[KEY_PREFERRED_AUDIO_LANGS] = langs.joinToString(",") }
+    }
+
+    suspend fun setPreferredSubtitleLanguages(langs: List<String>) {
+        context.settingsDataStore.edit { it[KEY_PREFERRED_SUB_LANGS] = langs.joinToString(",") }
+    }
+
+    suspend fun setSubtitleMode(mode: SubtitlePreferenceMode) {
+        context.settingsDataStore.edit { it[KEY_SUBTITLE_MODE] = mode.name }
+    }
+
     suspend fun updateSettings(settings: AppSettings) {
         context.settingsDataStore.edit { prefs ->
             prefs[KEY_PLAYBACK_MODE] = settings.playbackMode.name
@@ -109,6 +150,9 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_SKIP_SECONDS] = settings.skipSeconds
             prefs[KEY_BACKGROUND_AUDIO] = settings.backgroundAudio
             prefs[KEY_SHADER_PRESET] = settings.shaderPreset.name
+            prefs[KEY_PREFERRED_AUDIO_LANGS] = settings.preferredAudioLanguages.joinToString(",")
+            prefs[KEY_PREFERRED_SUB_LANGS] = settings.preferredSubtitleLanguages.joinToString(",")
+            prefs[KEY_SUBTITLE_MODE] = settings.subtitleMode.name
         }
     }
 }
