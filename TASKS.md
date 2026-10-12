@@ -280,6 +280,39 @@ title if the id no longer exists. *Files*: PlayerViewModel.kt, PlayerEngine.kt, 
 exit, force-stop, reopen: both are selected again (check `aid`/`sid` and the picker sheet screenshot);
 another file is unaffected.
 
+**P4-10 Default languages and per-folder track memory** — **User request (2026-10-12).** Do right
+after P4-07; it extends the same code.
+- Settings (DataStore, shown in the settings screen under "Languages"): preferred audio languages
+  (ordered list, default `en`), preferred subtitle languages (default `en`), and subtitle behaviour
+  when the audio is in a preferred language: `Forced / Signs & Songs only` (default), `Full subtitles`,
+  `Off`. When the audio is not in a preferred language: full subtitles in the preferred subtitle
+  language.
+- Track choice when a file opens, first match wins:
+  1. the per-file choice saved by P4-07;
+  2. the folder choice (below);
+  3. the language defaults from settings;
+  4. mpv's default.
+- A track counts as "Forced / Signs & Songs" if mpv marks it forced (`track-list/N/forced`) or its
+  title matches, case-insensitive, `sign`, `song`, `forced`, `s&s`. A full-dialogue track is one that
+  is not. Language codes: treat 2- and 3-letter forms as equal (`en`/`eng`, `ja`/`jpn`/`jp`).
+- Folder memory: when the user picks an audio or subtitle track by hand, store for the file's parent
+  folder the choice as (language, title, forced/signs kind, or "off"), not as a track id. Other files
+  in that folder that have no per-file choice select the best matching track: same language and title,
+  else same language and kind, else fall through to rule 3. New Room table `FolderSettings(folderPath,
+  audioLang, audioTitle, subLang, subTitle, subKind, subEnabled, updatedAt)` with a proper migration
+  (schema v2 exported; existing history must survive).
+- Selection logic lives in a pure Kotlin class (`player` or `data` module, no Android types) with unit
+  tests for: English audio + signs track present, Japanese-only audio, folder choice overriding the
+  defaults, file choice overriding the folder, track missing in the next file.
+- Apply the choice as the file loads (per-file `loadfile` options when the ids are known from the
+  folder/file record, otherwise right at `file-loaded` before the first subtitle shows).
+*Files*: data/db/*, data/prefs/AppSettings.kt, ui/settings/*, PlayerViewModel.kt, a new TrackSelector.kt
+and its test. *Accept*: unit tests pass; on the Case Closed clip (eng + jpn audio, 2 ASS tracks) with
+defaults, English audio is selected and the signs/songs subtitle if one exists, else none; switching to
+Japanese audio + full subtitles on one file in a folder makes another file in that folder open the
+same way (use copies of a test clip in a second folder if needed); the picker sheet screenshot shows
+the selected rows.
+
 **P4-08 History in browser** — Progress bar on thumbnails, "Continue watching" row.
 *Files*: ui/browser/*. *Accept*: partially watched clips show progress; row order = most recent first.
 
