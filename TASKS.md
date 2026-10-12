@@ -270,8 +270,15 @@ audio; AC3/EAC3/DTS track plays.
 **P4-06 Aspect ratio** — Cycle fit, crop, stretch, 16:9, 4:3 with a toast-style label.
 *Files*: ui/player/*, PlayerEngine.kt. *Accept*: each mode visibly correct on a 4:3 and a 21:9 source.
 
-**P4-07 Persist per-file choices** — Save and restore audio track, subtitle track/off, speed, aspect.
-*Files*: PlayerViewModel.kt, data/db/*. *Accept*: choices survive app restart for that file only.
+**P4-07 Persist per-file choices** — **User request (2026-10-12): when a file is resumed, the
+selected audio track and subtitle track (or subtitles off) must come back.** Save audio track,
+subtitle track/off, speed and aspect whenever they change and on exit; restore them when the file is
+opened, before or together with the first frame (pass `aid`/`sid`/`speed` as per-file `loadfile`
+options next to `start`, not as late property sets). Match tracks by id and fall back to language +
+title if the id no longer exists. *Files*: PlayerViewModel.kt, PlayerEngine.kt, data/db/*.
+*Accept*: on `multi_track.mkv` and the Case Closed clip pick a non-default audio and subtitle track,
+exit, force-stop, reopen: both are selected again (check `aid`/`sid` and the picker sheet screenshot);
+another file is unaffected.
 
 **P4-08 History in browser** — Progress bar on thumbnails, "Continue watching" row.
 *Files*: ui/browser/*. *Accept*: partially watched clips show progress; row order = most recent first.
@@ -300,9 +307,28 @@ unchanged; rotation does not restart playback.
 detached while in background; audio focus and unplug (becoming noisy) handled. *Files*: playback/*.
 *Accept*: audio continues with screen off; pauses on call or unplug; video returns on reopen.
 
-**P5-04 Picture-in-picture** — Enter on home (auto-enter) and by button; aspect from video; PiP
-play/pause and skip actions. *Files*: MainActivity.kt, playback/PipHelper.kt. *Accept*: PiP window
-has the right aspect; actions work; controls hidden in PiP.
+**P5-04 Mini player (picture-in-picture)** — **User priority (2026-10-12): do this right after P4-07,
+before P5-01; it must not depend on the service.** The user watches video in a floating mini player
+while playing games and using other apps. Use Android picture-in-picture on `PlayerActivity`
+(`supportsPictureInPicture`, `resizeableActivity`): it floats over games and other apps, the user can
+drag it anywhere and pinch or double-tap to resize it, and the system keeps the aspect ratio.
+- Enter by a mini-player button in the controls and automatically on home / app switch while playing
+  (`setAutoEnterEnabled(true)`); not when paused.
+- Aspect ratio = the video's display aspect (`dwidth`/`dheight`), clamped to the range Android allows
+  (1:2.39 to 2.39:1); update the params when the video size or file changes. Set `sourceRectHint` to
+  the video rectangle and `setSeamlessResizeEnabled(true)` so entering and resizing are smooth.
+- Playback and audio continue without a restart or black frame when entering, resizing and leaving;
+  `onPause` must not pause playback while in PiP; `onStop` in PiP (window dismissed) stops playback
+  and saves the position.
+- In PiP: all controls, gestures, indicators and sheets are hidden, only video and subtitles show.
+  Remote actions: rewind 10 s, play/pause, forward 10 s (icons update with the pause state).
+- Tapping the expand button returns to the full player in the same state.
+*Files*: ui/player/PlayerActivity.kt, ui/player/PipHelper.kt, manifest. *Accept*: screenshots show the
+mini player over the home screen and over another app with the video's aspect (test a 16:9, a 4:3 and
+a vertical clip); `tools/check_video.py` is not usable for a small window, so crop the screenshot to
+the PiP bounds (`dumpsys activity activities | grep -i pip` / `dumpsys window`) and show it changes
+between two captures; actions work via `adb shell` broadcast or `input tap` on them; the full player
+returns with playback continuing.
 
 **P5-05 Lifecycle edge cases** — PiP ↔ fullscreen, PiP close, swipe from recents, opening a new file
 while playing. *Files*: playback/*. *Accept*: none of these crash or leave a stale notification.
