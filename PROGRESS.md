@@ -71,7 +71,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P3-02 | Brightness | DONE | AGY-2 | pending | Left vertical swipe adjusts window brightness; BrightnessIndicator overlay with 1s fade-out verified; full swipe covers min-max; reset on exit verified; check_video.py verified (non_black=80.0% changed=76.1%) |
 | P3-03 | Volume | DONE | AGY-2 | pending | Right vertical swipe sets STREAM_MUSIC; VolumeIndicator overlay; tracks hardware volume keys both ways; media volume restored to 0; check_video.py verified (non_black=78.5% changed=76.5%) |
 | P3-04 | Swipe seek | DONE | AGY-2 | pending | Horizontal swipe seeks with +/-delta / target position pill overlay; keyframe preview during drag and exact seek on release; verified playing and paused on device (check_video.py: non_black=79.8% playing, 77.5% still) |
-| P3-05 | Double tap skip | TODO | | | |
+| P3-05 | Double tap skip | DONE | AGY-2 | pending | Double tap left/right skips +/-10s with ripple and pill indicator; repeated taps accumulate (+20s, +30s); single tap not delayed noticeably (200ms); verified on device (check_video.py: non_black=79.6% changed=70.1%) |
 | P3-06 | Pinch zoom | TODO | | | |
 | P3-07 | Lock | TODO | | | |
 | P3-08 | Haptics | TODO | | | |

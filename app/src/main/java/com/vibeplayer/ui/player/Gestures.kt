@@ -11,6 +11,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,6 +90,13 @@ fun GestureLayer(
     var showSwipeSeekIndicator by remember { mutableStateOf(false) }
     var hideSwipeSeekJob by remember { mutableStateOf<Job?>(null) }
 
+    var doubleTapStreakActive by remember { mutableStateOf(false) }
+    var doubleTapIsLeft by remember { mutableStateOf(false) }
+    var doubleTapAccumulatedSec by remember { mutableIntStateOf(0) }
+    var doubleTapBasePosMs by remember { mutableStateOf(0L) }
+    var doubleTapRippleTrigger by remember { mutableLongStateOf(0L) }
+    var doubleTapHideJob by remember { mutableStateOf<Job?>(null) }
+
     LaunchedEffect(triggerVolumeIndicatorFlow) {
         triggerVolumeIndicatorFlow.collect { timestamp ->
             if (timestamp > 0L) {
@@ -154,6 +163,14 @@ fun GestureLayer(
 
                         if (distance > touchSlop) {
                             directionLocked = true
+                            pendingSingleTapJob?.cancel()
+                            pendingSingleTapJob = null
+                            lastTapTime = 0L
+                            if (doubleTapStreakActive) {
+                                doubleTapStreakActive = false
+                                doubleTapAccumulatedSec = 0
+                                doubleTapHideJob?.cancel()
+                            }
                             if (absDx > absDy) {
                                 lockedGesture = GestureType.HORIZONTAL
                                 Log.i("VP", "Gesture detected: HORIZONTAL")
@@ -227,31 +244,67 @@ fun GestureLayer(
                 if (!directionLocked) {
                     if (upConsumed) {
                         Log.i("VP", "Tap consumed by controls element; ignoring in GestureLayer")
+                        pendingSingleTapJob?.cancel()
+                        pendingSingleTapJob = null
+                        lastTapTime = 0L
                     } else {
-                        // Tap detection with double-tap check
                         val now = SystemClock.uptimeMillis()
-                        val doubleTapTimeout = 250L
-                        val isDoubleTap = (now - lastTapTime < doubleTapTimeout) &&
-                                (abs(startPos.x - lastTapPos.x) < touchSlop * 4f) &&
-                                (abs(startPos.y - lastTapPos.y) < touchSlop * 4f)
-
-                        if (isDoubleTap) {
-                            pendingSingleTapJob?.cancel()
-                            pendingSingleTapJob = null
-                            lastTapTime = 0L
-                            val isLeft = startPos.x < width / 2f
-                            val gType = if (isLeft) GestureType.DOUBLE_TAP_LEFT else GestureType.DOUBLE_TAP_RIGHT
-                            Log.i("VP", "Gesture detected: $gType")
-                            onDoubleTap(isLeft)
+                        val isLeft = startPos.x < width / 2f
+                        if (doubleTapStreakActive && isLeft == doubleTapIsLeft) {
+                            // Part of an ongoing streak on same side: accumulate!
+                            doubleTapHideJob?.cancel()
+                            doubleTapAccumulatedSec += 10
+                            doubleTapRippleTrigger = now
+                            val deltaMs = (if (doubleTapIsLeft) -doubleTapAccumulatedSec else doubleTapAccumulatedSec) * 1000L
+                            val targetMs = (doubleTapBasePosMs + deltaMs).coerceIn(0L, durationMs)
+                            Log.i("VP", "Double-tap streak accumulate: isLeft=$doubleTapIsLeft, sec=$doubleTapAccumulatedSec, target=$targetMs")
+                            onSeekCommit(targetMs)
+                            onDoubleTap(doubleTapIsLeft)
+                            doubleTapHideJob = coroutineScope.launch {
+                                delay(700L)
+                                doubleTapStreakActive = false
+                                doubleTapAccumulatedSec = 0
+                            }
                         } else {
-                            lastTapTime = now
-                            lastTapPos = startPos
-                            pendingSingleTapJob?.cancel()
-                            pendingSingleTapJob = coroutineScope.launch {
-                                delay(200L)
-                                Log.i("VP", "Gesture detected: TAP")
-                                onSingleTap()
+                            val doubleTapTimeout = 250L
+                            val isDoubleTap = (now - lastTapTime < doubleTapTimeout) && (isLeft == (lastTapPos.x < width / 2f))
+
+                            if (isDoubleTap) {
+                                pendingSingleTapJob?.cancel()
+                                pendingSingleTapJob = null
                                 lastTapTime = 0L
+                                doubleTapHideJob?.cancel()
+                                doubleTapStreakActive = true
+                                doubleTapIsLeft = isLeft
+                                doubleTapAccumulatedSec = 10
+                                doubleTapBasePosMs = currentPositionMs
+                                doubleTapRippleTrigger = now
+                                val deltaMs = (if (isLeft) -10_000L else 10_000L)
+                                val targetMs = (doubleTapBasePosMs + deltaMs).coerceIn(0L, durationMs)
+                                val gType = if (isLeft) GestureType.DOUBLE_TAP_LEFT else GestureType.DOUBLE_TAP_RIGHT
+                                Log.i("VP", "Gesture detected: $gType, target=$targetMs")
+                                onSeekCommit(targetMs)
+                                onDoubleTap(isLeft)
+                                doubleTapHideJob = coroutineScope.launch {
+                                    delay(700L)
+                                    doubleTapStreakActive = false
+                                    doubleTapAccumulatedSec = 0
+                                }
+                            } else {
+                                if (doubleTapStreakActive) {
+                                    doubleTapStreakActive = false
+                                    doubleTapAccumulatedSec = 0
+                                    doubleTapHideJob?.cancel()
+                                }
+                                lastTapTime = now
+                                lastTapPos = startPos
+                                pendingSingleTapJob?.cancel()
+                                pendingSingleTapJob = coroutineScope.launch {
+                                    delay(200L)
+                                    Log.i("VP", "Gesture detected: TAP")
+                                    onSingleTap()
+                                    lastTapTime = 0L
+                                }
                             }
                         }
                     }
@@ -310,6 +363,14 @@ fun GestureLayer(
             targetPositionMs = swipeSeekTargetMs,
             durationMs = durationMs,
             modifier = Modifier.align(Alignment.Center)
+        )
+
+        DoubleTapSkipIndicator(
+            visible = doubleTapStreakActive,
+            isLeft = doubleTapIsLeft,
+            seconds = doubleTapAccumulatedSec,
+            rippleTrigger = doubleTapRippleTrigger,
+            modifier = Modifier.align(if (doubleTapIsLeft) Alignment.CenterStart else Alignment.CenterEnd)
         )
     }
 }

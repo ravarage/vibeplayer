@@ -207,6 +207,9 @@ class PlayerActivity : ComponentActivity() {
                             },
                             onSingleTap = {
                                 controlsVisible = !controlsVisible
+                            },
+                            onDoubleTap = { isLeft ->
+                                controlsVisible = false
                             }
                         )
 
