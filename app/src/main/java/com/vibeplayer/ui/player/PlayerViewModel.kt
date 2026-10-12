@@ -18,6 +18,9 @@ import com.vibeplayer.player.TrackSelector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -35,6 +38,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var currentKey: String? = null
     private var currentVideoPath: String? = null
     private var periodicSaveJob: Job? = null
+
+    // Path of the file being played; changes when auto-play advances to the next file in the folder.
+    private val _currentPath = MutableStateFlow<String?>(null)
+    val currentPath: StateFlow<String?> = _currentPath.asStateFlow()
 
     init {
         // Periodic save every 10 seconds while playing
@@ -55,6 +62,42 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 wasPaused = state.paused
             }
         }
+
+        // Auto-play the next file in the folder when the current one reaches its end
+        viewModelScope.launch {
+            var wasEof = false
+            playerEngine.state.collect { state ->
+                if (state.eof && !wasEof && state.durationMs > 0L) {
+                    onPlaybackEnded()
+                }
+                wasEof = state.eof
+            }
+        }
+    }
+
+    private suspend fun onPlaybackEnded() {
+        val endedPath = currentVideoPath ?: return
+        if (!appSettingsRepository.appSettingsFlow.first().autoPlayNext) return
+        val next = withContext(Dispatchers.IO) { FolderPlaylist.next(endedPath) }
+        if (next == null) {
+            Log.i("VP", "Auto-play: no next file after $endedPath")
+            return
+        }
+        if (currentVideoPath != endedPath) return // the user opened something else meanwhile
+        Log.i("VP", "Auto-play: $endedPath ended -> $next")
+        // keep-open pauses at the end of a file, so the next one is told to play after it loads
+        openVideo(next, startFromBeginning = true, playAfterLoad = true)
+    }
+
+    /** Plays the previous/next file of the current folder; returns false if there is none. */
+    fun skipToNeighbour(forward: Boolean) {
+        val from = currentVideoPath ?: return
+        viewModelScope.launch {
+            val target = withContext(Dispatchers.IO) {
+                if (forward) FolderPlaylist.next(from) else FolderPlaylist.previous(from)
+            } ?: return@launch
+            openVideo(target, playAfterLoad = true)
+        }
     }
 
     fun computeKey(path: String, sizeBytes: Long = 0L): String {
@@ -67,8 +110,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         return if (size > 0L) "$path:$size" else path
     }
 
-    fun openVideo(path: String, sizeBytes: Long = 0L) {
+    fun openVideo(
+        path: String,
+        sizeBytes: Long = 0L,
+        startFromBeginning: Boolean = false,
+        playAfterLoad: Boolean = false
+    ) {
         currentVideoPath = path
+        _currentPath.value = path
         val key = computeKey(path, sizeBytes)
         currentKey = key
 
@@ -82,7 +131,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
             val appSettings = appSettingsRepository.appSettingsFlow.first()
 
-            val startPositionMs = if (fileSettings != null) {
+            val startPositionMs = if (startFromBeginning) {
+                0L
+            } else if (fileSettings != null) {
                 val dur = fileSettings.durationMs
                 val pos = fileSettings.positionMs
                 if (dur > 0L && pos >= (dur * 0.95)) {
@@ -157,6 +208,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 speed = speed,
                 aspect = aspect
             )
+            if (playAfterLoad) playerEngine.play()
         }
     }
 

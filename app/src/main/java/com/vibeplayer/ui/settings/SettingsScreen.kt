@@ -120,6 +120,15 @@ fun SettingsScreen(
                 }
             )
 
+            SettingsSwitchRow(
+                title = "Auto-play Next",
+                description = "When a video ends, play the next file in the same folder",
+                checked = settings.autoPlayNext,
+                onCheckedChange = { checked ->
+                    onUpdateSettings(settings.copy(autoPlayNext = checked))
+                }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)

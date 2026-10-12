@@ -206,6 +206,8 @@ class PlayerActivity : ComponentActivity() {
 
         setContent {
             val playerState by playerEngine.state.collectAsState()
+            val autoPath by viewModel.currentPath.collectAsState()
+            val shownTitle = autoPath?.takeIf { it.startsWith("/") && it != currentVideoPath }?.let { File(it).name } ?: currentVideoTitle
             val zoom by playerEngine.zoomState.collectAsState()
             val isInPip by _isInPipFlow.collectAsState()
             var showDebugOverlay by remember { mutableStateOf(false) }
@@ -266,7 +268,7 @@ class PlayerActivity : ComponentActivity() {
                             PlayerControls(
                                 playerEngine = playerEngine,
                                 playerState = playerState,
-                                videoPath = currentVideoTitle,
+                                videoPath = shownTitle,
                                 controlsVisible = controlsVisible,
                                 isLocked = isLocked,
                                 onToggleLock = {

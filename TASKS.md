@@ -347,6 +347,16 @@ zoom, reset, zoom again keeps working; swipe seek on a second file opened from t
 the new duration; leaving the player with the debug overlay open does not crash (20 times); a
 `content://` video resumes after reopen; mini player and all gestures still pass their checks.
 
+**P4-12 Auto-play next file in the folder** — **User request (2026-10-12, important). Core done by the
+reviewer.** When a file ends, the next video file of the same folder (natural name order) starts from
+the beginning; setting "Auto-play Next" (default on). `FolderPlaylist.kt`, `PlayerViewModel.onPlaybackEnded`
+and `skipToNeighbour(forward)` exist. Remaining for an agent: previous/next buttons in the controls
+calling `skipToNeighbour`; the title in the controls and the mini player aspect must follow the new
+file; a short "Next: <name>" hint in the last seconds is optional. *Accept*: on the device a short
+clip ends and the next file plays with picture (also inside the mini player and with the screen
+locked controls); the last file in a folder just stops; with the setting off nothing advances;
+next/previous buttons work; folder track memory (P4-10) applies to the auto-played file.
+
 **P4-08 History in browser** — Progress bar on thumbnails, "Continue watching" row.
 *Files*: ui/browser/*. *Accept*: partially watched clips show progress; row order = most recent first.
 

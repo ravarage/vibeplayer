@@ -39,6 +39,7 @@ data class AppSettings(
     val gesturesEnabled: Boolean = true,
     val skipSeconds: Int = 10,
     val backgroundAudio: Boolean = false,
+    val autoPlayNext: Boolean = true,
     val shaderPreset: ShaderPresetOption = ShaderPresetOption.NONE,
     val preferredAudioLanguages: List<String> = listOf("en"),
     val preferredSubtitleLanguages: List<String> = listOf("en"),
@@ -54,6 +55,7 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_GESTURES_ENABLED = booleanPreferencesKey("gestures_enabled")
         private val KEY_SKIP_SECONDS = intPreferencesKey("skip_seconds")
         private val KEY_BACKGROUND_AUDIO = booleanPreferencesKey("background_audio")
+        private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
         private val KEY_SHADER_PRESET = stringPreferencesKey("shader_preset")
         private val KEY_PREFERRED_AUDIO_LANGS = stringPreferencesKey("preferred_audio_langs")
         private val KEY_PREFERRED_SUB_LANGS = stringPreferencesKey("preferred_sub_langs")
@@ -99,6 +101,7 @@ class AppSettingsRepository(private val context: Context) {
             gesturesEnabled = prefs[KEY_GESTURES_ENABLED] ?: true,
             skipSeconds = prefs[KEY_SKIP_SECONDS] ?: 10,
             backgroundAudio = prefs[KEY_BACKGROUND_AUDIO] ?: false,
+            autoPlayNext = prefs[KEY_AUTO_PLAY_NEXT] ?: true,
             shaderPreset = shaderPreset,
             preferredAudioLanguages = preferredAudioLanguages,
             preferredSubtitleLanguages = preferredSubtitleLanguages,
@@ -149,6 +152,7 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_GESTURES_ENABLED] = settings.gesturesEnabled
             prefs[KEY_SKIP_SECONDS] = settings.skipSeconds
             prefs[KEY_BACKGROUND_AUDIO] = settings.backgroundAudio
+            prefs[KEY_AUTO_PLAY_NEXT] = settings.autoPlayNext
             prefs[KEY_SHADER_PRESET] = settings.shaderPreset.name
             prefs[KEY_PREFERRED_AUDIO_LANGS] = settings.preferredAudioLanguages.joinToString(",")
             prefs[KEY_PREFERRED_SUB_LANGS] = settings.preferredSubtitleLanguages.joinToString(",")
