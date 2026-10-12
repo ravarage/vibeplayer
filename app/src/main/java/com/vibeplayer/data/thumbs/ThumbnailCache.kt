@@ -32,7 +32,7 @@ class ThumbnailCache(
     }
 
     companion object {
-        const val NEGATIVE_CACHE_VERSION = 1
+        const val NEGATIVE_CACHE_VERSION = 2
     }
 
     // Memory LRU Cache: 1/8th of available runtime memory in KB

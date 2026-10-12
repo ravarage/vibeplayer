@@ -16,6 +16,7 @@ android {
         targetSdk = 37
         versionCode = 2
         versionName = "0.4.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
             abiFilters.add("arm64-v8a")
@@ -74,4 +75,6 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

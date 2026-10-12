@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import com.vibeplayer.player.ThumbnailEngine
 
 /**
  * Interface for video frame extraction.
@@ -69,17 +70,29 @@ class MediaMetadataRetrieverFrameExtractor : FrameExtractor {
 }
 
 /**
- * Fallback FrameExtractor placeholder for mpv screenshot-raw (to be implemented on main).
+ * Isolated software-only libmpv fallback for formats the platform retriever cannot decode.
  */
 class MpvFallbackFrameExtractor : FrameExtractor {
+    private val engine = ThumbnailEngine()
+
     override suspend fun extractFrame(
         path: String,
         timeUs: Long,
         targetWidth: Int,
         targetHeight: Int
     ): Bitmap? {
-        Log.d("VP", "MpvFallbackFrameExtractor invoked for $path (no mpv implementation yet)")
-        return null
+        val started = android.os.SystemClock.elapsedRealtime()
+        return try {
+            engine.extract(path, targetWidth, targetHeight).also { bitmap ->
+                val elapsed = android.os.SystemClock.elapsedRealtime() - started
+                Log.i("VP-Perf", "software thumbnail path=$path elapsedMs=$elapsed success=${bitmap != null}")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("VP", "mpv thumbnail fallback failed for $path", e)
+            null
+        }
     }
 }
 

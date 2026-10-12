@@ -4,6 +4,9 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <math.h>
+#include <stdio.h>
+#include <time.h>
+#include <limits.h>
 #include <android/log.h>
 #include <mpv/client.h>
 #include <libavcodec/jni.h>
@@ -529,4 +532,87 @@ Java_com_vibeplayer_player_MpvNative_destroy(JNIEnv *env, jobject thiz, jlong ha
     }
     pthread_mutex_destroy(&holder->lock);
     free(holder);
+}
+
+static mpv_node *map_value(mpv_node *node, const char *key) {
+    if (!node || node->format != MPV_FORMAT_NODE_MAP) return NULL;
+    for (int i = 0; i < node-> u.list->num; i++) {
+        if (node->u.list->keys[i] && strcmp(node->u.list->keys[i], key) == 0)
+            return &node->u.list->values[i];
+    }
+    return NULL;
+}
+
+JNIEXPORT jobject JNICALL
+Java_com_vibeplayer_player_MpvNative_extractThumbnail(JNIEnv *env, jobject thiz,
+        jstring jpath, jint width, jint height, jint timeout_ms) {
+    if (!jpath || width < 1 || height < 1) return NULL;
+    const char *path = (*env)->GetStringUTFChars(env, jpath, NULL);
+    mpv_handle *mpv = mpv_create();
+    if (!mpv) { (*env)->ReleaseStringUTFChars(env, jpath, path); return NULL; }
+    char vf[96];
+    snprintf(vf, sizeof(vf), "scale=%d:%d:force_original_aspect_ratio=decrease", width, height);
+    const char *options[][2] = {
+        {"vo", "null"}, {"ao", "null"}, {"aid", "no"}, {"sid", "no"},
+        {"hwdec", "no"}, {"pause", "yes"}, {"start", "10%"},
+        {"vd-lavc-threads", "2"}, {"vd-lavc-skiploopfilter", "all"},
+        {"vd-lavc-fast", "yes"}, {"hr-seek", "no"}, {"vf", vf},
+        {"msg-level", "all=no"}, {NULL, NULL}
+    };
+    int result = -1;
+    for (int i = 0; options[i][0]; i++) {
+        if (mpv_set_option_string(mpv, options[i][0], options[i][1]) < 0) goto cleanup;
+    }
+    if (mpv_initialize(mpv) < 0) goto cleanup;
+    const char *load[] = {"loadfile", path, "replace", NULL};
+    if (mpv_command(mpv, load) < 0) goto cleanup;
+
+    // Wait for playback restart, which is emitted only after a video frame is ready.
+    int ready = 0;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    int64_t deadline = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + timeout_ms;
+    for (;;) {
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        int64_t remaining = deadline - ((int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+        if (remaining <= 0) break;
+        mpv_event *event = mpv_wait_event(mpv, remaining / 1000.0);
+        if (event && event->event_id == MPV_EVENT_PLAYBACK_RESTART) { ready = 1; break; }
+        if (event && event->event_id == MPV_EVENT_SHUTDOWN) break;
+    }
+    if (!ready) goto cleanup;
+
+    const char *shot[] = {"screenshot-raw", "video", NULL};
+    mpv_node node;
+    memset(&node, 0, sizeof(node));
+    if (mpv_command_ret(mpv, shot, &node) < 0) goto cleanup;
+    mpv_node *wn = map_value(&node, "w"), *hn = map_value(&node, "h");
+    mpv_node *sn = map_value(&node, "stride"), *dn = map_value(&node, "data");
+    if (wn && hn && sn && dn && wn->format == MPV_FORMAT_INT64 && hn->format == MPV_FORMAT_INT64 &&
+        sn->format == MPV_FORMAT_INT64 && dn->format == MPV_FORMAT_BYTE_ARRAY && dn->u.ba) {
+        int w = (int)wn->u.int64, h = (int)hn->u.int64, stride = (int)sn->u.int64;
+        size_t bytes = (size_t)stride * (size_t)h;
+        if (w > 0 && h > 0 && stride >= w * 4 && dn->u.ba->size >= bytes && bytes <= INT32_MAX) {
+            jbyteArray pixels = (*env)->NewByteArray(env, (jsize)bytes);
+            if (pixels) {
+                (*env)->SetByteArrayRegion(env, pixels, 0, (jsize)bytes, (const jbyte *)dn->u.ba->data);
+                jclass cls = (*env)->FindClass(env, "com/vibeplayer/player/ThumbnailFrame");
+                jmethodID ctor = cls ? (*env)->GetMethodID(env, cls, "<init>", "(III[B)V") : NULL;
+                if (ctor) {
+                    jobject frame = (*env)->NewObject(env, cls, ctor, w, h, stride, pixels);
+                    if (frame) result = 0;
+                    mpv_free_node_contents(&node);
+                    mpv_terminate_destroy(mpv);
+                    (*env)->ReleaseStringUTFChars(env, jpath, path);
+                    return frame;
+                }
+            }
+        }
+    }
+    mpv_free_node_contents(&node);
+cleanup:
+    (void)result;
+    mpv_terminate_destroy(mpv);
+    (*env)->ReleaseStringUTFChars(env, jpath, path);
+    return NULL;
 }
