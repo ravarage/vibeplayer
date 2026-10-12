@@ -48,12 +48,61 @@ import com.vibeplayer.player.EfficientPath
 import com.vibeplayer.player.PlaybackConfig
 import com.vibeplayer.player.PlaybackMode
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
+import android.view.KeyEvent
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 class PlayerActivity : ComponentActivity() {
 
     private val playerEngine = PlayerEngine()
     private var playbackStarted = false
     private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
     private var currentVideoTitle: String = "ichiban.mp4"
+
+    private lateinit var audioManager: AudioManager
+    private val _volumeFlow = MutableStateFlow(0)
+    private val _triggerVolumeIndicatorFlow = MutableStateFlow(0L)
+
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                val streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
+                if (streamType == AudioManager.STREAM_MUSIC) {
+                    val vol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    _volumeFlow.value = vol
+                    _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
+                }
+            }
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val next = (current + 1).coerceAtMost(max)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
+                _volumeFlow.value = next
+                _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
+                return true
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val next = (current - 1).coerceAtLeast(0)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
+                _volumeFlow.value = next
+                _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
 
     private fun resolveConfig(): PlaybackConfig {
         val pathArg = intent.getStringExtra("efficient_path") ?: intent.getStringExtra("path_mode")
@@ -77,6 +126,10 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i("VP", "PlayerActivity onCreate")
+
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        volumeControlStream = AudioManager.STREAM_MUSIC
+        _volumeFlow.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
@@ -136,6 +189,13 @@ class PlayerActivity : ComponentActivity() {
                                 val lp = window.attributes
                                 lp.screenBrightness = b
                                 window.attributes = lp
+                            },
+                            volumeFlow = _volumeFlow.asStateFlow(),
+                            maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                            triggerVolumeIndicatorFlow = _triggerVolumeIndicatorFlow.asStateFlow(),
+                            onVolumeChanged = { newVol ->
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                _volumeFlow.value = newVol
                             },
                             onSingleTap = {
                                 controlsVisible = !controlsVisible
@@ -344,6 +404,12 @@ class PlayerActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Log.i("VP", "PlayerActivity onStart")
+        try {
+            val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+            ContextCompat.registerReceiver(this, volumeReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
+        } catch (e: Exception) {
+            Log.w("VP", "Failed to register volume receiver: ${e.message}")
+        }
     }
 
     override fun onResume() {
@@ -367,6 +433,9 @@ class PlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         Log.i("VP", "PlayerActivity onStop")
+        try {
+            unregisterReceiver(volumeReceiver)
+        } catch (_: Exception) {}
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = lp

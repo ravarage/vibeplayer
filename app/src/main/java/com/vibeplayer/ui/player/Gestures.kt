@@ -7,6 +7,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,8 +24,11 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 enum class GestureType {
@@ -44,6 +49,10 @@ fun GestureLayer(
     isLocked: Boolean = false,
     initialBrightness: Float = 0.5f,
     onBrightnessChanged: (Float) -> Unit = {},
+    volumeFlow: StateFlow<Int> = MutableStateFlow(0),
+    maxVolume: Int = 20,
+    triggerVolumeIndicatorFlow: StateFlow<Long> = MutableStateFlow(0L),
+    onVolumeChanged: (Int) -> Unit = {},
     onSingleTap: () -> Unit = {},
     onDoubleTap: (isLeft: Boolean) -> Unit = {},
     onGestureTypeChanged: (GestureType) -> Unit = {},
@@ -61,6 +70,24 @@ fun GestureLayer(
     var brightnessLevel by remember(initialBrightness) { mutableFloatStateOf(initialBrightness) }
     var showBrightnessIndicator by remember { mutableStateOf(false) }
     var hideIndicatorJob by remember { mutableStateOf<Job?>(null) }
+
+    val currentVolume by volumeFlow.collectAsState()
+    var localVolumeFraction by remember(currentVolume) { mutableFloatStateOf(currentVolume.toFloat()) }
+    var showVolumeIndicator by remember { mutableStateOf(false) }
+    var hideVolumeJob by remember { mutableStateOf<Job?>(null) }
+
+    LaunchedEffect(triggerVolumeIndicatorFlow) {
+        triggerVolumeIndicatorFlow.collect { timestamp ->
+            if (timestamp > 0L) {
+                showVolumeIndicator = true
+                hideVolumeJob?.cancel()
+                hideVolumeJob = coroutineScope.launch {
+                    delay(1000L)
+                    showVolumeIndicator = false
+                }
+            }
+        }
+    }
 
     Box(
         modifier = modifier.pointerInput(enabled, isLocked) {
@@ -149,6 +176,13 @@ fun GestureLayer(
                             }
                             GestureType.RIGHT_VERTICAL -> {
                                 val deltaPercent = -dy / height
+                                localVolumeFraction = (localVolumeFraction + deltaPercent * maxVolume).coerceIn(0f, maxVolume.toFloat())
+                                val newVol = localVolumeFraction.roundToInt().coerceIn(0, maxVolume)
+                                if (newVol != currentVolume) {
+                                    onVolumeChanged(newVol)
+                                }
+                                showVolumeIndicator = true
+                                hideVolumeJob?.cancel()
                                 onVerticalDrag(false, deltaPercent)
                             }
                             else -> {}
@@ -196,6 +230,13 @@ fun GestureLayer(
                             showBrightnessIndicator = false
                         }
                     }
+                    if (lockedGesture == GestureType.RIGHT_VERTICAL) {
+                        hideVolumeJob?.cancel()
+                        hideVolumeJob = coroutineScope.launch {
+                            delay(1000L)
+                            showVolumeIndicator = false
+                        }
+                    }
                     onGestureEnded(lockedGesture)
                     onGestureTypeChanged(GestureType.NONE)
                 }
@@ -210,6 +251,15 @@ fun GestureLayer(
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .padding(start = 64.dp)
+        )
+
+        VolumeIndicator(
+            visible = showVolumeIndicator,
+            volume = currentVolume,
+            maxVolume = maxVolume,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 64.dp)
         )
     }
 }
