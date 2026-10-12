@@ -12,6 +12,7 @@ import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.delay
@@ -178,6 +179,11 @@ class PlayerActivity : ComponentActivity() {
             val zoom by playerEngine.zoomState.collectAsState()
             var showDebugOverlay by remember { mutableStateOf(false) }
             var controlsVisible by remember { mutableStateOf(true) }
+            var isLocked by remember { mutableStateOf(false) }
+
+            BackHandler(enabled = isLocked) {
+                Log.i("VP", "Back press ignored: screen is locked")
+            }
 
             MaterialTheme {
                 Surface(
@@ -192,6 +198,7 @@ class PlayerActivity : ComponentActivity() {
 
                         GestureLayer(
                             modifier = Modifier.fillMaxSize(),
+                            isLocked = isLocked,
                             initialBrightness = window.attributes.screenBrightness.let { if (it < 0f) 0.5f else it },
                             onBrightnessChanged = { b ->
                                 val lp = window.attributes
@@ -233,6 +240,14 @@ class PlayerActivity : ComponentActivity() {
                             positionMs = positionMs,
                             videoPath = currentVideoTitle,
                             controlsVisible = controlsVisible,
+                            isLocked = isLocked,
+                            onToggleLock = {
+                                isLocked = !isLocked
+                                Log.i("VP", "Lock toggled: isLocked=$isLocked")
+                                if (isLocked) {
+                                    controlsVisible = false
+                                }
+                            },
                             onBack = { finish() },
                             onToggleDebug = { showDebugOverlay = !showDebugOverlay },
                             onHideControls = { controlsVisible = false },

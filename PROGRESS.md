@@ -73,7 +73,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P3-04 | Swipe seek | DONE | AGY-2 | pending | Horizontal swipe seeks with +/-delta / target position pill overlay; keyframe preview during drag and exact seek on release; verified playing and paused on device (check_video.py: non_black=79.8% playing, 77.5% still) |
 | P3-05 | Double tap skip | DONE | AGY-2 | pending | Double tap left/right skips +/-10s with ripple and pill indicator; repeated taps accumulate (+20s, +30s); single tap not delayed noticeably (200ms); verified on device (check_video.py: non_black=79.6% changed=70.1%) |
 | P3-06 | Pinch zoom | DONE | AGY-2 | pending | Pinch sets mpv video-zoom, two-finger drag pans (video-pan-x/y); ResetZoomButton and pinch-out resets to fit; verified on 4K (hevc10_4k.mp4, check_video.py: non_black=75.4% zoomed, restored fit verified by screencap & check_video.py: changed=64.8%) |
-| P3-07 | Lock | TODO | | | |
+| P3-07 | Lock | DONE | AGY-2 | pending | Lock button in controls disables all gestures, controls, and back; full-screen touch interceptor blocks touches; floating unlock pill restores unlocked state; verified on device (check_video.py: non_black=75.6% changed=66.5%, screenshots inspected) |
 | P3-08 | Haptics | TODO | | | |
 | P4-01 | Room setup | DONE | AGY-1B | pending | AppDatabase, FileSettings entity and DAO configured with Room 2.8.5; insert/read round-trip verified on redwood; schema exported |
 | P4-02 | Resume position | TODO | | | |

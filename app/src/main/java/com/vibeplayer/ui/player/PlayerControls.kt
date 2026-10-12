@@ -5,8 +5,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,76 +101,138 @@ fun PlayerControls(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        AnimatedVisibility(
-            visible = controlsVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize()
-        ) {
+        if (isLocked) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0x44000000))
+                modifier = Modifier.fillMaxSize()
             ) {
-                // Top Bar: Back button + Title
-                Row(
+                // Background touch interceptor: consumes all gestures
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    event.changes.forEach { it.consume() }
+                                    if (event.changes.none { it.pressed }) break
+                                }
+                            }
+                        }
+                )
+
+                // Unlock button
+                Box(
+                    modifier = Modifier
                         .align(Alignment.TopStart)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color(0xCC000000), Color.Transparent)
-                            )
-                        )
-                        .padding(horizontal = 16.dp, vertical = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(top = 28.dp, start = 28.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0xCC1E1E1E))
+                        .clickable { onToggleLock() }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.size(48.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        Text(text = "🔒", fontSize = 18.sp)
                         Text(
-                            text = "←",
+                            text = "Unlock",
                             color = Color.White,
-                            fontSize = 28.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Text(
-                        text = title,
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onLongPress = {
-                                        lastInteraction = System.currentTimeMillis()
-                                        onToggleDebug()
-                                    }
-                                )
-                            }
-                    )
-
-                    if (playerState.fallback) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "SW FALLBACK",
-                            color = Color(0xFFFF5252),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .background(Color(0x33FF0000), shape = CircleShape)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
                 }
+            }
+        } else {
+            AnimatedVisibility(
+                visible = controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0x44000000))
+                ) {
+                    // Top Bar: Back button + Title
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopStart)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color(0xCC000000), Color.Transparent)
+                                )
+                            )
+                            .padding(horizontal = 16.dp, vertical = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Text(
+                                text = "←",
+                                color = Color.White,
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = title,
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f)
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            lastInteraction = System.currentTimeMillis()
+                                            onToggleDebug()
+                                        }
+                                    )
+                                }
+                        )
+
+                        if (playerState.fallback) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "SW FALLBACK",
+                                color = Color(0xFFFF5252),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .background(Color(0x33FF0000), shape = CircleShape)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = {
+                                lastInteraction = System.currentTimeMillis()
+                                onToggleLock()
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Text(
+                                text = "🔒",
+                                fontSize = 20.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
 
                 // Center: Play / Pause toggle
                 Box(
@@ -244,6 +310,7 @@ fun PlayerControls(
             }
         }
     }
+}
 }
 
 fun formatTime(millis: Long): String {
