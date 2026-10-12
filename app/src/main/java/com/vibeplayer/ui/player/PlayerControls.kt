@@ -50,11 +50,12 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.util.Locale
 
+import androidx.compose.runtime.collectAsState
+
 @Composable
 fun PlayerControls(
     playerEngine: PlayerEngine,
     playerState: PlayerState,
-    positionMs: Long,
     videoPath: String,
     controlsVisible: Boolean,
     onBack: () -> Unit,
@@ -98,11 +99,6 @@ fun PlayerControls(
     }
 
     val durationMs = playerState.durationMs
-    val currentPosition = if (userSeeking) {
-        (seekProgress * durationMs).toLong()
-    } else {
-        positionMs
-    }
 
     Box(modifier = modifier.fillMaxSize()) {
         if (isLocked) {
@@ -333,11 +329,11 @@ fun PlayerControls(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = formatTime(currentPosition),
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
+                        CurrentPositionLabel(
+                            positionFlow = playerEngine.position,
+                            userSeeking = userSeeking,
+                            seekProgress = seekProgress,
+                            durationMs = durationMs
                         )
 
                         Text(
@@ -351,7 +347,7 @@ fun PlayerControls(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     VideoSeekBar(
-                        positionMs = positionMs,
+                        positionFlow = playerEngine.position,
                         durationMs = durationMs,
                         onSeekProgress = { targetMs ->
                             userSeeking = true
@@ -427,3 +423,27 @@ fun formatTime(millis: Long): String {
         String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
+
+@Composable
+private fun CurrentPositionLabel(
+    positionFlow: kotlinx.coroutines.flow.StateFlow<Long>,
+    userSeeking: Boolean,
+    seekProgress: Float,
+    durationMs: Long,
+    modifier: Modifier = Modifier
+) {
+    val positionMs by positionFlow.collectAsState()
+    val currentPosition = if (userSeeking) {
+        (seekProgress * durationMs).toLong()
+    } else {
+        positionMs
+    }
+    Text(
+        text = formatTime(currentPosition),
+        color = Color.White,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = modifier
+    )
+}
+

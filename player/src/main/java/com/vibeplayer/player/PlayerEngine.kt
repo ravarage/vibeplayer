@@ -14,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -390,7 +391,11 @@ class PlayerEngine(
             assertCommandThread()
             if (playbackConfig == newConfig) return@execute
             Log.i("VP", "Reconfiguring engine: ${playbackConfig.efficientPath} -> ${newConfig.efficientPath}")
-            val curPos = _position.value
+            val curPos = if (handle != 0L) {
+                MpvNative.getPropertyDouble(handle, "time-pos")?.let { (it * 1000.0).toLong() } ?: _position.value
+            } else {
+                _position.value
+            }
             val curPath = currentFilePath
             val wasPaused = _state.value.paused
             val surface = attachedSurface
@@ -611,6 +616,31 @@ class PlayerEngine(
                 val flag = if (exact) "exact" else "keyframes"
                 MpvNative.command(handle, arrayOf("seek", sec, "absolute+$flag"))
                 Log.i("VP", "seekTo $positionMs ms ($flag)")
+            }
+        }
+    }
+
+    suspend fun currentPositionMs(): Long = withContext(commandDispatcher) {
+        assertCommandThread()
+        if (handle != 0L) {
+            val posSec = MpvNative.getPropertyDouble(handle, "time-pos")
+            if (posSec != null && !posSec.isNaN()) {
+                val ms = (posSec * 1000.0).toLong()
+                _position.value = ms
+                return@withContext ms
+            }
+        }
+        _position.value
+    }
+
+    fun seekRelative(deltaSeconds: Double, exact: Boolean = false) {
+        scope.launch {
+            assertCommandThread()
+            if (handle != 0L) {
+                val sec = String.format(java.util.Locale.US, "%.3f", deltaSeconds)
+                val flag = if (exact) "relative+exact" else "relative"
+                MpvNative.command(handle, arrayOf("seek", sec, flag))
+                Log.i("VP", "seekRelative $sec s ($flag)")
             }
         }
     }

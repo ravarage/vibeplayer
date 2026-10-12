@@ -88,34 +88,41 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun saveCurrentPosition(forceSync: Boolean = false) {
         val key = currentKey ?: return
-        val pos = playerEngine.position.value
-        val state = playerEngine.state.value
-        val dur = state.durationMs
-
-        if (pos <= 0L && dur <= 0L) return
 
         val saveTask = suspend {
-            withContext(Dispatchers.IO) {
-                val existing = dao.getByKey(key)
-                val finalDuration = if (dur > 0L) dur else (existing?.durationMs ?: 0L)
-                val updated = existing?.copy(
-                    positionMs = pos,
-                    durationMs = finalDuration,
-                    lastPlayedAt = System.currentTimeMillis()
-                ) ?: FileSettings(
-                    key = key,
-                    positionMs = pos,
-                    durationMs = finalDuration,
-                    lastPlayedAt = System.currentTimeMillis()
-                )
-                dao.upsert(updated)
-                Log.i("VP", "Saved position $pos ms (duration $finalDuration ms) for key $key")
+            val pos = playerEngine.currentPositionMs()
+            val state = playerEngine.state.value
+            val dur = state.durationMs
+
+            if (pos > 0L || dur > 0L) {
+                withContext(Dispatchers.IO) {
+                    val existing = dao.getByKey(key)
+                    val finalDuration = if (dur > 0L) dur else (existing?.durationMs ?: 0L)
+                    val updated = existing?.copy(
+                        positionMs = pos,
+                        durationMs = finalDuration,
+                        lastPlayedAt = System.currentTimeMillis()
+                    ) ?: FileSettings(
+                        key = key,
+                        positionMs = pos,
+                        durationMs = finalDuration,
+                        lastPlayedAt = System.currentTimeMillis()
+                    )
+                    dao.upsert(updated)
+                    Log.i("VP", "Saved position $pos ms (duration $finalDuration ms) for key $key")
+                }
             }
         }
 
         if (forceSync) {
-            kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                saveTask()
+            try {
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    kotlinx.coroutines.withTimeout(500L) {
+                        saveTask()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("VP", "saveCurrentPosition sync failed or timed out: ${e.message}")
             }
         } else {
             viewModelScope.launch(Dispatchers.IO) {

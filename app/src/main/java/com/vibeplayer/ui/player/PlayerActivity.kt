@@ -177,7 +177,6 @@ class PlayerActivity : ComponentActivity() {
 
         setContent {
             val playerState by playerEngine.state.collectAsState()
-            val positionMs by playerEngine.position.collectAsState()
             val zoom by playerEngine.zoomState.collectAsState()
             var showDebugOverlay by remember { mutableStateOf(false) }
             var controlsVisible by remember { mutableStateOf(true) }
@@ -214,7 +213,7 @@ class PlayerActivity : ComponentActivity() {
                                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
                                 _volumeFlow.value = newVol
                             },
-                            currentPositionMs = positionMs,
+                            getCurrentPositionMs = { playerEngine.currentPositionMs() },
                             durationMs = playerState.durationMs,
                             zoom = zoom,
                             onZoomChange = { z -> playerEngine.setVideoZoom(z, commit = false) },
@@ -222,11 +221,8 @@ class PlayerActivity : ComponentActivity() {
                             onZoomCommit = { z -> playerEngine.setVideoZoom(z, commit = true) },
                             onPanCommit = { px, py -> playerEngine.setVideoPan(px, py, commit = true) },
                             onResetZoom = { playerEngine.resetZoomAndPan() },
-                            onSeekPreview = { targetMs ->
-                                playerEngine.seekTo(targetMs, exact = false)
-                            },
-                            onSeekCommit = { targetMs ->
-                                playerEngine.seekTo(targetMs, exact = true)
+                            onSeekRelative = { deltaSec, exact ->
+                                playerEngine.seekRelative(deltaSec, exact)
                             },
                             onSingleTap = {
                                 controlsVisible = !controlsVisible
@@ -239,7 +235,6 @@ class PlayerActivity : ComponentActivity() {
                         PlayerControls(
                             playerEngine = playerEngine,
                             playerState = playerState,
-                            positionMs = positionMs,
                             videoPath = currentVideoTitle,
                             controlsVisible = controlsVisible,
                             isLocked = isLocked,
@@ -560,6 +555,5 @@ class PlayerActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i("VP", "PlayerActivity onDestroy")
-        playerEngine.release()
     }
 }

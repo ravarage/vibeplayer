@@ -56,7 +56,7 @@ fun GestureLayer(
     maxVolume: Int = 20,
     triggerVolumeIndicatorFlow: StateFlow<Long> = MutableStateFlow(0L),
     onVolumeChanged: (Int) -> Unit = {},
-    currentPositionMs: Long = 0L,
+    getCurrentPositionMs: suspend () -> Long = { 0L },
     durationMs: Long = 0L,
     zoom: Double = 0.0,
     onZoomChange: (Double) -> Unit = {},
@@ -66,6 +66,7 @@ fun GestureLayer(
     onResetZoom: () -> Unit = {},
     onSeekPreview: (targetMs: Long) -> Unit = {},
     onSeekCommit: (targetMs: Long) -> Unit = {},
+    onSeekRelative: (deltaSeconds: Double, exact: Boolean) -> Unit = { _, _ -> },
     onSingleTap: () -> Unit = {},
     onDoubleTap: (isLeft: Boolean) -> Unit = {},
     onGestureTypeChanged: (GestureType) -> Unit = {},
@@ -227,17 +228,18 @@ fun GestureLayer(
                             if (absDx > absDy) {
                                 lockedGesture = GestureType.HORIZONTAL
                                 Log.i("VP", "Gesture detected: HORIZONTAL")
-                                swipeSeekStartPositionMs = currentPositionMs
                                 totalSwipeDx = totalDx
-                                val deltaMs = (totalDx * 40f).toLong()
-                                val targetMs = (swipeSeekStartPositionMs + deltaMs).coerceIn(0L, durationMs)
-                                swipeSeekTargetMs = targetMs
-                                swipeSeekDeltaSeconds = (targetMs - swipeSeekStartPositionMs) / 1000L
-                                HapticFeedbackHelper.triggerTick(view, "swipe-seek step")
                                 showSwipeSeekIndicator = true
                                 hideSwipeSeekJob?.cancel()
-                                lastPreviewSeekTime = SystemClock.uptimeMillis()
-                                onSeekPreview(targetMs)
+                                coroutineScope.launch {
+                                    val base = getCurrentPositionMs()
+                                    swipeSeekStartPositionMs = base
+                                    val deltaMs = (totalSwipeDx * 40f).toLong()
+                                    val targetMs = (base + deltaMs).coerceIn(0L, durationMs)
+                                    swipeSeekTargetMs = targetMs
+                                    swipeSeekDeltaSeconds = (targetMs - base) / 1000L
+                                }
+                                HapticFeedbackHelper.triggerTick(view, "swipe-seek step")
                             } else {
                                 if (isLeftZone) {
                                     lockedGesture = GestureType.LEFT_VERTICAL
@@ -267,11 +269,6 @@ fun GestureLayer(
                                 }
                                 showSwipeSeekIndicator = true
                                 hideSwipeSeekJob?.cancel()
-                                val now = SystemClock.uptimeMillis()
-                                if (now - lastPreviewSeekTime >= 50L) {
-                                    lastPreviewSeekTime = now
-                                    onSeekPreview(targetMs)
-                                }
                                 onHorizontalDrag(dx)
                             }
                             GestureType.LEFT_VERTICAL -> {
@@ -313,10 +310,10 @@ fun GestureLayer(
                             doubleTapHideJob?.cancel()
                             doubleTapAccumulatedSec += 10
                             doubleTapRippleTrigger = now
-                            val deltaMs = (if (doubleTapIsLeft) -doubleTapAccumulatedSec else doubleTapAccumulatedSec) * 1000L
-                            val targetMs = (doubleTapBasePosMs + deltaMs).coerceIn(0L, durationMs)
-                            Log.i("VP", "Double-tap streak accumulate: isLeft=$doubleTapIsLeft, sec=$doubleTapAccumulatedSec, target=$targetMs")
-                            onSeekCommit(targetMs)
+                            val deltaSec = if (doubleTapIsLeft) -10.0 else 10.0
+                            val targetMs = (doubleTapBasePosMs + (if (doubleTapIsLeft) -doubleTapAccumulatedSec else doubleTapAccumulatedSec) * 1000L).coerceIn(0L, durationMs)
+                            Log.i("VP", "Double-tap streak accumulate: isLeft=$doubleTapIsLeft, sec=$doubleTapAccumulatedSec, deltaSec=$deltaSec")
+                            onSeekRelative(deltaSec, true)
                             onDoubleTap(doubleTapIsLeft)
                             HapticFeedbackHelper.triggerTick(view, "skip")
                             doubleTapHideJob = coroutineScope.launch {
@@ -336,16 +333,15 @@ fun GestureLayer(
                                 doubleTapStreakActive = true
                                 doubleTapIsLeft = isLeft
                                 doubleTapAccumulatedSec = 10
-                                doubleTapBasePosMs = currentPositionMs
                                 doubleTapRippleTrigger = now
-                                val deltaMs = (if (isLeft) -10_000L else 10_000L)
-                                val targetMs = (doubleTapBasePosMs + deltaMs).coerceIn(0L, durationMs)
+                                val deltaSec = if (isLeft) -10.0 else 10.0
                                 val gType = if (isLeft) GestureType.DOUBLE_TAP_LEFT else GestureType.DOUBLE_TAP_RIGHT
-                                Log.i("VP", "Gesture detected: $gType, target=$targetMs")
-                                onSeekCommit(targetMs)
+                                Log.i("VP", "Gesture detected: $gType, deltaSec=$deltaSec")
+                                onSeekRelative(deltaSec, true)
                                 onDoubleTap(isLeft)
                                 HapticFeedbackHelper.triggerTick(view, "skip")
                                 doubleTapHideJob = coroutineScope.launch {
+                                    doubleTapBasePosMs = getCurrentPositionMs()
                                     delay(700L)
                                     doubleTapStreakActive = false
                                     doubleTapAccumulatedSec = 0
@@ -371,7 +367,9 @@ fun GestureLayer(
                 } else {
                     Log.i("VP", "Gesture ended: $lockedGesture")
                     if (lockedGesture == GestureType.HORIZONTAL) {
-                        onSeekCommit(swipeSeekTargetMs)
+                        val deltaSec = (swipeSeekTargetMs - swipeSeekStartPositionMs) / 1000.0
+                        Log.i("VP", "Swipe seek commit: deltaSec=$deltaSec (start=$swipeSeekStartPositionMs, target=$swipeSeekTargetMs)")
+                        onSeekRelative(deltaSec, true)
                         hideSwipeSeekJob?.cancel()
                         hideSwipeSeekJob = coroutineScope.launch {
                             delay(800L)
