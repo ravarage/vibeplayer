@@ -35,7 +35,7 @@ USER FEEDBACK section of TASKS.md before touching anything.
 Log lines do not prove a picture is on screen. Any acceptance item that involves video being shown
 (playback, rotation, resume, fallback, subtitles, zoom, PiP) must pass `tools/check_video.py` while the
 clip plays (`--still` when paused): it screencaps the phone and fails on a black or frozen screen.
-State its output line in the PROGRESS.md note. For subtitles, overlays and UI, also save a screenshot
+State its output line in the PROGRESS.md note. Before every on-device check run `tools/wake.sh`: on battery the screen turns off after 30 s of idle and the phone locks, which is not a blocker. Use `tools/bin/adb` (first in PATH) so USB or Wi-Fi is picked automatically. For subtitles, overlays and UI, also save a screenshot
 (`adb exec-out screencap -p > /tmp/x.png`) and look at it. Leave media volume as you found it.
 
 The phone is the user's daily phone and its alarm must ring. Only the media stream (STREAM_MUSIC) may

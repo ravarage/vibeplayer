@@ -29,6 +29,8 @@ import java.io.File
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
+    data class Neighbours(val previous: Boolean = false, val next: Boolean = false)
+
     val playerEngine = PlayerEngine()
     private val db = AppDatabase.getInstance(application)
     private val dao = db.fileSettingsDao()
@@ -42,6 +44,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     // Path of the file being played; changes when auto-play advances to the next file in the folder.
     private val _currentPath = MutableStateFlow<String?>(null)
     val currentPath: StateFlow<String?> = _currentPath.asStateFlow()
+    private val _neighbours = MutableStateFlow(Neighbours())
+    val neighbours: StateFlow<Neighbours> = _neighbours.asStateFlow()
 
     init {
         // Periodic save every 10 seconds while playing
@@ -93,9 +97,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun skipToNeighbour(forward: Boolean) {
         val from = currentVideoPath ?: return
         viewModelScope.launch {
+            // Snapshot both identifiers before any suspend point; a later file switch must not
+            // redirect this save to the new file's Room key (review item 16).
+            val leavingKey = currentKey ?: return@launch
+            val leavingState = playerEngine.state.value
+            val leavingPosition = withContext(Dispatchers.IO) { playerEngine.currentPositionMs() }
+            savePositionSnapshot(leavingKey, leavingPosition, leavingState)
+
+            if (currentVideoPath != from) return@launch
             val target = withContext(Dispatchers.IO) {
                 if (forward) FolderPlaylist.next(from) else FolderPlaylist.previous(from)
             } ?: return@launch
+            if (currentVideoPath != from) return@launch
             openVideo(target, playAfterLoad = true)
         }
     }
@@ -118,6 +131,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         currentVideoPath = path
         _currentPath.value = path
+        _neighbours.value = Neighbours()
+        viewModelScope.launch(Dispatchers.IO) {
+            val files = if (path.startsWith("/")) FolderPlaylist.list(path) else emptyList()
+            val index = files.indexOf(File(path).absolutePath)
+            val updated = Neighbours(previous = index > 0, next = index >= 0 && index < files.lastIndex)
+            withContext(Dispatchers.Main.immediate) {
+                if (currentVideoPath == path) _neighbours.value = updated
+            }
+        }
         val key = computeKey(path, sizeBytes)
         currentKey = key
 
@@ -436,6 +458,26 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             viewModelScope.launch(Dispatchers.IO) {
                 saveTask()
             }
+        }
+    }
+
+    private suspend fun savePositionSnapshot(key: String, positionMs: Long, state: com.vibeplayer.player.PlayerState) {
+        withContext(Dispatchers.IO) {
+            val existing = dao.getByKey(key)
+            val duration = if (state.durationMs > 0L) state.durationMs else (existing?.durationMs ?: 0L)
+            if (positionMs <= 0L && duration <= 0L) return@withContext
+            val updated = existing?.copy(
+                positionMs = positionMs,
+                durationMs = duration,
+                lastPlayedAt = System.currentTimeMillis()
+            ) ?: FileSettings(
+                key = key,
+                positionMs = positionMs,
+                durationMs = duration,
+                lastPlayedAt = System.currentTimeMillis()
+            )
+            dao.upsert(updated)
+            Log.i("VP", "Saved leaving-file position $positionMs ms (dur=$duration ms) for key $key")
         }
     }
 

@@ -19,8 +19,16 @@ Newest entry first. Keep entries short; no long logs.
 ## Open
 
 _none_
-
 ## Resolved
+
+## B-06 Phone locked during final P4-12 PiP checks            Status: RESOLVED
+- Task: P4-12
+- Agent / date: CODEX / 2026-10-13
+- Problem: After sending KEYCODE_HOME during the 45.979 s `multi_track.mkv` run, the phone entered PiP per WindowManager logs (16:9 params), then dozed to its lock screen before a PiP video screenshot could be inspected. Subsequent wake, swipe and relaunch attempts produced black screenshots.
+- Tried: Captured and inspected fullscreen next/previous screenshots with `tools/check_video.py` passing; loaded `multi_track.mkv`; sent KEYCODE_HOME; checked PiP system transition logs; tried KEYCODE_WAKEUP, swipe-up and relaunch multiple times.
+- Options: Unlock/wake the phone and repeat the remaining PiP, setting-off, last-file and resume checks.
+- Needs from user: Unlock the phone display so the device checks can continue.
+- Resolution: not a blocker. The phone is on battery, so it sleeps after 30 s idle; `tools/wake.sh` wakes it and dismisses the lock screen (reviewer, 2026-10-13).
 
 ## B-05 Phone disconnected before final aspect checks            Status: RESOLVED
 - Task: P4-06

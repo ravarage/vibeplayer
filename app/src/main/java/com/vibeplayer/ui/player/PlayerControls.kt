@@ -65,6 +65,10 @@ fun PlayerControls(
     isLocked: Boolean = false,
     onToggleLock: () -> Unit = {},
     onEnterPip: () -> Unit = {},
+    canSkipPrevious: Boolean = false,
+    canSkipNext: Boolean = false,
+    onSkipPrevious: () -> Unit = {},
+    onSkipNext: () -> Unit = {},
     onSelectAudioTrack: ((Int?) -> Unit)? = null,
     onSelectSubTrack: ((Int?) -> Unit)? = null,
     onSelectSpeed: ((Double) -> Unit)? = null,
@@ -331,24 +335,55 @@ fun PlayerControls(
                         }
                     }
 
-                // Center: Play / Pause toggle
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(72.dp)
-                        .background(Color(0x88000000), shape = CircleShape)
-                        .clickable {
-                            lastInteraction = System.currentTimeMillis()
-                            playerEngine.togglePause()
-                        },
-                    contentAlignment = Alignment.Center
+                // Previous / play-pause / next, grouped in the center like a video-player remote.
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Text(
-                        text = if (playerState.paused) "▶" else "❚❚",
-                        color = Color.White,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    IconButton(
+                        onClick = {
+                            lastInteraction = System.currentTimeMillis()
+                            onSkipPrevious()
+                        },
+                        enabled = canSkipPrevious,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(Color(0x88000000), shape = CircleShape)
+                    ) {
+                        Text("|◀", color = Color.White.copy(alpha = if (canSkipPrevious) 1f else 0.35f), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(Color(0x88000000), shape = CircleShape)
+                            .clickable {
+                                lastInteraction = System.currentTimeMillis()
+                                playerEngine.togglePause()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (playerState.paused) "▶" else "❚❚",
+                            color = Color.White,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            lastInteraction = System.currentTimeMillis()
+                            onSkipNext()
+                        },
+                        enabled = canSkipNext,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(Color(0x88000000), shape = CircleShape)
+                    ) {
+                        Text("▶|", color = Color.White.copy(alpha = if (canSkipNext) 1f else 0.35f), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 // Bottom Bar: Time labels + Seek Bar

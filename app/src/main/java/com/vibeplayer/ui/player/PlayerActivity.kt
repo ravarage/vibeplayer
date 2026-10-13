@@ -190,6 +190,18 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        // Auto-advance and the skip buttons change the ViewModel path without a new Intent.
+        // Keep Activity bookkeeping aligned so a later onNewIntent compares against the file
+        // that is actually playing, and retain provider display names for content URIs.
+        lifecycleScope.launch {
+            viewModel.currentPath.collect { path ->
+                if (path != null) {
+                    currentVideoPath = path
+                    if (path.startsWith("/")) currentVideoTitle = File(path).name
+                }
+            }
+        }
+
         val config = resolveConfig()
         if (config != playerEngine.playbackConfig) {
             playerEngine.reconfigure(config)
@@ -208,7 +220,13 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             val playerState by playerEngine.state.collectAsState()
             val autoPath by viewModel.currentPath.collectAsState()
-            val shownTitle = autoPath?.takeIf { it.startsWith("/") && it != currentVideoPath }?.let { File(it).name } ?: currentVideoTitle
+            val activePath = autoPath
+            val shownTitle = when {
+                activePath == null -> currentVideoTitle
+                activePath.startsWith("/") -> File(activePath).name
+                else -> currentVideoTitle
+            }
+            val neighbours by viewModel.neighbours.collectAsState()
             val zoom by playerEngine.zoomState.collectAsState()
             val isInPip by _isInPipFlow.collectAsState()
             var showDebugOverlay by remember { mutableStateOf(false) }
@@ -294,6 +312,10 @@ class PlayerActivity : ComponentActivity() {
                                 onToggleDebug = { showDebugOverlay = !showDebugOverlay },
                                 onHideControls = { controlsVisible = false },
                                 onEnterPip = { enterPip() },
+                                canSkipPrevious = neighbours.previous,
+                                canSkipNext = neighbours.next,
+                                onSkipPrevious = { viewModel.skipToNeighbour(forward = false) },
+                                onSkipNext = { viewModel.skipToNeighbour(forward = true) },
                                 onSelectAudioTrack = { viewModel.setAudioTrack(it) },
                                 onSelectSubTrack = { viewModel.setSubtitleTrack(it) },
                                 onSelectSpeed = { viewModel.setSpeed(it) },
@@ -343,7 +365,7 @@ class PlayerActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val config = resolveConfig()
-        val oldPath = currentVideoPath
+        val oldPath = viewModel.currentPath.value ?: currentVideoPath
         resolveVideoPath()
         val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
         if (!forceHwdec.isNullOrEmpty()) {
