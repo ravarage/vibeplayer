@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
@@ -392,10 +393,23 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun saveCurrentPosition() {
         val generation = loadGeneration
         val key = currentKey ?: return
-        val pos = playerEngine.position.value
+        val knownPos = playerEngine.position.value
         val state = playerEngine.state.value
         if (generation != loadGeneration || key != currentKey) return
         saveScope.launch {
+            // The position flow only ticks while the controls are visible, so its value can be
+            // minutes old. Ask the engine (command thread, never main); fall back to the last
+            // known value when the engine is released or busy, or the file changed meanwhile.
+            val fresh = try {
+                withTimeoutOrNull(1_000L) { playerEngine.currentPositionMs() }
+            } catch (e: Exception) {
+                null
+            }
+            val pos = if (generation == loadGeneration && key == currentKey) {
+                fresh ?: playerEngine.position.value
+            } else {
+                knownPos
+            }
             val dur = state.durationMs
 
             if (pos > 0L || dur > 0L) {
