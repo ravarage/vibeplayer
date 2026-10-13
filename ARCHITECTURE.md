@@ -57,7 +57,7 @@ Application id and base package: `com.vibeplayer`.
 ## Threading model
 | Thread | Does | Must never |
 |---|---|---|
-| Main | Compose, surface callbacks, collects state | call blocking mpv functions (`getProperty`, sync commands). Only exception: `surfaceDestroyed` waits for the detach to finish |
+| Main | Compose, surface callbacks, collects state | call blocking mpv functions (`getProperty`, sync commands). Only exception: `surfaceDestroyed` waits for the detach to finish, at most 1.5 s (`PlayerEngine.detachSurface`); on timeout the detach stays queued on the command thread |
 | Player command thread (single-thread dispatcher in `PlayerEngine`) | all `command`/`setProperty` calls, init, destroy | touch UI |
 | mpv event thread (native) | reads events, pushes values into `MutableStateFlow`s | call back into mpv synchronously |
 | IO dispatcher | Room, MediaStore, thumbnail disk cache | |

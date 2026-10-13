@@ -18,6 +18,18 @@ Newest entry first. Keep entries short; no long logs.
 
 ## Open
 
+## B-08 Video sometimes never starts: MediaCodec decoder stalls after the first frame            Status: OPEN
+- Task: found during P4-11 (not one of its review items); affects every playback task
+- Agent / date: CLAUDE-A / 2026-10-13
+- Problem: opening `ichiban.mp4` (H.264, resume position, default Efficient path B, `hwdec=mediacodec`) stays black in roughly 1 of 5 to 1 of 12 opens: 1/12, 1/3, 4/20 in three runs; also 1/20 with `--es hwdec mediacodec-copy`, so it is not only the aimagereader path. mpv logs `Using hardware decoding (mediacodec)` and then never prints `VO: [gpu] 1920x1080 mediacodec` or `playback-restart`. It never recovers; mpv commands (`getProperty`, detach, destroy) then block for good.
+- Evidence: ANR dump (dropbox `data_app_anr`, symbolized with the unstripped libs): mpv core thread in `run_playloop -> write_video -> lavc_process -> ff_decode_receive_frame -> mediacodec_receive_frame (mediacodecdec.c:515) -> ff_mediacodec_dec_receive -> dequeueOutputBuffer`. That is FFmpeg 9.0.2's `while (1)` "no input space, block for an output frame" loop, which repeats while the codec gives neither input space nor output. `VP-Command` thread waits in `mpv_get_property_string` (`updateTracks`). Not related to: the debug overlay (happens without it), reopen speed (1.2 s and 6 s gaps), the resume position (same position works on retry; keyframes every 0.5 s), thumbnail extraction (none running), a leftover engine (previous handle destroyed 7 s earlier).
+- Tried: bounded the main-thread detach wait (P4-11 commit) so the app no longer shows "isn't responding"; leaving and reopening then works. The stuck engine's threads and its codec stay alive (spinning every 8 ms) until the process dies. No native fix attempted.
+- Options: A) find the cause in the MediaCodec path (next discriminators: `msg-level=ffmpeg=trace` to see queued input / output buffers before the stall; a load without `start=` to see whether hr-seek frame dropping is needed; the GLES-only libraries from before the Vulkan-enabled build became default on 2026-10-13); B) add an engine watchdog (no `playback-restart` N s after `file-loaded` -> abandon the handle and reload once with `hwdec=no`), which hides the stall but leaks the stuck handle.
+- Needs from user: nothing to decide yet; reviewer picks A or B. Not known whether this is older than today's commits.
+- Resolution:
+
+## Resolved
+
 ## B-07 Shared phone foregrounded in Telegram            Status: RESOLVED
 - Task: P4-11
 - Agent / date: CODEX / 2026-10-13
@@ -26,8 +38,6 @@ Newest entry first. Keep entries short; no long logs.
 - Options: A) make the phone available for the remaining checks; B) leave those acceptance items unverified.
 - Needs from user: Let CODEX know when the phone is available for a short P4-11 verification pass.
 - Resolution: user said the phone is free (2026-10-13); adb sees the redwood device and this verification pass is proceeding.
-
-## Resolved
 
 ## B-06 Phone locked during final P4-12 PiP checks            Status: RESOLVED
 - Task: P4-12

@@ -56,6 +56,7 @@ class PlayerEngine(
     val stats: StateFlow<PlayerStats> = _stats.asStateFlow()
 
     companion object {
+        private const val DETACH_TIMEOUT_MS = 1500L
         const val REPLY_PAUSE = 1L
         const val REPLY_DURATION = 2L
         const val REPLY_TIME_POS = 3L
@@ -354,7 +355,12 @@ class PlayerEngine(
                     Log.i("VP", "Surface detached from mpv handle")
                 }
             }
-            future.get()
+            // Called from surfaceDestroyed on the main thread. Bounded: if the command thread is
+            // stuck behind a blocked mpv core, an unbounded wait is an ANR. On timeout the task
+            // stays queued, so the surface reference is dropped only when the detach really runs.
+            future.get(DETACH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            Log.e("VP", "detachSurface timed out after $DETACH_TIMEOUT_MS ms (command thread busy); detach stays queued")
         } catch (e: Exception) {
             Log.e("VP", "detachSurface failed: ${e.message}", e)
         }
