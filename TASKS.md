@@ -485,6 +485,18 @@ cold start improves or stays equal (numbers in docs/BENCHMARK.md).
 *Files*: PlayerEngine.kt, ui/player/*. *Accept*: efficient-mode power for a 10 min clip is not higher
 than the P1-06 figure.
 
+**P7-07 Memory budget** — Reviewer measurement 2026-10-13: playing a 1080p H.264 file the app uses
+428 MB PSS, of which 253 MB is native heap (mpv) and 78 MB graphics. For local files mpv's default
+read-ahead cache (150 MiB forward, 50 MiB back) buys nothing. Set for local files
+`demuxer-max-bytes` about 32 to 48 MiB and `demuxer-max-back-bytes` about 8 to 16 MiB (keep seeking
+back by 10 s instant: measure), check `cache`/`demuxer-readahead-secs`, the libass font cache, the
+thumbnail memory LRU (1/8 of the heap today) and that the thumbnail mpv instance is really gone after
+use. Release memory when the player is closed (the browser alone should be small) and trim on
+`onTrimMemory`. *Files*: PlaybackMode.kt, PlayerEngine.kt, data/thumbs/*. *Accept*: `dumpsys meminfo
+com.vibeplayer` TOTAL PSS recorded in docs/BENCHMARK.md before and after for: browser idle, 1080p
+H.264 playing 2 min, 4K AV1 playing 2 min, mini player; 1080p playback at or under 220 MB without new
+dropped frames or slower double-tap seeks; browser idle after closing the player at or under 150 MB.
+
 ## P8 Optional shaders (quality mode only)
 
 **P8-01 Shader plumbing** — Ship shaders as assets, copy to files dir, apply via `glsl-shaders`;
