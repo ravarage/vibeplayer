@@ -1,0 +1,94 @@
+diff --git a/buildscripts/buildall.sh b/buildscripts/buildall.sh
+index c4327f9..40d9830 100755
+--- a/buildscripts/buildall.sh
++++ b/buildscripts/buildall.sh
+@@ -68,9 +68,13 @@ loadarch () {
+ 	export prefix_dir="$PWD/prefix/$prefix_name"
+ 	export CC=$cc_triple-clang
+ 	export CXX=$cc_triple-clang++
+-	export CFLAGS="-O2"
+-	export CXXFLAGS="-O2"
+-	export LDFLAGS="-Wl,-O1,--icf=safe -Wl,-z,max-page-size=16384"
++	local native_opt_flags="-O2"
++	if [[ "${NATIVE_TUNED:-0}" == "1" ]]; then
++		native_opt_flags="-O2 -mcpu=cortex-a78 -flto=thin"
++	fi
++	export CFLAGS="$native_opt_flags"
++	export CXXFLAGS="$native_opt_flags"
++	export LDFLAGS="$native_opt_flags -Wl,-O1,--icf=safe -Wl,-z,max-page-size=16384"
+ 	export AR=llvm-ar
+ 	export RANLIB=llvm-ranlib
+ 
+@@ -84,6 +88,12 @@ loadarch () {
+ }
+ 
+ setup_prefix () {
++	local meson_c_args="['-O2']"
++	local meson_link_args="['-O2']"
++	if [[ "${NATIVE_TUNED:-0}" == "1" ]]; then
++		meson_c_args="['-O2', '-mcpu=cortex-a78', '-flto=thin']"
++		meson_link_args="['-O2', '-mcpu=cortex-a78', '-flto=thin']"
++	fi
+ 	if [ ! -d "$prefix_dir" ]; then
+ 		mkdir -p "$prefix_dir"
+ 		# enforce flat structure (/usr/local -> /)
+@@ -100,6 +110,11 @@ setup_prefix () {
+ [built-in options]
+ buildtype = 'release'
+ optimization = '2'
++b_lto = false
++c_args = $meson_c_args
++cpp_args = $meson_c_args
++c_link_args = $meson_link_args
++cpp_link_args = $meson_link_args
+ default_library = 'static'
+ wrap_mode = 'nodownload'
+ prefix = '/usr/local'
+diff --git a/buildscripts/scripts/dav1d.sh b/buildscripts/scripts/dav1d.sh
+index aef89de..5385a25 100755
+--- a/buildscripts/scripts/dav1d.sh
++++ b/buildscripts/scripts/dav1d.sh
+@@ -15,8 +15,10 @@ fi
+ 
+ unset CC CXX # meson wants these unset
+ 
++meson_lto=true
++[[ "${NATIVE_TUNED:-0}" == "1" ]] && meson_lto=false
+ meson setup $build --cross-file "$prefix_dir"/crossfile.txt \
+-	-Denable_tests=false -Db_lto=true -Dstack_alignment=16
++	-Denable_tests=false -Db_lto=$meson_lto -Dstack_alignment=16
+ 
+ ninja -C $build -j$cores
+ DESTDIR="$prefix_dir" ninja -C $build install
+diff --git a/buildscripts/scripts/ffmpeg.sh b/buildscripts/scripts/ffmpeg.sh
+index 0a97c65..96d300a 100755
+--- a/buildscripts/scripts/ffmpeg.sh
++++ b/buildscripts/scripts/ffmpeg.sh
+@@ -21,13 +21,15 @@ cpu=armv7-a
+ 
+ cpuflags=
+ [[ "$ndk_triple" == "arm"* ]] && cpuflags="$cpuflags -mfpu=neon -mcpu=cortex-a8"
++optflags="-O2"
++[[ "${NATIVE_TUNED:-0}" == "1" ]] && optflags="-O2 -mcpu=cortex-a78 -flto=thin"
+ 
+ args=(
+ 	--target-os=android --enable-cross-compile
+ 	--cross-prefix=$ndk_triple- --cc=$CC --pkg-config=pkg-config --nm=llvm-nm
+ 	--arch=${ndk_triple%%-*} --cpu=$cpu
+-	--extra-cflags="-I$prefix_dir/include $cpuflags" --extra-ldflags="-L$prefix_dir/lib"
+-	--optflags="-O2"
++	--extra-cflags="-I$prefix_dir/include $cpuflags $optflags" --extra-ldflags="-L$prefix_dir/lib"
++	--optflags="$optflags"
+ 
+ 	--enable-{jni,mediacodec,mbedtls,libdav1d,libxml2} --disable-vulkan
+ 	--disable-static --enable-shared --enable-{gpl,version3}
+@@ -36,6 +38,9 @@ args=(
+ 	--disable-{stripping,doc,programs}
+ 	--disable-{muxers,encoders,devices,avdevice}
+ )
++# FFmpeg's GCC host-tool probe defaults to -O3 even for this arm64 cross build.
++# Normalize compiler-detected speed flags so no host or target command can use -O3 or -Ofast.
++${SED:-sed} -i -e 's/-O3/-O2/g' -e 's/-Ofast/-O2/g' ../configure
+ ../configure "${args[@]}"
+ 
+ make -j$cores

@@ -14,3 +14,5 @@ local.properties
 # Native sources and outputs (rebuilt by native/build.sh)
 native/mpv-android/
 player/src/main/jniLibs/
+
+native/out/

@@ -262,12 +262,12 @@ _Reviewer notes from the P1 review (2026-10-12):_
 - _P4-02: restore the position with the `start=<seconds>` per-file option of `loadfile`, not with a
   `seek` sent right after `loadfile` (the file is not loaded yet, so that seek is lost).
   `PlayerEngine.reconfigure()` has the same bug: fix it there too._
-- _P6-02: keep `Renderer.VULKAN` in the code but offer it only when the device reports Vulkan 1.2 or
-  newer (`PackageManager.FEATURE_VULKAN_HARDWARE_VERSION`) **and** the loaded libmpv lists `vulkan` in
-  its `gpu-api` choices; otherwise hide the choice and use GLES. The user plans a system upgrade that
-  may bring Vulkan 1.2/1.3, so the path must light up without code changes: rebuild with
-  `VULKAN=1 native/build.sh` (applies `native/patches/optional/0004-vulkan-shaderc.patch`) and re-run
-  the P6 benchmark. Add that switch to `native/build.sh` in P6-02._
+- _P6-02: keep `Renderer.VULKAN`. Offer it when a one-time runtime probe succeeds (create the Vulkan
+  context once at first use and cache the result keyed by `Build.FINGERPRINT` + the Vulkan driver
+  version; **not** `FEATURE_VULKAN_HARDWARE_VERSION`, which still reports 1.1 on this phone although
+  the driver is 1.3) and the loaded libmpv lists `vulkan` in its `gpu-api` choices. If Vulkan init
+  fails at playback time, fall back to GLES automatically with a log line and a note in the debug
+  overlay._
 - _P7: `libdav1d: Error parsing OBU data` is logged once at the start of every AV1 file; find out
   whether it is harmless (extradata probe) or costs start time._
 
@@ -427,6 +427,15 @@ ARCHITECTURE.md (Vulkan status, Confirmed mpv options). *Accept*: either a clip 
 (overlay/log shows the Vulkan context), or the exact failure (e.g. device Vulkan 1.1 below the required
 version) is recorded in ARCHITECTURE.md and a non-blocking BLOCKERS entry, and P6-02/P6-04/P6-05 are
 re-scoped to `gpu-next` vs `gpu` on GLES. GLES playback must still work after the rebuild.
+
+**P6-00b Vulkan re-probe on the 1.3 driver** — The phone now reports Vulkan 1.3.295 (ARCHITECTURE.md,
+"Vulkan status update"). Build `VULKAN=1 native/build.sh` (in a worktree with its own
+`native/mpv-android`: the build wipes the shared prefix), probe `vo=gpu-next`, `gpu-api=vulkan`,
+`gpu-context=androidvk` with `hwdec=mediacodec-copy` and with software AV1, and also `vo=gpu` with
+Vulkan. *Accept*: a clip plays through Vulkan with a visible picture (`tools/check_video.py`) and the
+log shows the Vulkan context and device; or the exact failure is recorded. If it works, the Vulkan
+build becomes the default libraries in `player/src/main/jniLibs` (default variant = with Vulkan), the
+P6 tasks compare Vulkan vs GLES as SPEC.md originally says, and the renderer setting offers both.
 
 **P6-01 Quality mode** — Quality option table; mode setting and in-player toggle using
 `reconfigure()`. *Files*: PlaybackMode.kt, PlayerEngine.kt, ui/settings/*. *Accept*: overlay shows

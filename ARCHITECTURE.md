@@ -99,6 +99,16 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
   `PlayerEngine.reconfigure()` saves position and tracks, destroys and recreates the handle with the
   new option table, reloads the file and seeks.
 
+## Vulkan status update (2026-10-13)
+**The phone now has a Vulkan 1.3 driver** (user-installed; `cmd gpu vkjson` reports Adreno 642L API
+1.3.295, `/vendor/lib64/hw/vulkan.adreno.so` dated 2026-10-13). libplacebo's 1.2 minimum is met, so the
+Vulkan renderer is expected to work and must be re-probed with the `VULKAN=1` build (task P6-00b).
+Caveats: the system feature flag `android.hardware.vulkan.version` still says 1.1.0, so **never gate on
+`PackageManager.FEATURE_VULKAN_HARDWARE_VERSION`**: decide by actually initialising the Vulkan context
+once (cache the result per driver build) and fall back to GLES if it fails. The driver can change
+again with a system update, so GLES must always remain a working fallback. The older section below
+describes the previous 1.1 driver and is kept as history.
+
 ## Vulkan status (probe 2026-10-12, task P6-00)
 **Decision (reviewer, 2026-10-12): Vulkan is not usable on this device; every mode uses OpenGL ES.** The default native build does not include Vulkan: the patch lives in `native/patches/optional/0004-vulkan-shaderc.patch` and `fetch.sh` does not apply it (it doubles libmpv.so to 15 MB). In the default build `gpu-context` offers only `android` and `gpu-api` only `opengl`; ignore `androidvk`/`vulkan` in the options table below. P6 compares `gpu-next` vs `gpu` on GLES.
 
@@ -173,9 +183,13 @@ _Filled by P0-09 from the built libmpv (`decoder-list`, `demuxer-lavf-list`, `en
 
 ## Native build
 - mpv-android buildscripts download their own SDK (Android SDK cmdline-tools 11076708, platform 36, build-tools 36.0.0), NDK (r30 / 30.0.16248370) and all dependency sources into `native/mpv-android/buildscripts/{sdk,deps}` (confirmed by P0-04). The Gradle build uses that same SDK through `local.properties`.
-- Native code is rebuilt only by tasks that touch `native/`. Outputs are gitignored and shared by all
-  agents because they work on the same machine.
-- Development flags `-O2`. P9 adds `-mcpu=cortex-a78 -flto=thin` behind `TUNED=1 native/build.sh`.
+- Select the native build variant with environment variables:
+  - `native/build.sh`: default `-O2`, no Vulkan, outputs to `player/src/main/jniLibs/arm64-v8a`.
+  - `VULKAN=1 native/build.sh`: `-O2` plus the optional Vulkan/shaderc patch, outputs to `native/out/vulkan/arm64-v8a`.
+  - `TUNED=1 native/build.sh`: `-O2 -mcpu=cortex-a78 -flto=thin`, outputs to `native/out/tuned/arm64-v8a`.
+  - `TUNED=1 VULKAN=1 native/build.sh`: tuned flags plus Vulkan, outputs to `native/out/tuned-vulkan/arm64-v8a`.
+- Every invocation cleans the shared dependency build directories and prefix before building, so objects and archives from another flag or Vulkan selection are not reused. Variant outputs are separate; `native/out/` and `player/src/main/jniLibs/` are gitignored.
+- Native builds are arm64-v8a only. `fetch.sh` applies the default build-variant patch to a fresh buildscripts checkout; Vulkan remains opt-in.
 
 ## Versions
 See the Versions table in PROGRESS.md and the dependency policy in AGENT_RULES.md.
