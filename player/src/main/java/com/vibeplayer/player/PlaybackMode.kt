@@ -19,7 +19,9 @@ data class PlaybackConfig(
     val mode: PlaybackMode = PlaybackMode.EFFICIENT,
     val efficientPath: EfficientPath = EfficientPath.PATH_B,
     val renderer: Renderer = Renderer.GLES,
-    val voOverride: String? = null
+    val voOverride: String? = null,
+    /** Debug builds only (intent extra `mpv_msg_level`): replaces mpv's msg-level, e.g. "all=v,ffmpeg=trace". */
+    val debugMsgLevel: String? = null
 ) {
     val vo: String
         get() = voOverride ?: when (mode) {
@@ -40,6 +42,7 @@ data class PlaybackConfig(
         options["hwdec-codecs"] = "h264,hevc,vp9"
         options["sub-auto"] = "fuzzy"
         options["audio-pitch-correction"] = "yes"
+        debugMsgLevel?.let { options["msg-level"] = it }
 
         when (mode) {
             PlaybackMode.EFFICIENT -> {

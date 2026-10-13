@@ -503,6 +503,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val fresh = try {
                 withTimeoutOrNull(1_000L) { playerEngine.currentPositionMs() }
             } catch (e: Exception) {
+                // Includes the cancellation thrown when the command executor is already shut
+                // down after release(); this save must still run with the last known value.
                 null
             }
             val pos = if (generation == loadGeneration && key == currentKey) {
