@@ -10,6 +10,8 @@ android {
     defaultConfig {
         minSdk = 37
 
+        consumerProguardFiles("consumer-rules.pro")
+
         ndk {
             abiFilters.add("arm64-v8a")
         }
@@ -25,6 +27,10 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {

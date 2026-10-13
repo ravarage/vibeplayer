@@ -73,7 +73,7 @@ class PlayerEngine(
 
     private val eventCallback = object : MpvNative.EventCallback {
         override fun onPropertyChange(name: String, value: Any?) {
-            if (name != "time-pos") {
+            if (BuildConfig.DEBUG && name != "time-pos") {
                 Log.i("VP", "onPropertyChange: $name = $value")
             }
             when (name) {
@@ -281,7 +281,7 @@ class PlayerEngine(
 
     private fun initHandle() {
         assertCommandThread()
-        handle = MpvNative.create()
+        handle = MpvNative.create(BuildConfig.DEBUG)
         if (handle == 0L) {
             Log.e("VP", "Failed to create mpv handle")
             return

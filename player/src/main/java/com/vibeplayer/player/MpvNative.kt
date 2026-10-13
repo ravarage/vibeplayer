@@ -20,7 +20,7 @@ object MpvNative {
         fun onEvent(id: Int)
     }
 
-    external fun create(): Long
+    external fun create(debugLogs: Boolean): Long
     external fun setEventCallback(handle: Long, callback: EventCallback?)
     external fun setOptionString(handle: Long, name: String, value: String): Int
     external fun initialize(handle: Long): Int

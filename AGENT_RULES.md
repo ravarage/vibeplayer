@@ -78,7 +78,9 @@ Filled in and kept current by the tasks that create them (P0-06, P0-07).
 | Fetch native sources | `native/fetch.sh` |
 | Build native (only if `native/` changed) | `native/build.sh` |
 | Build debug app | `./gradlew :app:assembleDebug` |
+| Build release app | `./gradlew :app:assembleRelease` |
 | Install | `adb install -r app/build/outputs/apk/debug/app-debug.apk` |
+| Install release | `adb install -r app/build/outputs/apk/release/app-release.apk` |
 | Launch | `adb shell am start -n com.vibeplayer/.MainActivity` |
 | Play a test clip | `adb shell am start -a android.intent.action.VIEW -d file:///sdcard/Movies/vibeplayer-test/h264_1080p.mp4 -t video/* com.vibeplayer` |
 | Logs | `adb logcat -s VP VP-Perf mpv` |

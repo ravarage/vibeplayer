@@ -196,7 +196,7 @@ static void *event_thread_func(void *arg) {
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_vibeplayer_player_MpvNative_create(JNIEnv *env, jobject thiz) {
+Java_com_vibeplayer_player_MpvNative_create(JNIEnv *env, jobject thiz, jboolean debug_logs) {
     mpv_handle *mpv = mpv_create();
     if (!mpv) {
         __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "mpv_create() failed");
@@ -204,7 +204,7 @@ Java_com_vibeplayer_player_MpvNative_create(JNIEnv *env, jobject thiz) {
     }
 
     mpv_request_log_messages(mpv, "terminal-default");
-    mpv_set_option_string(mpv, "msg-level", "all=v");
+    mpv_set_option_string(mpv, "msg-level", debug_logs ? "all=v" : "all=warn");
 
     mpv_holder_t *holder = (mpv_holder_t *)calloc(1, sizeof(mpv_holder_t));
     holder->mpv = mpv;

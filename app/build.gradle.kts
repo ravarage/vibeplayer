@@ -23,9 +23,23 @@ android {
         }
     }
 
+    signingConfigs {
+        create("local") {
+            // Personal app, never published: debug and release are both signed with the Android debug
+            // key of this PC, the key the app on the phone was first installed with. Updates therefore
+            // always install in place and keep history and settings. Back up ~/.android/debug.keystore.
+            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("local")
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -33,6 +47,7 @@ android {
         }
         debug {
             applicationIdSuffix = ""
+            signingConfig = signingConfigs.getByName("local")
         }
     }
 
