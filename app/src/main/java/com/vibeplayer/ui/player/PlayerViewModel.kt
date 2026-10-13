@@ -309,8 +309,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 com.vibeplayer.player.PlaybackMode.EFFICIENT
             }
-            val targetConfig = playbackConfig ?: playerEngine.playbackConfig.copy(mode = targetMode)
-            if (playerEngine.playbackConfig.mode != targetConfig.mode) {
+            val targetRenderer = if (appSettings.renderer == com.vibeplayer.data.prefs.RendererOption.VULKAN) {
+                com.vibeplayer.player.Renderer.VULKAN
+            } else {
+                com.vibeplayer.player.Renderer.GLES
+            }
+            val resolvedRenderer = com.vibeplayer.player.RendererResolver.resolveRenderer(
+                requestedRenderer = targetRenderer,
+                mode = targetMode,
+                gpuApiChoices = playerEngine.availableGpuApis.ifEmpty { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() },
+                sessionVulkanFailed = com.vibeplayer.player.PlayerEngine.sessionVulkanFailed
+            )
+            val targetConfig = playbackConfig ?: playerEngine.playbackConfig.copy(
+                mode = targetMode,
+                renderer = resolvedRenderer
+            )
+            if (playerEngine.playbackConfig.mode != targetConfig.mode || playerEngine.playbackConfig.renderer != targetConfig.renderer) {
                 playerEngine.reconfigure(targetConfig)
             }
 

@@ -17,8 +17,8 @@ enum class PlaybackModeOption(val displayName: String, val description: String) 
 }
 
 enum class RendererOption(val displayName: String, val description: String) {
-    OPENGL("OpenGL ES", "Standard GLES 3.2 renderer"),
-    VULKAN("Vulkan", "Vulkan API renderer (P6 benchmark)")
+    OPENGL("OpenGL ES", "Standard GLES 3.2 renderer (default)"),
+    VULKAN("Vulkan (Experimental)", "Vulkan API renderer (Quality mode only, experimental driver)")
 }
 
 enum class ShaderPresetOption(val displayName: String, val description: String) {

@@ -729,7 +729,13 @@ class PlayerEngine(
             assertCommandThread()
             val current = playbackConfig
             val newMode = if (current.mode == PlaybackMode.QUALITY) PlaybackMode.EFFICIENT else PlaybackMode.QUALITY
-            val newConfig = current.copy(mode = newMode)
+            val resolvedRenderer = RendererResolver.resolveRenderer(
+                requestedRenderer = current.renderer,
+                mode = newMode,
+                gpuApiChoices = availableGpuApis.ifEmpty { listOf("opengl", "vulkan") },
+                sessionVulkanFailed = sessionVulkanFailed
+            )
+            val newConfig = current.copy(mode = newMode, renderer = resolvedRenderer)
             reconfigure(newConfig)
         }
     }

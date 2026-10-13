@@ -154,6 +154,24 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        val rendererArg = intent.getStringExtra("renderer")
+        val requestedRenderer = when (rendererArg?.lowercase()) {
+            "vulkan" -> com.vibeplayer.player.Renderer.VULKAN
+            "gles", "opengl" -> com.vibeplayer.player.Renderer.GLES
+            else -> if (appSettings?.renderer == com.vibeplayer.data.prefs.RendererOption.VULKAN) {
+                com.vibeplayer.player.Renderer.VULKAN
+            } else {
+                com.vibeplayer.player.Renderer.GLES
+            }
+        }
+
+        val resolvedRenderer = com.vibeplayer.player.RendererResolver.resolveRenderer(
+            requestedRenderer = requestedRenderer,
+            mode = mode,
+            gpuApiChoices = playerEngine.availableGpuApis.ifEmpty { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() },
+            sessionVulkanFailed = com.vibeplayer.player.PlayerEngine.sessionVulkanFailed
+        )
+
         val pathArg = intent.getStringExtra("efficient_path") ?: intent.getStringExtra("path_mode")
         val path = when (pathArg?.lowercase()) {
             "path_a", "a" -> EfficientPath.PATH_A
@@ -161,7 +179,8 @@ class PlayerActivity : ComponentActivity() {
         }
         return PlaybackConfig(
             mode = mode,
-            efficientPath = path
+            efficientPath = path,
+            renderer = resolvedRenderer
         )
     }
 

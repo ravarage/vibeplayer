@@ -60,6 +60,14 @@ fun SettingsScreen(
     var showSubLangDialog by remember { mutableStateOf(false) }
     var showSubtitleModeDialog by remember { mutableStateOf(false) }
 
+    val availableGpuApis = remember { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() }
+    val vulkanSupported = remember(availableGpuApis) {
+        availableGpuApis.any { it.equals("vulkan", ignoreCase = true) }
+    }
+    val rendererOptions = remember(vulkanSupported) {
+        RendererOption.entries.filter { it != RendererOption.VULKAN || vulkanSupported }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -275,7 +283,7 @@ fun SettingsScreen(
             title = { Text("Select Video Renderer") },
             text = {
                 Column {
-                    RendererOption.entries.forEach { option ->
+                    rendererOptions.forEach { option ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
