@@ -20,7 +20,7 @@ download_deps() {
 
 select_vulkan_patch() {
 	local patch_file="$SCRIPT_DIR/patches/optional/0004-vulkan-shaderc.patch"
-	if [[ "${VULKAN:-0}" == "1" ]]; then
+	if [[ "${VULKAN:-1}" == "1" ]]; then
 		if ! git -C "$MPV_ANDROID_DIR" apply --reverse --check "$patch_file" >/dev/null 2>&1; then
 			git -C "$MPV_ANDROID_DIR" apply --check "$patch_file"
 			git -C "$MPV_ANDROID_DIR" apply "$patch_file"
@@ -50,11 +50,13 @@ select_vulkan_patch
 tuned=0
 [[ "${TUNED:-0}" == "1" ]] && tuned=1
 vulkan=0
-[[ "${VULKAN:-0}" == "1" ]] && vulkan=1
+[[ "${VULKAN:-1}" == "1" ]] && vulkan=1
+# Since 2026-10-13 (phone has a Vulkan 1.3 driver) the default libraries include Vulkan.
+# VULKAN=0 builds the GLES-only variant; TUNED=1 adds the P9 flags.
 variant=default
-if (( tuned && vulkan )); then variant=tuned-vulkan
-elif (( tuned )); then variant=tuned
-elif (( vulkan )); then variant=vulkan
+if (( tuned && vulkan )); then variant=tuned
+elif (( tuned )); then variant=tuned-gles
+elif (( ! vulkan )); then variant=gles
 fi
 
 if (( tuned )); then export NATIVE_TUNED=1; else export NATIVE_TUNED=0; fi

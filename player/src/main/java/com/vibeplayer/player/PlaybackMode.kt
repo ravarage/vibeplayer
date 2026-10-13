@@ -18,10 +18,11 @@ enum class Renderer {
 data class PlaybackConfig(
     val mode: PlaybackMode = PlaybackMode.EFFICIENT,
     val efficientPath: EfficientPath = EfficientPath.PATH_B,
-    val renderer: Renderer = Renderer.GLES
+    val renderer: Renderer = Renderer.GLES,
+    val voOverride: String? = null
 ) {
     val vo: String
-        get() = when (mode) {
+        get() = voOverride ?: when (mode) {
             PlaybackMode.EFFICIENT -> when (efficientPath) {
                 EfficientPath.PATH_A -> "mediacodec_embed"
                 EfficientPath.PATH_B -> "gpu"

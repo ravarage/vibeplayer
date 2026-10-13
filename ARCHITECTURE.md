@@ -100,14 +100,59 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
   new option table, reloads the file and seeks.
 
 ## Vulkan status update (2026-10-13)
-**The phone now has a Vulkan 1.3 driver** (user-installed; `cmd gpu vkjson` reports Adreno 642L API
-1.3.295, `/vendor/lib64/hw/vulkan.adreno.so` dated 2026-10-13). libplacebo's 1.2 minimum is met, so the
-Vulkan renderer is expected to work and must be re-probed with the `VULKAN=1` build (task P6-00b).
-Caveats: the system feature flag `android.hardware.vulkan.version` still says 1.1.0, so **never gate on
-`PackageManager.FEATURE_VULKAN_HARDWARE_VERSION`**: decide by actually initialising the Vulkan context
-once (cache the result per driver build) and fall back to GLES if it fails. The driver can change
-again with a system update, so GLES must always remain a working fallback. The older section below
-describes the previous 1.1 driver and is kept as history.
+**Decision (reviewer, 2026-10-13): Vulkan works on the new driver (P6-00b), so the default libraries in `player/src/main/jniLibs` are now the Vulkan-enabled build** (`native/build.sh` defaults to `VULKAN=1`; `VULKAN=0` gives a GLES-only variant in `native/out/gles`, `TUNED=1` gives `native/out/tuned`). Playback options always name `gpu-api` and `gpu-context` explicitly, so GLES modes are unaffected. Which renderer is the default is decided by the P6 benchmark.
+
+The phone's Adreno 642L Vulkan 1.3 driver was re-probed with P6-00b on 2026-10-13. `VULKAN=1
+native/build.sh` built mpv v0.41.0/libplacebo v7.360.1 with Vulkan and shaderc at `-O2`; all seven
+arm64 libraries total 103,236,584 bytes (98.46 MiB), including a 15,504,848-byte `libmpv.so`.
+
+Both Vulkan outputs initialized and rendered H.264 hardware decode and AV1 software decode:
+
+```
+[vo/gpu-next/vulkan] Initializing GPU context 'androidvk'
+[vo/gpu-next/libplacebo] GPU 0: Adreno (TM) 642L v1.3.295 (integrated)
+[vo/gpu-next/libplacebo] Device Name: Adreno (TM) 642L
+[vo/gpu-next/libplacebo] API version: 1.3.295
+[vo/gpu-next/libplacebo] Driver name: Qualcomm Technologies Inc. Adreno Vulkan Driver
+[vo/gpu-next/libplacebo] Initialized SPIR-V compiler 'shaderc'
+[cplayer] VO: [gpu-next] 3840x2160 yuv420p10
+[vd] Selected decoder: libdav1d - dav1d AV1 decoder by VideoLAN
+[VP] onPropertyChange: hwdec-current = no
+```
+
+`vo=gpu` emitted the equivalent `[vo/gpu/vulkan] Initializing GPU context 'androidvk'`, the same
+Adreno/API/driver values, and `[cplayer] VO: [gpu] 1920x1080 nv12`. Its H.264 run reported
+`hwdec-current = mediacodec-copy`.
+
+The OpenGL control initialized `[vo/gpu-next/opengl]` with `gpu-context=android`; its log reports
+`GL_VERSION='OpenGL ES 3.2 V@0530.57 ...'`. All six 20-second media/configuration runs passed
+`tools/check_video.py` with a moving picture. Frame drops at the 20-second stats read were:
+
+| `vo` / API / context | H.264 `ichiban.mp4` (`hwdec-current`; drops / decoder drops) | AV1 `av1_4k.mp4` (`hwdec-current`; drops / decoder drops) |
+|---|---|---|
+| `gpu-next` / Vulkan / `androidvk` | `mediacodec-copy`; 7 / 0 | `no` (`libdav1d`); 517 / 0 |
+| `gpu` / Vulkan / `androidvk` | `mediacodec-copy`; 0 / 0 | `no` (`libdav1d`); 359 / 0 |
+| `gpu-next` / OpenGL ES / `android` (control) | `mediacodec-copy`; 0 / 0 | `no` (`libdav1d`); 565 / 0 |
+
+`tools/check_video.py` reported `VIDEO VISIBLE` for all six: `gpu-next`/Vulkan H.264 80.0% non-black,
+79.7% changed; AV1 64.6% / 51.8%; `gpu`/Vulkan H.264 82.3% / 67.4%, AV1 61.3% / 56.4%; GLES
+control H.264 55.4% / 4.8%, AV1 81.8% / 80.6%.
+
+Saved AV1 screenshots (`/tmp/P6-00b_gpu-next-vulkan_av1.png`,
+`/tmp/P6-00b_gpu-vulkan_av1.png`, `/tmp/P6-00b_gpu-next-opengl_av1.png`) showed a moving picture with
+no clear tearing or black frames. Vulkan AV1 screenshots contain large purple title artwork; it
+appears to be part of the clip, but the runs resumed at different positions, so they are not
+frame-matched comparisons. Other apps were concurrently using the device and their PiP windows or
+controls appear in some captures. The GLES AV1 clip reached EOF after its 20-second sample and
+autoplayed another AV1 file; only after that, libplacebo logged `Failed generating/uploading block
+offsets LUT!` while opening the next file. No GPU-context initialization failure was seen during the
+timed samples.
+
+Keep the system Vulkan feature flag caveat: `android.hardware.vulkan.version` still reports 1.1.0,
+so **never gate on `PackageManager.FEATURE_VULKAN_HARDWARE_VERSION`**. Select Vulkan by initializing
+the context (cache per driver build) and fall back to GLES if it fails. The driver can change with a
+system update, so GLES remains a required fallback. The older section below records the previous
+1.1 probe.
 
 ## Vulkan status (probe 2026-10-12, task P6-00)
 **Decision (reviewer, 2026-10-12): Vulkan is not usable on this device; every mode uses OpenGL ES.** The default native build does not include Vulkan: the patch lives in `native/patches/optional/0004-vulkan-shaderc.patch` and `fetch.sh` does not apply it (it doubles libmpv.so to 15 MB). In the default build `gpu-context` offers only `android` and `gpu-api` only `opengl`; ignore `androidvk`/`vulkan` in the options table below. P6 compares `gpu-next` vs `gpu` on GLES.
