@@ -147,9 +147,27 @@ class PlayerActivity : ComponentActivity() {
             "path_a", "a" -> EfficientPath.PATH_A
             else -> EfficientPath.PATH_B
         }
+        // Debug-only test hooks (B-08 comparison): renderer probe and mpv log detail.
+        val debugMsgLevel = if (com.vibeplayer.BuildConfig.DEBUG) {
+            intent.getStringExtra("mpv_msg_level")?.takeIf { it.isNotBlank() }
+        } else null
+        if (com.vibeplayer.BuildConfig.DEBUG) {
+            val probeVo = intent.getStringExtra("probe_vo")
+            val probeRenderer = intent.getStringExtra("probe_renderer")
+            if (probeVo in setOf("gpu", "gpu-next") && probeRenderer in setOf("vulkan", "opengl")) {
+                return PlaybackConfig(
+                    mode = PlaybackMode.QUALITY,
+                    renderer = if (probeRenderer == "vulkan") com.vibeplayer.player.Renderer.VULKAN
+                    else com.vibeplayer.player.Renderer.GLES,
+                    voOverride = probeVo,
+                    debugMsgLevel = debugMsgLevel
+                )
+            }
+        }
         return PlaybackConfig(
             mode = PlaybackMode.EFFICIENT,
-            efficientPath = path
+            efficientPath = path,
+            debugMsgLevel = debugMsgLevel
         )
     }
 
