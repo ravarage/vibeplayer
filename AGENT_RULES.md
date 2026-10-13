@@ -84,6 +84,7 @@ Filled in and kept current by the tasks that create them (P0-06, P0-07).
 | Launch | `adb shell am start -n com.vibeplayer/.MainActivity` |
 | Play a test clip | `adb shell am start -a android.intent.action.VIEW -d file:///sdcard/Movies/vibeplayer-test/h264_1080p.mp4 -t video/* com.vibeplayer` |
 | Logs | `adb logcat -s VP VP-Perf mpv` |
+| Run benchmark (P6-03) | `adb shell am broadcast -a com.vibeplayer.BENCHMARK -n com.vibeplayer/.BenchmarkReceiver [--es path <path>] [--ei seconds 15] [--es mode quality\|efficient] [--es renderer gles\|vulkan] [--es shader none\|anime4k_a\|anime4k_b\|anime4k_c\|snapdragon_gsr]` |
 | Is video really visible? | `tools/check_video.py` (exit 0 = visible, 1 = black/frozen) |
 
 ## Code conventions
