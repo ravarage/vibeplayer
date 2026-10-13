@@ -31,6 +31,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -78,6 +79,10 @@ fun PlayerControls(
     var userSeeking by remember { mutableStateOf(false) }
     var seekProgress by remember { mutableFloatStateOf(0f) }
     var lastInteraction by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    DisposableEffect(playerEngine) {
+        onDispose { playerEngine.setControlsVisible(false) }
+    }
 
     // Sync visibility with PlayerEngine so time-pos is unobserved when hidden
     LaunchedEffect(controlsVisible) {

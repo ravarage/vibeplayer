@@ -72,12 +72,17 @@ class PlayerActivity : ComponentActivity() {
     private var playbackStarted = false
     private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
     private var currentVideoTitle: String = "ichiban.mp4"
+    private var currentIdentityKey: String? = null
+    private var currentFolderKey: String? = null
 
     private val _isInPipFlow = MutableStateFlow(false)
 
     private lateinit var audioManager: AudioManager
     private val _volumeFlow = MutableStateFlow(0)
     private val _triggerVolumeIndicatorFlow = MutableStateFlow(0L)
+    private val volumeFlow = _volumeFlow.asStateFlow()
+    private val triggerVolumeIndicatorFlow = _triggerVolumeIndicatorFlow.asStateFlow()
+    private val maxMusicVolume by lazy { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
 
     private val pipReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -227,7 +232,7 @@ class PlayerActivity : ComponentActivity() {
                 else -> currentVideoTitle
             }
             val neighbours by viewModel.neighbours.collectAsState()
-            val zoom by playerEngine.zoomState.collectAsState()
+            val zoomState = playerEngine.zoomState
             val isInPip by _isInPipFlow.collectAsState()
             var showDebugOverlay by remember { mutableStateOf(false) }
             var controlsVisible by remember { mutableStateOf(true) }
@@ -263,22 +268,22 @@ class PlayerActivity : ComponentActivity() {
                             GestureLayer(
                                 modifier = Modifier.fillMaxSize(),
                                 isLocked = isLocked,
-                                initialBrightness = window.attributes.screenBrightness.let { if (it < 0f) 0.5f else it },
+                                initialBrightness = initialBrightness(),
                                 onBrightnessChanged = { b ->
                                     val lp = window.attributes
                                     lp.screenBrightness = b
                                     window.attributes = lp
                                 },
-                                volumeFlow = _volumeFlow.asStateFlow(),
-                                maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-                                triggerVolumeIndicatorFlow = _triggerVolumeIndicatorFlow.asStateFlow(),
+                                volumeFlow = volumeFlow,
+                                maxVolume = maxMusicVolume,
+                                triggerVolumeIndicatorFlow = triggerVolumeIndicatorFlow,
                                 onVolumeChanged = { newVol ->
                                     audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
                                     _volumeFlow.value = newVol
                                 },
                                 getCurrentPositionMs = { playerEngine.currentPositionMs() },
                                 durationMs = playerState.durationMs,
-                                zoom = zoom,
+                                zoomState = zoomState,
                                 onZoomChange = { z -> playerEngine.setVideoZoom(z, commit = false) },
                                 onPanChange = { px, py -> playerEngine.setVideoPan(px, py, commit = false) },
                                 onZoomCommit = { z -> playerEngine.setVideoZoom(z, commit = true) },
@@ -361,6 +366,10 @@ class PlayerActivity : ComponentActivity() {
         insetsController.hide(WindowInsetsCompat.Type.systemBars())
     }
 
+    private fun initialBrightness(): Float = window.attributes.screenBrightness.let {
+        if (it < 0f) 0.5f else it
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -374,11 +383,13 @@ class PlayerActivity : ComponentActivity() {
         if (config != playerEngine.playbackConfig) {
             playerEngine.reconfigure(config)
         } else if (currentVideoPath != oldPath) {
-            viewModel.openVideo(currentVideoPath)
+            openResolvedVideo()
         }
     }
 
     private fun resolveVideoPath() {
+        currentIdentityKey = null
+        currentFolderKey = null
         val extraPath = intent.getStringExtra("path")
         val dataUri = intent.data
         if (!extraPath.isNullOrEmpty()) {
@@ -393,12 +404,22 @@ class PlayerActivity : ComponentActivity() {
             } else if (scheme == "content") {
                 currentVideoTitle = queryDisplayName(dataUri)
                 currentVideoPath = resolveContentUri(dataUri)
+                currentIdentityKey = dataUri.toString()
+                currentFolderKey = dataUri.toString().substringBeforeLast('/', "")
             } else {
                 currentVideoPath = dataUri.toString()
                 currentVideoTitle = dataUri.lastPathSegment ?: "Video"
             }
         }
         Log.i("VP", "Resolved video path: $currentVideoPath (title: $currentVideoTitle)")
+    }
+
+    private fun openResolvedVideo() {
+        viewModel.openVideo(
+            path = currentVideoPath,
+            identityKey = currentIdentityKey,
+            folderKey = currentFolderKey
+        )
     }
 
     private fun queryDisplayName(uri: Uri): String {
@@ -474,7 +495,7 @@ class PlayerActivity : ComponentActivity() {
             playerEngine.setHwdec(forceHwdec)
         }
         playbackStarted = true
-        viewModel.openVideo(currentVideoPath)
+        openResolvedVideo()
     }
 
     private fun runP102Test() {
@@ -631,7 +652,7 @@ class PlayerActivity : ComponentActivity() {
             playerEngine.pause()
             _isInPipFlow.value = false
         }
-        viewModel.saveCurrentPosition(forceSync = true)
+        viewModel.saveCurrentPosition()
         try {
             unregisterReceiver(volumeReceiver)
         } catch (_: Exception) {}

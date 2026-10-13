@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +30,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -58,7 +60,7 @@ fun GestureLayer(
     onVolumeChanged: (Int) -> Unit = {},
     getCurrentPositionMs: suspend () -> Long = { 0L },
     durationMs: Long = 0L,
-    zoom: Double = 0.0,
+    zoomState: StateFlow<Double> = MutableStateFlow(0.0),
     onZoomChange: (Double) -> Unit = {},
     onPanChange: (panX: Double, panY: Double) -> Unit = { _, _ -> },
     onZoomCommit: (Double) -> Unit = {},
@@ -82,7 +84,10 @@ fun GestureLayer(
     var lastTapTime by remember { mutableStateOf(0L) }
     var lastTapPos by remember { mutableStateOf(Offset.Zero) }
 
-    var currentLocalZoom by remember(zoom) { mutableStateOf(zoom) }
+    val latestZoom by rememberUpdatedState(zoomState.value)
+    val latestDurationMs by rememberUpdatedState(durationMs)
+    var currentLocalZoom by remember { mutableStateOf(zoomState.value) }
+    LaunchedEffect(zoomState) { zoomState.collect { currentLocalZoom = it } }
     var currentLocalPanX by remember { mutableStateOf(0.0) }
     var currentLocalPanY by remember { mutableStateOf(0.0) }
     var initialPinchDistance by remember { mutableFloatStateOf(0f) }
@@ -91,12 +96,15 @@ fun GestureLayer(
     var basePanX by remember { mutableStateOf(0.0) }
     var basePanY by remember { mutableStateOf(0.0) }
 
-    var brightnessLevel by remember(initialBrightness) { mutableFloatStateOf(initialBrightness) }
+    var brightnessLevel by remember { mutableFloatStateOf(initialBrightness) }
+    LaunchedEffect(initialBrightness) { brightnessLevel = initialBrightness }
     var showBrightnessIndicator by remember { mutableStateOf(false) }
     var hideIndicatorJob by remember { mutableStateOf<Job?>(null) }
 
     val currentVolume by volumeFlow.collectAsState()
-    var localVolumeFraction by remember(currentVolume) { mutableFloatStateOf(currentVolume.toFloat()) }
+    val latestVolume by rememberUpdatedState(currentVolume)
+    var localVolumeFraction by remember { mutableFloatStateOf(currentVolume.toFloat()) }
+    LaunchedEffect(currentVolume) { localVolumeFraction = currentVolume.toFloat() }
     var showVolumeIndicator by remember { mutableStateOf(false) }
     var hideVolumeJob by remember { mutableStateOf<Job?>(null) }
 
@@ -170,7 +178,7 @@ fun GestureLayer(
                                 onGestureTypeChanged(GestureType.PINCH)
                                 initialPinchDistance = currentDistance
                                 initialPinchCenter = currentCenter
-                                baseZoom = currentLocalZoom
+                                baseZoom = latestZoom
                                 basePanX = currentLocalPanX
                                 basePanY = currentLocalPanY
                                 pendingSingleTapJob?.cancel()
@@ -235,7 +243,7 @@ fun GestureLayer(
                                     val base = getCurrentPositionMs()
                                     swipeSeekStartPositionMs = base
                                     val deltaMs = (totalSwipeDx * 40f).toLong()
-                                    val targetMs = (base + deltaMs).coerceIn(0L, durationMs)
+                                    val targetMs = (base + deltaMs).coerceIn(0L, latestDurationMs)
                                     swipeSeekTargetMs = targetMs
                                     swipeSeekDeltaSeconds = (targetMs - base) / 1000L
                                 }
@@ -260,7 +268,7 @@ fun GestureLayer(
                             GestureType.HORIZONTAL -> {
                                 totalSwipeDx += dx
                                 val deltaMs = (totalSwipeDx * 40f).toLong()
-                                val targetMs = (swipeSeekStartPositionMs + deltaMs).coerceIn(0L, durationMs)
+                                val targetMs = (swipeSeekStartPositionMs + deltaMs).coerceIn(0L, latestDurationMs)
                                 swipeSeekTargetMs = targetMs
                                 val newDeltaSec = (targetMs - swipeSeekStartPositionMs) / 1000L
                                 if (newDeltaSec != swipeSeekDeltaSeconds) {
@@ -284,7 +292,7 @@ fun GestureLayer(
                                 val deltaPercent = -dy / height
                                 localVolumeFraction = (localVolumeFraction + deltaPercent * maxVolume).coerceIn(0f, maxVolume.toFloat())
                                 val newVol = localVolumeFraction.roundToInt().coerceIn(0, maxVolume)
-                                if (newVol != currentVolume) {
+                                if (newVol != latestVolume) {
                                     onVolumeChanged(newVol)
                                 }
                                 showVolumeIndicator = true
@@ -311,7 +319,7 @@ fun GestureLayer(
                             doubleTapAccumulatedSec += 10
                             doubleTapRippleTrigger = now
                             val deltaSec = if (doubleTapIsLeft) -10.0 else 10.0
-                            val targetMs = (doubleTapBasePosMs + (if (doubleTapIsLeft) -doubleTapAccumulatedSec else doubleTapAccumulatedSec) * 1000L).coerceIn(0L, durationMs)
+                            val targetMs = (doubleTapBasePosMs + (if (doubleTapIsLeft) -doubleTapAccumulatedSec else doubleTapAccumulatedSec) * 1000L).coerceIn(0L, latestDurationMs)
                             Log.i("VP", "Double-tap streak accumulate: isLeft=$doubleTapIsLeft, sec=$doubleTapAccumulatedSec, deltaSec=$deltaSec")
                             onSeekRelative(deltaSec, true)
                             onDoubleTap(doubleTapIsLeft)
@@ -355,11 +363,11 @@ fun GestureLayer(
                                 lastTapTime = now
                                 lastTapPos = startPos
                                 pendingSingleTapJob?.cancel()
+                                Log.i("VP", "Gesture detected: TAP")
+                                onSingleTap()
                                 pendingSingleTapJob = coroutineScope.launch {
-                                    delay(200L)
-                                    Log.i("VP", "Gesture detected: TAP")
-                                    onSingleTap()
-                                    lastTapTime = 0L
+                                    delay(doubleTapTimeout)
+                                    if (lastTapTime == now) lastTapTime = 0L
                                 }
                             }
                         }
@@ -443,8 +451,7 @@ fun GestureLayer(
         )
 
         ResetZoomButton(
-            visible = zoom > 0.01,
-            zoom = zoom,
+            zoomState = zoomState,
             onReset = {
                 currentLocalZoom = 0.0
                 currentLocalPanX = 0.0

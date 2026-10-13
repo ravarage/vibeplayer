@@ -16,6 +16,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
 class PlayerEngine(
@@ -27,11 +28,22 @@ class PlayerEngine(
     }
     private val commandDispatcher = commandExecutor.asCoroutineDispatcher()
     private val scope = CoroutineScope(commandDispatcher + SupervisorJob())
+    @Volatile private var released = false
+    @Volatile private var timePosObserved = true
+
+    private fun executeCommand(block: () -> Unit) {
+        if (released) return
+        try {
+            commandExecutor.execute { if (!released) block() }
+        } catch (_: RejectedExecutionException) {
+            // Event callbacks and Compose disposal can race with release().
+        }
+    }
 
     private var handle: Long = 0L
-    var playbackConfig: PlaybackConfig = initialConfig
+    @Volatile var playbackConfig: PlaybackConfig = initialConfig
         private set
-    private var currentFilePath: String = ""
+    @Volatile private var currentFilePath: String = ""
     private var attachedSurface: Surface? = null
 
     private val _state = MutableStateFlow(PlayerState())
@@ -180,7 +192,7 @@ class PlayerEngine(
                 MpvEvent.FILE_LOADED -> {
                     Log.i("VP", "mpv event file-loaded")
                     _state.update { it.copy(paused = false) }
-                    updateTracks()
+                    updateTracks(allowPendingSelection = true)
                 }
                 MpvEvent.TRACKS_CHANGED -> {
                     Log.i("VP", "mpv event tracks-changed")
@@ -206,10 +218,10 @@ class PlayerEngine(
         return isHwdecCodec && (hwdec == "no" || hwdec.isEmpty())
     }
 
-    private var statsJob: Job? = null
+    @Volatile private var statsJob: Job? = null
 
     fun setStatsEnabled(enabled: Boolean) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             if (enabled) {
                 if (statsJob == null || statsJob?.isActive == false) {
@@ -228,7 +240,7 @@ class PlayerEngine(
     }
 
     fun logStats() {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             if (handle != 0L) {
                 val vo = MpvNative.getPropertyString(handle, "current-vo") ?: ""
@@ -306,20 +318,22 @@ class PlayerEngine(
     }
 
     fun setControlsVisible(visible: Boolean) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             if (handle != 0L) {
-                if (visible) {
+                if (visible && !timePosObserved) {
                     MpvNative.observeProperty(handle, REPLY_TIME_POS, "time-pos", MpvFormat.DOUBLE)
-                } else {
+                    timePosObserved = true
+                } else if (!visible && timePosObserved) {
                     MpvNative.unobserveProperty(handle, REPLY_TIME_POS)
+                    timePosObserved = false
                 }
             }
         }
     }
 
     fun attachSurface(surface: Surface) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             attachedSurface = surface
             if (handle != 0L) {
@@ -330,26 +344,24 @@ class PlayerEngine(
     }
 
     fun detachSurface() {
-        if (commandExecutor.isShutdown) return
-        val future = commandExecutor.submit {
-            assertCommandThread()
-            attachedSurface = null
-            if (handle != 0L) {
-                MpvNative.detachSurface(handle)
-                Log.i("VP", "Surface detached from mpv handle")
-            }
-        }
+        if (released) return
         try {
-            future.get(2, TimeUnit.SECONDS)
-        } catch (e: java.util.concurrent.TimeoutException) {
-            Log.e("VP", "detachSurface timed out after 2s: ${e.message}")
+            val future = commandExecutor.submit {
+                assertCommandThread()
+                attachedSurface = null
+                if (handle != 0L) {
+                    MpvNative.detachSurface(handle)
+                    Log.i("VP", "Surface detached from mpv handle")
+                }
+            }
+            future.get()
         } catch (e: Exception) {
             Log.e("VP", "detachSurface failed: ${e.message}", e)
         }
     }
 
     fun setSurfaceSize(width: Int, height: Int) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.setSurfaceSize(handle, width, height)
@@ -368,6 +380,8 @@ class PlayerEngine(
         speed: Double = 1.0,
         aspect: String? = null
     ) {
+        _position.value = 0L
+        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null) }
         scope.launch {
             assertCommandThread()
             currentFilePath = path
@@ -457,7 +471,7 @@ class PlayerEngine(
     }
 
     fun setHwdec(hwdec: String) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.setPropertyString(handle, "hwdec", hwdec)
@@ -467,9 +481,9 @@ class PlayerEngine(
     }
 
     fun reconfigure(newConfig: PlaybackConfig) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
-            if (playbackConfig == newConfig) return@execute
+            if (playbackConfig == newConfig) return@executeCommand
             Log.i("VP", "Reconfiguring engine: ${playbackConfig.efficientPath} -> ${newConfig.efficientPath}")
             val curPos = if (handle != 0L) {
                 MpvNative.getPropertyDouble(handle, "time-pos")?.let { (it * 1000.0).toLong() } ?: _position.value
@@ -614,17 +628,17 @@ class PlayerEngine(
         folderChoice: FolderTrackChoice?,
         preferences: LanguagePreferences
     ) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             pendingTrackSelection = PendingTrackSelection(fileChoice, folderChoice, preferences)
             Log.i("VP", "Pending track selection set: file=$fileChoice, folder=$folderChoice, prefs=$preferences")
         }
     }
 
-    fun updateTracks() {
-        commandExecutor.execute {
+    fun updateTracks(allowPendingSelection: Boolean = false) {
+        executeCommand {
             assertCommandThread()
-            if (handle == 0L) return@execute
+            if (handle == 0L) return@executeCommand
             val count = MpvNative.getPropertyLong(handle, "track-list/count") ?: 0L
             val trackList = mutableListOf<Track>()
             for (i in 0 until count) {
@@ -665,7 +679,7 @@ class PlayerEngine(
                 Log.i("VP-Track", "id=${t.id} type=${t.type} lang=${t.lang} title=${t.title} forced=${t.forced} kind=${TrackSelector.getSubtitleKind(t)}")
             }
 
-            val pending = pendingTrackSelection
+            val pending = if (allowPendingSelection) pendingTrackSelection else null
             if (pending != null && trackList.isNotEmpty()) {
                 pendingTrackSelection = null
                 val result = TrackSelector.selectTracks(
@@ -712,7 +726,7 @@ class PlayerEngine(
     }
 
     fun setAudioTrack(trackId: Int?) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             if (handle != 0L) {
                 val value = trackId?.toString() ?: "no"
@@ -724,7 +738,7 @@ class PlayerEngine(
     }
 
     fun setSubtitleTrack(trackId: Int?) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             if (handle != 0L) {
                 val value = trackId?.toString() ?: "no"
@@ -736,7 +750,7 @@ class PlayerEngine(
     }
 
     fun setSpeed(speed: Double) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             if (handle != 0L) {
                 val clamped = speed.coerceIn(0.25, 4.0)
@@ -748,7 +762,7 @@ class PlayerEngine(
     }
 
     fun setAspect(aspect: String?) {
-        commandExecutor.execute {
+        executeCommand {
             assertCommandThread()
             _state.update { it.copy(aspect = aspect) }
             if (handle != 0L) {
@@ -790,8 +804,8 @@ class PlayerEngine(
     private val _zoomState = MutableStateFlow(0.0)
     val zoomState: StateFlow<Double> = _zoomState.asStateFlow()
 
-    private var currentPanX = 0.0
-    private var currentPanY = 0.0
+    @Volatile private var currentPanX = 0.0
+    @Volatile private var currentPanY = 0.0
 
     @Volatile
     private var lastZoomUpdateTime = 0L
@@ -894,6 +908,8 @@ class PlayerEngine(
     }
 
     fun release(sync: Boolean = false) {
+        if (released) return
+        released = true
         statsJob?.cancel()
         statsJob = null
         val task = Runnable {
@@ -905,17 +921,17 @@ class PlayerEngine(
                 Log.i("VP", "PlayerEngine handle destroyed")
             }
         }
-        if (sync && Looper.myLooper() != Looper.getMainLooper()) {
-            val future = commandExecutor.submit(task)
-            try {
+        try {
+            if (sync && Looper.myLooper() != Looper.getMainLooper()) {
+                val future = commandExecutor.submit(task)
                 future.get(5, TimeUnit.SECONDS)
-            } catch (e: Exception) {
-                Log.w("VP", "Exception waiting for handle destroy: ${e.message}")
+                commandExecutor.shutdown()
+            } else {
+                commandExecutor.submit(task)
+                commandExecutor.shutdown()
             }
-            commandExecutor.shutdown()
-        } else {
-            commandExecutor.submit(task)
-            commandExecutor.shutdown()
+        } catch (e: RejectedExecutionException) {
+            Log.w("VP", "Command executor already stopped during release: ${e.message}")
         }
     }
 }

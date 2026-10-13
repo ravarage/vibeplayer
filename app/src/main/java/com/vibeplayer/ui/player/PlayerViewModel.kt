@@ -16,7 +16,9 @@ import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.SubtitleMode
 import com.vibeplayer.player.TrackSelector
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,10 +38,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val dao = db.fileSettingsDao()
     private val folderDao = db.folderSettingsDao()
     private val appSettingsRepository = AppSettingsRepository(application)
+    private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private var currentKey: String? = null
-    private var currentVideoPath: String? = null
+    @Volatile private var currentKey: String? = null
+    @Volatile private var currentVideoPath: String? = null
+    @Volatile private var currentFolderPath: String? = null
     private var periodicSaveJob: Job? = null
+    private var loadJob: Job? = null
+    @Volatile private var loadGeneration = 0L
 
     // Path of the file being played; changes when auto-play advances to the next file in the folder.
     private val _currentPath = MutableStateFlow<String?>(null)
@@ -126,10 +132,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun openVideo(
         path: String,
         sizeBytes: Long = 0L,
+        identityKey: String? = null,
+        folderKey: String? = null,
         startFromBeginning: Boolean = false,
         playAfterLoad: Boolean = false
     ) {
+        val generation = ++loadGeneration
+        loadJob?.cancel()
         currentVideoPath = path
+        currentFolderPath = folderKey ?: File(path).parent
         _currentPath.value = path
         _neighbours.value = Neighbours()
         viewModelScope.launch(Dispatchers.IO) {
@@ -140,18 +151,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 if (currentVideoPath == path) _neighbours.value = updated
             }
         }
-        val key = computeKey(path, sizeBytes)
-        currentKey = key
+        val key = computeKey(identityKey ?: path, sizeBytes)
 
-        viewModelScope.launch {
-            val folderPath = File(path).parent ?: ""
+        loadJob = viewModelScope.launch {
+            val resolvedFolderKey = folderKey ?: (File(path).parent ?: "")
             val fileSettings = withContext(Dispatchers.IO) {
                 dao.getByKey(key) ?: dao.getByKey(path)
             }
             val folderSettings = withContext(Dispatchers.IO) {
-                if (folderPath.isNotEmpty()) folderDao.getByPath(folderPath) else null
+                if (resolvedFolderKey.isNotEmpty()) folderDao.getByPath(resolvedFolderKey) else null
             }
             val appSettings = appSettingsRepository.appSettingsFlow.first()
+            if (generation != loadGeneration || currentVideoPath != path) return@launch
 
             val startPositionMs = if (startFromBeginning) {
                 0L
@@ -230,6 +241,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 speed = speed,
                 aspect = aspect
             )
+            currentKey = key
             if (playAfterLoad) playerEngine.play()
         }
     }
@@ -237,7 +249,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setAudioTrack(trackId: Int?) {
         playerEngine.setAudioTrack(trackId)
         val key = currentKey ?: return
-        val path = currentVideoPath
+        val folderPathForKey = currentFolderPath
         viewModelScope.launch(Dispatchers.IO) {
             val track = if (trackId != null) {
                 playerEngine.state.value.tracks.firstOrNull { it.id == trackId && it.type == "audio" }
@@ -261,7 +273,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             dao.upsert(updated)
             Log.i("VP", "Persisted file audioTrackId=$trackId, audioEnabled=$isEnabled (${track?.lang}, ${track?.title}) for key=$key")
 
-            val folderPath = path?.let { File(it).parent }
+            val folderPath = folderPathForKey
             if (!folderPath.isNullOrEmpty()) {
                 val existingFolder = folderDao.getByPath(folderPath)
                 val updatedFolder = existingFolder?.copy(
@@ -283,7 +295,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setSubtitleTrack(trackId: Int?) {
         playerEngine.setSubtitleTrack(trackId)
         val key = currentKey ?: return
-        val path = currentVideoPath
+        val folderPathForKey = currentFolderPath
         viewModelScope.launch(Dispatchers.IO) {
             val track = if (trackId != null) {
                 playerEngine.state.value.tracks.firstOrNull { it.id == trackId && it.type == "sub" }
@@ -307,7 +319,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             dao.upsert(updated)
             Log.i("VP", "Persisted file subTrackId=$trackId, subEnabled=$isEnabled (${track?.lang}, ${track?.title}) for key=$key")
 
-            val folderPath = path?.let { File(it).parent }
+            val folderPath = folderPathForKey
             if (!folderPath.isNullOrEmpty()) {
                 val subKind = if (track != null) TrackSelector.getSubtitleKind(track).name else null
                 val existingFolder = folderDao.getByPath(folderPath)
@@ -367,12 +379,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun saveCurrentPosition(forceSync: Boolean = false) {
+    fun saveCurrentPosition() {
+        val generation = loadGeneration
         val key = currentKey ?: return
-
-        val saveTask = suspend {
-            val pos = playerEngine.currentPositionMs()
-            val state = playerEngine.state.value
+        val pos = playerEngine.position.value
+        val state = playerEngine.state.value
+        if (generation != loadGeneration || key != currentKey) return
+        saveScope.launch {
             val dur = state.durationMs
 
             if (pos > 0L || dur > 0L) {
@@ -443,22 +456,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
-
-        if (forceSync) {
-            try {
-                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                    kotlinx.coroutines.withTimeout(500L) {
-                        saveTask()
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w("VP", "saveCurrentPosition sync failed or timed out: ${e.message}")
-            }
-        } else {
-            viewModelScope.launch(Dispatchers.IO) {
-                saveTask()
-            }
-        }
     }
 
     private suspend fun savePositionSnapshot(key: String, positionMs: Long, state: com.vibeplayer.player.PlayerState) {
@@ -484,7 +481,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     override fun onCleared() {
         super.onCleared()
         periodicSaveJob?.cancel()
-        saveCurrentPosition(forceSync = true)
+        saveCurrentPosition()
         playerEngine.release()
     }
 }

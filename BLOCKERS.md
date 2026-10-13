@@ -18,7 +18,15 @@ Newest entry first. Keep entries short; no long logs.
 
 ## Open
 
-_none_
+## B-07 Shared phone foregrounded in Telegram            Status: OPEN
+- Task: P4-11
+- Agent / date: CODEX / 2026-10-13
+- Problem: Code fixes build, but the phone's resumed activity is Telegram. The required pinch/reset, mini-player, remembered-track, folder-memory, auto-next and confirmed debug-overlay exit checks cannot be completed without taking over the shared screen.
+- Tried: Installed the build, checked visible video and immediate controls, confirmed a double-tap exact −10 s seek, and ran 20 player launch/exit cycles; logcat had no `FATAL EXCEPTION` for `com.vibeplayer`. Debug stats logs did not confirm that the overlay was open for those exits. Activity Manager then showed Telegram resumed, so stopped touch input.
+- Options: A) make the phone available for the remaining checks; B) leave those acceptance items unverified.
+- Needs from user: Let CODEX know when the phone is available for a short P4-11 verification pass.
+- Resolution:
+
 ## Resolved
 
 ## B-06 Phone locked during final P4-12 PiP checks            Status: RESOLVED

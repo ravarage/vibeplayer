@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -276,11 +278,12 @@ fun DoubleTapSkipIndicator(
 
 @Composable
 fun ResetZoomButton(
-    visible: Boolean,
-    zoom: Double,
+    zoomState: kotlinx.coroutines.flow.StateFlow<Double>,
     onReset: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val zoom by zoomState.collectAsState()
+    val visible = zoom > 0.01
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(),
