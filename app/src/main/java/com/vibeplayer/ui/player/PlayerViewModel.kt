@@ -43,12 +43,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val db = AppDatabase.getInstance(application)
     private val dao = db.fileSettingsDao()
     private val folderDao = db.folderSettingsDao()
-    private val appSettingsRepository = AppSettingsRepository(application)
+    val appSettingsRepository = AppSettingsRepository(application)
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile private var currentKey: String? = null
     @Volatile private var currentVideoPath: String? = null
     @Volatile private var currentFolderPath: String? = null
+    @Volatile var isBenchmarkRun: Boolean = false
     private var periodicSaveJob: Job? = null
     private var loadJob: Job? = null
     @Volatile private var loadGeneration = 0L
@@ -205,7 +206,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         identityKey: String? = null,
         folderKey: String? = null,
         startFromBeginning: Boolean = false,
-        playAfterLoad: Boolean = false
+        playAfterLoad: Boolean = false,
+        playbackConfig: com.vibeplayer.player.PlaybackConfig? = null,
+        shaderPreset: com.vibeplayer.player.ShaderPreset? = null
     ) {
         val generation = ++loadGeneration
         loadJob?.cancel()
@@ -301,7 +304,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val speed = fileSettings?.speed?.toDouble() ?: 1.0
             val aspect = fileSettings?.aspect
 
-            playerEngine.setShaderPreset(mapShaderPreset(appSettings.shaderPreset))
+            val targetMode = if (appSettings.playbackMode == com.vibeplayer.data.prefs.PlaybackModeOption.QUALITY) {
+                com.vibeplayer.player.PlaybackMode.QUALITY
+            } else {
+                com.vibeplayer.player.PlaybackMode.EFFICIENT
+            }
+            val targetConfig = playbackConfig ?: playerEngine.playbackConfig.copy(mode = targetMode)
+            if (playerEngine.playbackConfig.mode != targetConfig.mode) {
+                playerEngine.reconfigure(targetConfig)
+            }
+
+            playerEngine.setShaderPreset(shaderPreset ?: mapShaderPreset(appSettings.shaderPreset))
 
             playerEngine.load(
                 path = path,
@@ -318,8 +331,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun togglePlaybackMode() {
+        playerEngine.togglePlaybackMode()
+    }
+
     fun setAudioTrack(trackId: Int?) {
         playerEngine.setAudioTrack(trackId)
+        if (isBenchmarkRun) return
         val key = currentKey ?: return
         val folderPathForKey = currentFolderPath
         viewModelScope.launch(Dispatchers.IO) {
@@ -366,6 +384,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setSubtitleTrack(trackId: Int?) {
         playerEngine.setSubtitleTrack(trackId)
+        if (isBenchmarkRun) return
         val key = currentKey ?: return
         val folderPathForKey = currentFolderPath
         viewModelScope.launch(Dispatchers.IO) {
@@ -420,6 +439,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun persistSpeed(speed: Double) {
+        if (isBenchmarkRun) return
         val key = currentKey ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val existing = dao.getByKey(key)
@@ -438,6 +458,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setAspect(aspect: String?) {
         playerEngine.setAspect(aspect)
+        if (isBenchmarkRun) return
         val key = currentKey ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val existing = dao.getByKey(key)
@@ -455,6 +476,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun saveCurrentPosition() {
+        if (isBenchmarkRun) return
         val generation = loadGeneration
         val key = currentKey ?: return
         val knownPos = playerEngine.position.value
@@ -547,6 +569,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private suspend fun savePositionSnapshot(key: String, positionMs: Long, state: com.vibeplayer.player.PlayerState) {
+        if (isBenchmarkRun) return
         withContext(Dispatchers.IO) {
             val existing = dao.getByKey(key)
             val duration = if (state.durationMs > 0L) state.durationMs else (existing?.durationMs ?: 0L)

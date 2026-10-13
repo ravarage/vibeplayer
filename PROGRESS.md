@@ -95,7 +95,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P5-05 | Lifecycle edge cases | TODO | | | |
 | P6-00 | Vulkan-enabled native build | DONE | AGY-2C | 0624988 | Built libplacebo v7.360.1 + shaderc 2022.3 + mpv v0.41.0 with Vulkan; patch optional/0004 (not applied by default) captures buildscripts; options confirmed; probe showed device Vulkan 1.1 < required 1.2; GLES playback confirmed |
 | P6-00b | Vulkan re-probe on the 1.3 driver | DONE | CODEX | 03b10aa | Vulkan 1.3.295 works: gpu-next and gpu on Vulkan play H.264 (mediacodec-copy) and AV1 4K (dav1d) with visible picture, no artefacts seen. 20 s drops H.264/AV1 4K: gpu-next+Vulkan 7/517, gpu+Vulkan 0/359, gpu-next+GLES 0/565. Vulkan-enabled libraries are now the default build. |
-| P6-01 | Quality mode | TODO | | | |
+| P6-01 | Quality mode | IN PROGRESS | AGY-3 | pending | Quality mode option table (gpu-next, mediacodec-copy), AppSettings wiring on open, in-player toggle preserving position/pause/tracks/speed/aspect via loadpath start= option, debug overlay vo/gpu-api/gpu-context/hwdec; next step: device check: toggle between EFFICIENT and QUALITY on a playing file; verify position, pause state, selected audio/subtitle tracks, speed, and aspect ratio are preserved across toggle; verify debug overlay shows vo=gpu-next, hwdec=mediacodec-copy, gpu-api, gpu-context |
 | P6-02 | Renderer switch | TODO | | | |
 | P6-03 | Benchmark harness | TODO | | | |
 | P6-04 | Benchmark: short matrix | TODO | | | |

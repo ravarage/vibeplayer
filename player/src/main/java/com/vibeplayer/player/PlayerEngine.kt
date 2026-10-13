@@ -57,8 +57,37 @@ class PlayerEngine(
     private val _stats = MutableStateFlow(PlayerStats())
     val stats: StateFlow<PlayerStats> = _stats.asStateFlow()
 
+    private val _onScreenMessage = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val onScreenMessage: kotlinx.coroutines.flow.SharedFlow<String> = _onScreenMessage
+
+    @Volatile private var pendingPauseOnLoad: Boolean = false
+    @Volatile var lastVulkanErrorText: String? = null
+    @Volatile var availableGpuApis: List<String> = emptyList()
+
     companion object {
         private const val DETACH_TIMEOUT_MS = 1500L
+        @Volatile var sessionVulkanFailed: Boolean = false
+        @Volatile var cachedGpuApis: List<String> = emptyList()
+
+        fun getGpuApiChoices(): List<String> {
+            if (cachedGpuApis.isNotEmpty()) return cachedGpuApis
+            try {
+                val h = MpvNative.create(false)
+                if (h != 0L) {
+                    val raw = MpvNative.getPropertyString(h, "option-info/gpu-api/choices")
+                    MpvNative.destroy(h)
+                    val parsed = RendererResolver.parseGpuApiChoices(raw)
+                    if (parsed.isNotEmpty()) {
+                        cachedGpuApis = parsed
+                        return parsed
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.w("VP", "Could not query mpv gpu-api choices: ${e.message}")
+            }
+            return listOf("opengl", "vulkan")
+        }
+
         const val REPLY_PAUSE = 1L
         const val REPLY_DURATION = 2L
         const val REPLY_TIME_POS = 3L
@@ -194,8 +223,12 @@ class PlayerEngine(
                 }
                 MpvEvent.FILE_LOADED -> {
                     Log.i("VP", "mpv event file-loaded")
-                    _state.update { it.copy(paused = false) }
+                    if (!pendingPauseOnLoad) {
+                        _state.update { it.copy(paused = false) }
+                    }
+                    pendingPauseOnLoad = false
                     updateTracks(allowPendingSelection = true)
+                    checkVulkanVoInitialization()
                 }
                 MpvEvent.TRACKS_CHANGED -> {
                     Log.i("VP", "mpv event tracks-changed")
@@ -251,18 +284,27 @@ class PlayerEngine(
                 val drops = MpvNative.getPropertyLong(handle, "frame-drop-count") ?: 0L
                 val decDrops = MpvNative.getPropertyLong(handle, "decoder-frame-drop-count") ?: 0L
                 val fps = MpvNative.getPropertyDouble(handle, "estimated-vf-fps") ?: 0.0
-                val modeStr = "${playbackConfig.mode} (${playbackConfig.efficientPath})"
+                val gpuApi = MpvNative.getPropertyString(handle, "gpu-api")
+                    ?: (playbackConfig.getOptionTable()["gpu-api"] ?: if (playbackConfig.mode == PlaybackMode.QUALITY) "opengl" else "none")
+                val gpuContext = MpvNative.getPropertyString(handle, "gpu-context")
+                    ?: (playbackConfig.getOptionTable()["gpu-context"] ?: "none")
+                val modeStr = "${playbackConfig.mode} (${if (playbackConfig.mode == PlaybackMode.EFFICIENT) playbackConfig.efficientPath else playbackConfig.renderer})"
+                val rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES"
                 _stats.value = PlayerStats(
                     vo = vo,
                     hwdecCurrent = hwdec,
                     mode = modeStr,
+                    gpuApi = gpuApi,
+                    gpuContext = gpuContext,
+                    rendererInUse = rendererInUse,
+                    lastVulkanError = lastVulkanErrorText,
                     videoW = _state.value.videoWidth,
                     videoH = _state.value.videoHeight,
                     fps = fps,
                     frameDropCount = drops,
                     decoderFrameDropCount = decDrops
                 )
-                Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec mode=$modeStr drops=$drops decDrops=$decDrops fps=$fps")
+                Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec mode=$modeStr gpuApi=$gpuApi gpuContext=$gpuContext drops=$drops decDrops=$decDrops fps=$fps")
             }
         }
     }
@@ -299,7 +341,20 @@ class PlayerEngine(
         }
 
         val res = MpvNative.initialize(handle)
-        Log.i("VP", "MpvNative.initialize returned $res (vo=${playbackConfig.vo}, path=${playbackConfig.efficientPath})")
+        Log.i("VP", "MpvNative.initialize returned $res (vo=${playbackConfig.vo}, path=${playbackConfig.efficientPath}, renderer=${playbackConfig.renderer})")
+
+        val choicesRaw = MpvNative.getPropertyString(handle, "option-info/gpu-api/choices")
+        val parsedChoices = RendererResolver.parseGpuApiChoices(choicesRaw)
+        if (parsedChoices.isNotEmpty()) {
+            availableGpuApis = parsedChoices
+            cachedGpuApis = parsedChoices
+        }
+        _state.update {
+            it.copy(
+                rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES",
+                lastVulkanError = lastVulkanErrorText
+            )
+        }
 
         MpvNative.observeProperty(handle, REPLY_PAUSE, "pause", MpvFormat.FLAG)
         MpvNative.observeProperty(handle, REPLY_DURATION, "duration", MpvFormat.DOUBLE)
@@ -343,6 +398,7 @@ class PlayerEngine(
             if (handle != 0L) {
                 MpvNative.attachSurface(handle, surface)
                 Log.i("VP", "Surface attached to mpv handle")
+                checkVulkanVoInitialization()
             }
         }
     }
@@ -393,90 +449,133 @@ class PlayerEngine(
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null) }
         scope.launch {
             assertCommandThread()
-            currentFilePath = path
-            _zoomState.value = 0.0
-            currentPanX = 0.0
-            currentPanY = 0.0
-            _state.update { it.copy(videoCodec = null, fallback = false, aspect = aspect) }
-            if (handle != 0L) {
-                val options = mutableListOf<String>()
-                if (startPositionMs > 0L) {
-                    val sec = String.format(java.util.Locale.US, "%.3f", startPositionMs / 1000.0)
-                    options.add("start=$sec")
-                }
-                if (!audioEnabled) {
-                    options.add("aid=no")
-                } else if (audioTrackId != null) {
-                    options.add("aid=$audioTrackId")
-                }
+            loadInternal(
+                path = path,
+                startPositionMs = startPositionMs,
+                audioTrackId = audioTrackId,
+                audioEnabled = audioEnabled,
+                subTrackId = subTrackId,
+                subEnabled = subEnabled,
+                speed = speed,
+                aspect = aspect,
+                paused = false
+            )
+        }
+    }
 
-                if (!subEnabled) {
-                    options.add("sid=no")
-                } else if (subTrackId != null) {
-                    options.add("sid=$subTrackId")
-                }
+    private fun loadInternal(
+        path: String,
+        startPositionMs: Long = 0L,
+        audioTrackId: Int? = null,
+        audioEnabled: Boolean = true,
+        subTrackId: Int? = null,
+        subEnabled: Boolean = true,
+        speed: Double = 1.0,
+        aspect: String? = null,
+        paused: Boolean = false
+    ) {
+        assertCommandThread()
+        currentFilePath = path
+        _zoomState.value = 0.0
+        currentPanX = 0.0
+        currentPanY = 0.0
+        _state.update {
+            it.copy(
+                videoCodec = null,
+                fallback = false,
+                aspect = aspect,
+                rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES",
+                lastVulkanError = lastVulkanErrorText
+            )
+        }
+        if (handle != 0L) {
+            val options = mutableListOf<String>()
+            if (startPositionMs > 0L) {
+                val sec = String.format(java.util.Locale.US, "%.3f", startPositionMs / 1000.0)
+                options.add("start=$sec")
+            }
+            if (!audioEnabled) {
+                options.add("aid=no")
+            } else if (audioTrackId != null) {
+                options.add("aid=$audioTrackId")
+            }
 
-                if (speed != 1.0) {
-                    val spd = String.format(java.util.Locale.US, "%.2f", speed)
-                    options.add("speed=$spd")
-                }
+            if (!subEnabled) {
+                options.add("sid=no")
+            } else if (subTrackId != null) {
+                options.add("sid=$subTrackId")
+            }
 
-                val normAspect = aspect ?: "fit"
-                when (normAspect.lowercase()) {
-                    "16:9" -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "16:9")
-                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
-                        options.add("keepaspect=yes")
-                        options.add("video-aspect-override=16:9")
-                        options.add("panscan=0.0")
-                    }
-                    "4:3" -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "4:3")
-                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
-                        options.add("keepaspect=yes")
-                        options.add("video-aspect-override=4:3")
-                        options.add("panscan=0.0")
-                    }
-                    "crop" -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
-                        MpvNative.setPropertyDouble(handle, "panscan", 1.0)
-                        options.add("keepaspect=yes")
-                        options.add("video-aspect-override=-1")
-                        options.add("panscan=1.0")
-                    }
-                    "stretch" -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "no")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
-                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
-                        options.add("keepaspect=no")
-                        options.add("video-aspect-override=-1")
-                        options.add("panscan=0.0")
-                    }
-                    else -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
-                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
-                        options.add("keepaspect=yes")
-                        options.add("video-aspect-override=-1")
-                        options.add("panscan=0.0")
-                    }
-                }
+            if (speed != 1.0) {
+                val spd = String.format(java.util.Locale.US, "%.2f", speed)
+                options.add("speed=$spd")
+            }
 
-                applyShaderPresetInternal()
+            if (paused) {
+                options.add("pause=yes")
+                pendingPauseOnLoad = true
+            } else {
+                pendingPauseOnLoad = false
+            }
 
-                val cmd = if (options.isNotEmpty()) {
-                    val optStr = options.joinToString(",")
-                    Log.i("VP", "Loading $path with options: $optStr")
-                    arrayOf("loadfile", path, "replace", "-1", optStr)
-                } else {
-                    Log.i("VP", "Loading $path from start without options")
-                    arrayOf("loadfile", path, "replace")
+            val normAspect = aspect ?: "fit"
+            when (normAspect.lowercase()) {
+                "16:9" -> {
+                    MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                    MpvNative.setPropertyString(handle, "video-aspect-override", "16:9")
+                    MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                    options.add("keepaspect=yes")
+                    options.add("video-aspect-override=16:9")
+                    options.add("panscan=0.0")
                 }
-                val res = MpvNative.command(handle, cmd)
-                Log.i("VP", "loadfile res=$res for $path")
+                "4:3" -> {
+                    MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                    MpvNative.setPropertyString(handle, "video-aspect-override", "4:3")
+                    MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                    options.add("keepaspect=yes")
+                    options.add("video-aspect-override=4:3")
+                    options.add("panscan=0.0")
+                }
+                "crop" -> {
+                    MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                    MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                    MpvNative.setPropertyDouble(handle, "panscan", 1.0)
+                    options.add("keepaspect=yes")
+                    options.add("video-aspect-override=-1")
+                    options.add("panscan=1.0")
+                }
+                "stretch" -> {
+                    MpvNative.setPropertyString(handle, "keepaspect", "no")
+                    MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                    MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                    options.add("keepaspect=no")
+                    options.add("video-aspect-override=-1")
+                    options.add("panscan=0.0")
+                }
+                else -> {
+                    MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                    MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                    MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                    options.add("keepaspect=yes")
+                    options.add("video-aspect-override=-1")
+                    options.add("panscan=0.0")
+                }
+            }
+
+            applyShaderPresetInternal()
+
+            val cmd = if (options.isNotEmpty()) {
+                val optStr = options.joinToString(",")
+                Log.i("VP", "Loading $path with options: $optStr")
+                arrayOf("loadfile", path, "replace", "-1", optStr)
+            } else {
+                Log.i("VP", "Loading $path from start without options")
+                arrayOf("loadfile", path, "replace")
+            }
+            val res = MpvNative.command(handle, cmd)
+            Log.i("VP", "loadfile res=$res for $path")
+            if (paused) {
+                MpvNative.setPropertyBoolean(handle, "pause", true)
             }
         }
     }
@@ -518,7 +617,7 @@ class PlayerEngine(
         executeCommand {
             assertCommandThread()
             if (playbackConfig == newConfig) return@executeCommand
-            Log.i("VP", "Reconfiguring engine: ${playbackConfig.efficientPath} -> ${newConfig.efficientPath}")
+            Log.i("VP", "Reconfiguring engine: ${playbackConfig.mode}/${playbackConfig.renderer} -> ${newConfig.mode}/${newConfig.renderer}")
             val curPos = if (handle != 0L) {
                 MpvNative.getPropertyDouble(handle, "time-pos")?.let { (it * 1000.0).toLong() } ?: _position.value
             } else {
@@ -526,6 +625,12 @@ class PlayerEngine(
             }
             val curPath = currentFilePath
             val wasPaused = _state.value.paused
+            val curAid = _state.value.selectedAudioTrackId
+            val curAudioEnabled = curAid != null || _state.value.tracks.none { it.type == "audio" }
+            val curSid = _state.value.selectedSubTrackId
+            val curSubEnabled = curSid != null
+            val curSpeed = _state.value.speed
+            val curAspect = _state.value.aspect
             val surface = attachedSurface
 
             if (handle != 0L) {
@@ -542,80 +647,90 @@ class PlayerEngine(
             }
 
             if (curPath.isNotEmpty()) {
-                val options = mutableListOf<String>()
-                if (curPos > 0) {
-                    val sec = String.format(java.util.Locale.US, "%.3f", curPos / 1000.0)
-                    options.add("start=$sec")
+                loadInternal(
+                    path = curPath,
+                    startPositionMs = curPos,
+                    audioTrackId = curAid,
+                    audioEnabled = curAudioEnabled,
+                    subTrackId = curSid,
+                    subEnabled = curSubEnabled,
+                    speed = curSpeed,
+                    aspect = curAspect,
+                    paused = wasPaused
+                )
+            }
+        }
+    }
+
+    private var vulkanCheckJob: Job? = null
+
+    private fun checkVulkanVoInitialization() {
+        if (playbackConfig.mode != PlaybackMode.QUALITY || playbackConfig.renderer != Renderer.VULKAN) {
+            return
+        }
+        vulkanCheckJob?.cancel()
+        vulkanCheckJob = scope.launch {
+            val startTime = System.currentTimeMillis()
+            var voConfigured = false
+            while (isActive && System.currentTimeMillis() - startTime < 3200L) {
+                delay(200L)
+                if (handle == 0L) break
+                val currentVo = MpvNative.getPropertyString(handle, "current-vo")
+                val voParams = MpvNative.getPropertyString(handle, "video-out-params")
+                if (!currentVo.isNullOrEmpty() && currentVo != "null" && currentVo != "none") {
+                    voConfigured = true
+                    break
                 }
-                val curAid = _state.value.selectedAudioTrackId
-                if (curAid != null) {
-                    options.add("aid=$curAid")
-                }
-                val curSid = _state.value.selectedSubTrackId
-                if (curSid != null) {
-                    options.add("sid=$curSid")
-                } else {
-                    options.add("sid=no")
-                }
-                val curSpeed = _state.value.speed
-                if (curSpeed != 1.0) {
-                    options.add("speed=${String.format(java.util.Locale.US, "%.2f", curSpeed)}")
-                }
-                val curAspect = _state.value.aspect ?: "fit"
-                when (curAspect.lowercase()) {
-                    "16:9" -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "16:9")
-                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
-                        options.add("keepaspect=yes")
-                        options.add("video-aspect-override=16:9")
-                        options.add("panscan=0.0")
-                    }
-                    "4:3" -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "4:3")
-                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
-                        options.add("keepaspect=yes")
-                        options.add("video-aspect-override=4:3")
-                        options.add("panscan=0.0")
-                    }
-                    "crop" -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
-                        MpvNative.setPropertyDouble(handle, "panscan", 1.0)
-                        options.add("keepaspect=yes")
-                        options.add("video-aspect-override=-1")
-                        options.add("panscan=1.0")
-                    }
-                    "stretch" -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "no")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
-                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
-                        options.add("keepaspect=no")
-                        options.add("video-aspect-override=-1")
-                        options.add("panscan=0.0")
-                    }
-                    else -> {
-                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
-                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
-                        options.add("keepaspect=yes")
-                        options.add("video-aspect-override=-1")
-                        options.add("panscan=0.0")
-                    }
-                }
-                val cmd = if (options.isNotEmpty()) {
-                    val optStr = options.joinToString(",")
-                    Log.i("VP", "Reconfiguring: loading $curPath with options=$optStr")
-                    arrayOf("loadfile", curPath, "replace", "-1", optStr)
-                } else {
-                    arrayOf("loadfile", curPath, "replace")
-                }
-                MpvNative.command(handle, cmd)
-                if (wasPaused) {
-                    MpvNative.setPropertyBoolean(handle, "pause", true)
+                if (!voParams.isNullOrEmpty() && voParams != "null") {
+                    voConfigured = true
+                    break
                 }
             }
+            if (!voConfigured && isActive && handle != 0L && attachedSurface != null) {
+                handleVulkanFailure("Vulkan VO failed to initialise (no current-vo/video-out-params within 3s)")
+            }
+        }
+    }
+
+    private fun handleVulkanFailure(reason: String) {
+        sessionVulkanFailed = true
+        val errorLines = dumpMpvErrorLines()
+        Log.e("VP", "VULKAN-FAIL: $reason")
+        for (err in errorLines) {
+            Log.e("VP", "VULKAN-FAIL: $err")
+        }
+        val errSummary = if (errorLines.isNotEmpty()) errorLines.joinToString("\n") else reason
+        lastVulkanErrorText = errSummary
+        _state.update { it.copy(lastVulkanError = errSummary) }
+        _onScreenMessage.tryEmit("Vulkan failed, using OpenGL ES")
+        Log.w("VP", "Vulkan failed, falling back to OpenGL ES")
+        reconfigure(playbackConfig.copy(renderer = Renderer.GLES))
+    }
+
+    private fun dumpMpvErrorLines(): List<String> {
+        val lines = mutableListOf<String>()
+        try {
+            val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "brief", "-s", "mpv"))
+            process.inputStream.bufferedReader().useLines { logLines ->
+                for (l in logLines) {
+                    if (l.contains("E/") || l.contains("W/") || l.contains("vulkan", ignoreCase = true) || l.contains("Error", ignoreCase = true) || l.contains("Failed", ignoreCase = true)) {
+                        lines.add(l)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("VP", "Failed to dump logcat: ${e.message}")
+        }
+        return lines.takeLast(10)
+    }
+
+    fun togglePlaybackMode() {
+        executeCommand {
+            assertCommandThread()
+            val current = playbackConfig
+            val newMode = if (current.mode == PlaybackMode.QUALITY) PlaybackMode.EFFICIENT else PlaybackMode.QUALITY
+            val newConfig = current.copy(mode = newMode)
+            reconfigure(newConfig)
         }
     }
 
