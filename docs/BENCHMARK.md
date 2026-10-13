@@ -61,17 +61,23 @@ Flings of 1500 px in 90 ms, one every 0.45 s.
 | release | top of the folder, 12 flings, memory cache cold, thumbnails from disk | 1010 | 0 (0.00%) | 5 / 5 / 6 ms |
 | release | rows not visited before, 14 flings | 900 | 0 (0.00%) | 5 / 5 / 7 ms |
 | release | back up and down over visited rows, 16 flings | 1435 | 0 (0.00%) | 5 / 5 / 6 ms |
+| release, portrait | thumbnail cache directory emptied first; first visit of the folder, 14 flings | 1178 | 6 (0.51%) | 5 / 8 / 14 ms |
+| release, portrait | next 14 flings (new rows) | 398 | 1 (0.25%) | 5 / 5 / 9 ms |
+| release, portrait | back up over the rows just visited, 14 flings | 1216 | 0 (0.00%) | 5 / 5 / 8 ms |
+| release, portrait | thumbnails on disk, rows up and down, 16 flings | 1249 | 1 (0.08%) | 5 / 5 / 6 ms |
 
 Other debug runs: folder list (9 folders) 102 frames, 4 janky (3.92%); "Music" (37 videos) first pass
 159 frames, 14 janky (8.81%), second pass 162 frames, 6 janky (3.70%).
 
 Notes: all debug janky frames were "Slow UI thread". A simpleperf sample of the debug build during a
 scroll showed the main thread mostly in the JIT code cache and `libart.so` (interpreting / JIT-compiled
-Compose code), which is what a debuggable build costs. The release runs were taken with the display in
-landscape (the phone was lying on its side), so fewer rows were on screen than in the debug runs
-(portrait); a portrait release run is still missing. The release build logs nothing below warn, so
-"thumbnails being generated" in the second release row is assumed from the scroll position, not
-confirmed from a log.
+Compose code), which is what a debuggable build costs. The first three release rows were taken with the display in landscape (2400x1080; auto-rotate is
+off and the user-rotation value read 1 at that time, 0 a few minutes later; not changed by the test), and
+the thumbnails for those rows turned out to be on disk already. The four "release, portrait" rows
+were added afterwards: for the first three of them `cache/thumbnails` was removed first, and 708
+thumbnail files existed in the cache when the debug build was put back, so thumbnails were being
+generated during those runs; a screenshot taken mid-scroll had picture content in every thumbnail
+slot.
 
 ### Player (release build, `Case Closed - 001 - The Big Shrink.mkv`, AV1 software decode, Efficient path B)
 
