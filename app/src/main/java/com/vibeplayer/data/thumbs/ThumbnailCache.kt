@@ -38,7 +38,7 @@ class ThumbnailCache(
     private val inFlight = ConcurrentHashMap<String, Deferred<Bitmap?>>()
 
     companion object {
-        const val NEGATIVE_CACHE_VERSION = 3
+        const val NEGATIVE_CACHE_VERSION = 4
     }
 
     // Memory LRU Cache: 1/8th of available runtime memory in KB
@@ -66,13 +66,9 @@ class ThumbnailCache(
     }
 
     fun getFromMemory(key: String): Bitmap? {
-        return memoryCache.get(key)?.let { bitmap ->
-            if (isUsableThumbnail(bitmap)) bitmap else {
-                memoryCache.remove(key)
-                bitmap.recycle()
-                null
-            }
-        }
+        // Called during composition: must stay a plain lookup. Fully black bitmaps never reach the
+        // memory cache (rejected at extraction and at disk decode).
+        return memoryCache.get(key)
     }
 
     fun isNegativeCached(key: String): Boolean {
@@ -157,12 +153,12 @@ class ThumbnailCache(
         val diskFile = File(cacheDir, "$fileKey.webp")
         if (diskFile.exists() && diskFile.length() > 0) {
             val bitmap = decodeSampledBitmap(diskFile, targetWidth, targetHeight)
-            if (bitmap != null && isUsableThumbnail(bitmap)) {
+            if (bitmap != null && thumbnailDetail(bitmap) > 0) {
                 Log.d("VP", "Thumbnail disk cache HIT for $path")
                 memoryCache.put(key, bitmap)
                 return@withContext bitmap
             } else {
-                Log.w("VP", "Failed to decode cached thumbnail: ${diskFile.name}")
+                Log.w("VP", "Cached thumbnail unreadable or black, regenerating: ${diskFile.name}")
                 bitmap?.recycle()
                 diskFile.delete()
             }

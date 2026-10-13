@@ -42,6 +42,8 @@ class MediaMetadataRetrieverFrameExtractor : FrameExtractor {
             val times = durationUs?.takeIf { it > 0L }
                 ?.let { listOf(10L, 25L, 50L, 75L).map { percent -> it * percent / 100L }.distinct() }
                 ?: listOf(timeUs)
+            var best: Bitmap? = null
+            var bestDetail = 0
             for (candidateUs in times) {
                 val rawBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     retriever.getScaledFrameAtTime(
@@ -60,10 +62,20 @@ class MediaMetadataRetrieverFrameExtractor : FrameExtractor {
                         if (it !== rawBitmap) rawBitmap.recycle()
                     }
                 } else rawBitmap
-                if (isUsableThumbnail(scaled)) return@withContext scaled
-                scaled.recycle()
+                val detail = thumbnailDetail(scaled)
+                if (detail >= USABLE_DETAIL) {
+                    best?.recycle()
+                    return@withContext scaled
+                }
+                Log.d("VP", "Thumbnail candidate rejected (near-black, detail=$detail) at ${candidateUs / 1000} ms via MediaMetadataRetriever: $path")
+                if (detail > bestDetail) {
+                    best?.recycle()
+                    best = scaled
+                    bestDetail = detail
+                } else scaled.recycle()
             }
-            null
+            // Dark throughout: the brightest candidate (may be null); the generator decides.
+            best
         } catch (e: Exception) {
             Log.w("VP", "MediaMetadataRetriever failed for $path: ${e.message}")
             null
@@ -91,13 +103,23 @@ class MpvFallbackFrameExtractor : FrameExtractor {
         val started = android.os.SystemClock.elapsedRealtime()
         return try {
             var bitmap: Bitmap? = null
+            var bestDetail = 0
             for (percent in listOf(10, 25, 50, 75)) {
+                // Each attempt opens the file again under a process-wide lock: bound the total.
+                if (android.os.SystemClock.elapsedRealtime() - started > BUDGET_MS) break
                 val frame = engine.extract(path, targetWidth, targetHeight, percent) ?: continue
-                if (isUsableThumbnail(frame)) {
+                val detail = thumbnailDetail(frame)
+                if (detail >= USABLE_DETAIL) {
+                    bitmap?.recycle()
                     bitmap = frame
                     break
                 }
-                frame.recycle()
+                Log.d("VP", "Thumbnail candidate rejected (near-black, detail=$detail) at $percent% via mpv: $path")
+                if (detail > bestDetail) {
+                    bitmap?.recycle()
+                    bitmap = frame
+                    bestDetail = detail
+                } else frame.recycle()
             }
             bitmap.also { bitmap ->
                 val elapsed = android.os.SystemClock.elapsedRealtime() - started
@@ -110,15 +132,24 @@ class MpvFallbackFrameExtractor : FrameExtractor {
             null
         }
     }
+
+    private companion object {
+        const val BUDGET_MS = 12_000L
+    }
 }
 
-/** Reject fully/near-black extraction results so the cache can retry a later point in the clip. */
-internal fun isUsableThumbnail(bitmap: Bitmap): Boolean {
-    if (bitmap.width <= 0 || bitmap.height <= 0) return false
+/** Samples out of 144 (16 x 9 grid) that must show picture for a frame to be accepted outright (5%). */
+internal const val USABLE_DETAIL = 7
+
+/**
+ * Number of grid samples (0..144) brighter than near-black. Extractors use it to reject near-black
+ * frames and retry later in the clip; 0 means the frame is black everywhere.
+ */
+internal fun thumbnailDetail(bitmap: Bitmap): Int {
+    if (bitmap.width <= 0 || bitmap.height <= 0) return 0
     val columns = 16
     val rows = 9
     var visible = 0
-    val total = columns * rows
     for (row in 0 until rows) {
         for (column in 0 until columns) {
             val color = bitmap.getPixel(
@@ -130,8 +161,10 @@ internal fun isUsableThumbnail(bitmap: Bitmap): Boolean {
             if (luminance > 18) visible++
         }
     }
-    return visible >= total / 20 // at least 5% of samples contain picture detail
+    return visible
 }
+
+internal fun isUsableThumbnail(bitmap: Bitmap): Boolean = thumbnailDetail(bitmap) >= USABLE_DETAIL
 
 /**
  * Thumbnail generator with max 2 parallel extractions and cancellation support.
@@ -151,22 +184,33 @@ class ThumbnailGenerator(
     ): Bitmap? {
         return try {
             semaphore.withPermit {
-                // Try primary retriever first
-                val bitmap = primaryExtractor.extractFrame(path, timeUs, targetWidth, targetHeight)
-                if (bitmap != null) {
+                // Platform retriever first. It returns black for some files it cannot really
+                // decode (10-bit), so a near-black result still goes through the mpv extractor.
+                val primary = primaryExtractor.extractFrame(path, timeUs, targetWidth, targetHeight)
+                if (primary != null && isUsableThumbnail(primary)) {
                     Log.d("VP", "Thumbnail extracted successfully via MediaMetadataRetriever for: $path")
-                    bitmap
-                } else {
-                    Log.w("VP", "Primary extractor failed for $path, falling back to mpv extractor")
-                    val fallbackBitmap = fallbackExtractor.extractFrame(path, timeUs, targetWidth, targetHeight)
-                    if (fallbackBitmap != null) {
-                        Log.d("VP", "Thumbnail extracted via fallback extractor for: $path")
-                        fallbackBitmap
-                    } else {
-                        Log.w("VP", "No thumbnail could be extracted for: $path")
-                        null
-                    }
+                    return@withPermit primary
                 }
+                Log.w("VP", "Primary extractor gave ${if (primary == null) "nothing" else "only near-black frames"} for $path, falling back to mpv extractor")
+                val fallback = fallbackExtractor.extractFrame(path, timeUs, targetWidth, targetHeight)
+                if (fallback != null && isUsableThumbnail(fallback)) {
+                    Log.d("VP", "Thumbnail extracted via fallback extractor for: $path")
+                    primary?.recycle()
+                    return@withPermit fallback
+                }
+                // The clip is dark at every tried position: show its brightest frame rather than
+                // a placeholder. Extractors return null instead of a fully black frame.
+                val primaryDetail = primary?.let { thumbnailDetail(it) } ?: 0
+                val fallbackDetail = fallback?.let { thumbnailDetail(it) } ?: 0
+                val best = if (fallbackDetail > primaryDetail) fallback else primary
+                if (best !== primary) primary?.recycle()
+                if (best !== fallback) fallback?.recycle()
+                if (best != null) {
+                    Log.d("VP", "Thumbnail is a dark frame (detail=${maxOf(primaryDetail, fallbackDetail)}/144, clip dark at all tried positions) for: $path")
+                } else {
+                    Log.w("VP", "No thumbnail could be extracted for: $path")
+                }
+                best
             }
         } catch (e: CancellationException) {
             Log.d("VP", "Thumbnail extraction cancelled for: $path")
