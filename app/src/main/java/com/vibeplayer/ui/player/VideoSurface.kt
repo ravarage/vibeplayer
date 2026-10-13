@@ -5,6 +5,9 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.vibeplayer.player.PlayerEngine
@@ -14,6 +17,10 @@ fun VideoSurface(
     playerEngine: PlayerEngine,
     modifier: Modifier = Modifier
 ) {
+    // A new SurfaceView (and Surface) after the engine abandoned a stuck mpv handle (B-08): the old
+    // Surface stays connected to that handle's video output.
+    val surfaceEpoch by playerEngine.surfaceEpoch.collectAsStateWithLifecycle()
+    key(surfaceEpoch) {
     AndroidView(
         factory = { context ->
             SurfaceView(context).apply {
@@ -36,11 +43,12 @@ fun VideoSurface(
 
                     override fun surfaceDestroyed(holder: SurfaceHolder) {
                         Log.i("VP", "VideoSurface surfaceDestroyed")
-                        playerEngine.detachSurface()
+                        playerEngine.detachSurface(holder.surface)
                     }
                 })
             }
         },
         modifier = modifier.fillMaxSize()
     )
+    }
 }

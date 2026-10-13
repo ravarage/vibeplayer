@@ -516,6 +516,9 @@ class PlayerActivity : ComponentActivity() {
         if (!forceHwdec.isNullOrEmpty()) {
             playerEngine.setHwdec(forceHwdec)
         }
+        if (com.vibeplayer.BuildConfig.DEBUG && intent.getBooleanExtra("debug_stall", false)) {
+            playerEngine.debugSimulateStallOnce = true
+        }
         playbackStarted = true
         openResolvedVideo()
     }

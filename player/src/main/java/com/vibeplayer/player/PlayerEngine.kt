@@ -15,7 +15,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
@@ -23,11 +26,15 @@ class PlayerEngine(
     initialConfig: PlaybackConfig = PlaybackConfig()
 ) {
 
-    private val commandExecutor = Executors.newSingleThreadExecutor { runnable ->
+    private fun newCommandExecutor(): ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "VP-Command").apply { isDaemon = true }
     }
-    private val commandDispatcher = commandExecutor.asCoroutineDispatcher()
-    private val scope = CoroutineScope(commandDispatcher + SupervisorJob())
+
+    // Replaced as a set when a stuck handle is abandoned (B-08): the old thread never returns
+    // from its blocked mpv call, so it cannot be reused.
+    @Volatile private var commandExecutor: ExecutorService = newCommandExecutor()
+    @Volatile private var commandDispatcher = commandExecutor.asCoroutineDispatcher()
+    @Volatile private var scope = CoroutineScope(commandDispatcher + SupervisorJob())
     @Volatile private var released = false
     @Volatile private var timePosObserved = true
 
@@ -40,11 +47,39 @@ class PlayerEngine(
         }
     }
 
-    private var handle: Long = 0L
+    @Volatile private var handle: Long = 0L
     @Volatile var playbackConfig: PlaybackConfig = initialConfig
         private set
     @Volatile private var currentFilePath: String = ""
-    private var attachedSurface: Surface? = null
+    @Volatile private var attachedSurface: Surface? = null
+
+    // ---- B-08 safety net state ----
+    private data class LoadRequest(
+        val path: String,
+        val startPositionMs: Long,
+        val audioTrackId: Int?,
+        val audioEnabled: Boolean,
+        val subTrackId: Int?,
+        val subEnabled: Boolean,
+        val speed: Double,
+        val aspect: String?
+    )
+    @Volatile private var lastLoad: LoadRequest? = null
+    private val loadSerial = AtomicInteger(0)
+    @Volatile private var restartSeenSerial = -1
+    /** Events from an abandoned handle carry an old token and are dropped. */
+    @Volatile private var handleToken = 0
+    /** Path that was reloaded with software decoding after a stall; hardware decoding returns with the next file. */
+    @Volatile private var softwareRecoveryPath: String? = null
+    private val watchdog: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "VP-Watchdog").apply { isDaemon = true }
+    }
+    /** Debug builds: simulate one stalled open (intent extra `debug_stall`). */
+    @Volatile var debugSimulateStallOnce = false
+
+    private val _surfaceEpoch = MutableStateFlow(0)
+    /** Bumped when the UI must create a fresh Surface (the old one stays tied to an abandoned handle). */
+    val surfaceEpoch: StateFlow<Int> = _surfaceEpoch.asStateFlow()
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
@@ -184,6 +219,8 @@ class PlayerEngine(
         override fun onEvent(id: Int) {
             when (id) {
                 MpvEvent.PLAYBACK_RESTART -> {
+                    if (ignoreRestartSerial == loadSerial.get()) return
+                    restartSeenSerial = loadSerial.get()
                     Log.i("VP-Perf", "playback-restart at ${System.currentTimeMillis()}")
                 }
                 MpvEvent.END_FILE -> {
@@ -193,6 +230,11 @@ class PlayerEngine(
                 MpvEvent.FILE_LOADED -> {
                     Log.i("VP", "mpv event file-loaded")
                     _state.update { it.copy(paused = false) }
+                    armStallWatchdog()
+                    if (BuildConfig.DEBUG && debugSimulateStallOnce) {
+                        debugSimulateStallOnce = false
+                        simulateStall()
+                    }
                     updateTracks(allowPendingSelection = true)
                 }
                 MpvEvent.TRACKS_CHANGED -> {
@@ -205,6 +247,123 @@ class PlayerEngine(
                 }
                 else -> {
                     Log.d("VP", "onEvent: $id")
+                }
+            }
+        }
+    }
+
+    private inner class GatedCallback(private val token: Int) : MpvNative.EventCallback {
+        override fun onPropertyChange(name: String, value: Any?) {
+            if (token == handleToken) eventCallback.onPropertyChange(name, value)
+        }
+
+        override fun onEvent(id: Int) {
+            if (token == handleToken) eventCallback.onEvent(id)
+        }
+    }
+
+    @Volatile private var ignoreRestartSerial = -1
+
+    private fun armStallWatchdog() {
+        val serial = loadSerial.get()
+        val armedAt = android.os.SystemClock.elapsedRealtime()
+        scheduleStallCheck(serial, armedAt, StallPolicy.FIRST_CHECK_MS)
+    }
+
+    private fun scheduleStallCheck(serial: Int, armedAt: Long, delayMs: Long) {
+        try {
+            watchdog.schedule({ stallCheck(serial, armedAt) }, delayMs, TimeUnit.MILLISECONDS)
+        } catch (_: RejectedExecutionException) {
+            // released
+        }
+    }
+
+    /** Runs on the watchdog thread; never on main and never on the command thread. */
+    private fun stallCheck(serial: Int, armedAt: Long) {
+        val facts = StallPolicy.Facts(
+            released = released,
+            sameLoad = serial == loadSerial.get(),
+            playbackRestartSeen = restartSeenSerial == serial,
+            surfaceAttached = attachedSurface != null,
+            hwdecCurrent = _state.value.hwdecCurrent,
+            elapsedSinceFileLoadedMs = android.os.SystemClock.elapsedRealtime() - armedAt
+        )
+        if (StallPolicy.onTimer(facts) != StallPolicy.Action.PROBE) return
+        // Liveness probe: a stuck core never answers a synchronous property read, and the command
+        // thread is normally already blocked in one (updateTracks), so this task does not even start.
+        val answered = try {
+            val probe = commandExecutor.submit {
+                if (handle != 0L) MpvNative.getPropertyString(handle, "hwdec-current")
+            }
+            probe.get(StallPolicy.PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            true
+        } catch (_: java.util.concurrent.TimeoutException) {
+            false
+        } catch (_: Exception) {
+            return
+        }
+        if (released || serial != loadSerial.get() || restartSeenSerial == serial) return
+        if (!StallPolicy.shouldRecover(answered)) {
+            scheduleStallCheck(serial, armedAt, StallPolicy.RECHECK_MS)
+            return
+        }
+        val request = lastLoad ?: return
+        Log.e("VP", "B-08 watchdog: no playback-restart ${facts.elapsedSinceFileLoadedMs} ms after file-loaded and the mpv core does not answer (hwdec=${facts.hwdecCurrent}); abandoning the handle and reloading ${request.path} with software decoding at ${request.startPositionMs} ms")
+        abandonAndReloadInSoftware(request)
+    }
+
+    private fun abandonAndReloadInSoftware(request: LoadRequest) {
+        val oldExecutor = commandExecutor
+        val oldScope = scope
+        // From here on nothing touches the stuck handle again: its command thread is blocked inside
+        // mpv and destroying it would block as well. It is leaked until the process ends.
+        handleToken++
+        val executor = newCommandExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        commandExecutor = executor
+        commandDispatcher = dispatcher
+        scope = CoroutineScope(dispatcher + SupervisorJob())
+        oldScope.coroutineContext[Job]?.cancel()
+        oldExecutor.shutdownNow()
+        statsJob = null
+        executor.execute {
+            if (released) return@execute
+            handle = 0L
+            attachedSurface = null
+            softwareRecoveryPath = request.path
+            initHandle()
+            if (handle != 0L) {
+                MpvNative.setPropertyString(handle, "hwdec", "no")
+                Log.w("VP", "B-08 recovery: new mpv handle with hwdec=no; asking the UI for a fresh surface")
+            }
+            // The old Surface still belongs to the abandoned handle's video output.
+            _surfaceEpoch.update { it + 1 }
+            load(
+                request.path, request.startPositionMs, request.audioTrackId, request.audioEnabled,
+                request.subTrackId, request.subEnabled, request.speed, request.aspect
+            )
+        }
+    }
+
+    /** Debug only: behave like B-08 for the current load (command thread blocked, no playback-restart). */
+    private fun simulateStall() {
+        val serial = loadSerial.get()
+        ignoreRestartSerial = serial
+        Log.w("VP", "B-08 debug: simulating a stalled open")
+        executeCommand {
+            val stuck = handle
+            val token = handleToken
+            if (stuck != 0L) MpvNative.setPropertyBoolean(stuck, "pause", true)
+            try {
+                Thread.sleep(Long.MAX_VALUE)
+            } catch (_: InterruptedException) {
+                // The watchdog abandoned this handle. Unlike a real stall this one is healthy,
+                // so it can be destroyed instead of leaked.
+                if (stuck != 0L && token != handleToken) {
+                    MpvNative.setEventCallback(stuck, null)
+                    MpvNative.detachSurface(stuck)
+                    MpvNative.destroy(stuck)
+                    Log.w("VP", "B-08 debug: simulated stuck handle destroyed")
                 }
             }
         }
@@ -288,7 +447,8 @@ class PlayerEngine(
             return
         }
 
-        MpvNative.setEventCallback(handle, eventCallback)
+        MpvNative.setEventCallback(handle, GatedCallback(handleToken))
+        timePosObserved = true
         MpvNative.setVo(handle, playbackConfig.vo)
 
         // Options from PlaybackConfig option table
@@ -344,11 +504,19 @@ class PlayerEngine(
         }
     }
 
-    fun detachSurface() {
+    /**
+     * @param surface the Surface being destroyed. When given and it is not the attached one (a
+     * surface replaced after a stall recovery), nothing is detached.
+     */
+    fun detachSurface(surface: Surface? = null) {
         if (released) return
         try {
             val future = commandExecutor.submit {
                 assertCommandThread()
+                if (surface != null && attachedSurface !== surface) {
+                    Log.i("VP", "detachSurface ignored: not the attached surface")
+                    return@submit
+                }
                 attachedSurface = null
                 if (handle != 0L) {
                     MpvNative.detachSurface(handle)
@@ -388,8 +556,17 @@ class PlayerEngine(
     ) {
         _position.value = 0L
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null) }
+        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect)
+        loadSerial.incrementAndGet()
         scope.launch {
             assertCommandThread()
+            val recovered = softwareRecoveryPath
+            if (recovered != null && recovered != path && handle != 0L) {
+                // The software reload was for one stalled file only.
+                softwareRecoveryPath = null
+                playbackConfig.getOptionTable()["hwdec"]?.let { MpvNative.setPropertyString(handle, "hwdec", it) }
+                Log.i("VP", "B-08 recovery over: hardware decoding restored for the next file")
+            }
             currentFilePath = path
             _zoomState.value = 0.0
             currentPanX = 0.0
@@ -916,6 +1093,7 @@ class PlayerEngine(
     fun release(sync: Boolean = false) {
         if (released) return
         released = true
+        watchdog.shutdownNow()
         statsJob?.cancel()
         statsJob = null
         val task = Runnable {
