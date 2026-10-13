@@ -9,10 +9,10 @@ import kotlinx.coroutines.withContext
 
 /** Software-only, isolated mpv extractor. Calls are serialized across the process. */
 class ThumbnailEngine {
-    suspend fun extract(path: String, width: Int = 320, height: Int = 180): Bitmap? =
+    suspend fun extract(path: String, width: Int = 320, height: Int = 180, startPercent: Int = 10): Bitmap? =
         withContext(Dispatchers.IO) {
             extractionMutex.withLock {
-                val frame = MpvNative.extractThumbnail(path, width, height, TIMEOUT_MS) ?: return@withLock null
+                val frame = MpvNative.extractThumbnail(path, width, height, TIMEOUT_MS, startPercent.coerceIn(1, 90)) ?: return@withLock null
                 if (frame.width <= 0 || frame.height <= 0 || frame.stride < frame.width * 4 ||
                     frame.pixels.size < frame.stride * frame.height
                 ) return@withLock null

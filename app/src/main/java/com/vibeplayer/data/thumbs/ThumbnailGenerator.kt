@@ -37,26 +37,33 @@ class MediaMetadataRetrieverFrameExtractor : FrameExtractor {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(path)
-            val rawBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                retriever.getScaledFrameAtTime(
-                    timeUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    targetWidth,
-                    targetHeight
-                ) ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            } else {
-                retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            val durationUs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()?.times(1_000L)
+            val times = durationUs?.takeIf { it > 0L }
+                ?.let { listOf(10L, 25L, 50L, 75L).map { percent -> it * percent / 100L }.distinct() }
+                ?: listOf(timeUs)
+            for (candidateUs in times) {
+                val rawBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    retriever.getScaledFrameAtTime(
+                        candidateUs,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        targetWidth,
+                        targetHeight
+                    ) ?: retriever.getFrameAtTime(candidateUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                } else {
+                    retriever.getFrameAtTime(candidateUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                } ?: continue
+                val scaled = if (rawBitmap.width > targetWidth * 2 || rawBitmap.height > targetHeight * 2) {
+                    val scale = minOf(targetWidth.toFloat() / rawBitmap.width, targetHeight.toFloat() / rawBitmap.height)
+                    Bitmap.createScaledBitmap(rawBitmap, (rawBitmap.width * scale).toInt().coerceAtLeast(1),
+                        (rawBitmap.height * scale).toInt().coerceAtLeast(1), true).also {
+                        if (it !== rawBitmap) rawBitmap.recycle()
+                    }
+                } else rawBitmap
+                if (isUsableThumbnail(scaled)) return@withContext scaled
+                scaled.recycle()
             }
-            if (rawBitmap != null && (rawBitmap.width > targetWidth * 2 || rawBitmap.height > targetHeight * 2)) {
-                val scale = minOf(targetWidth.toFloat() / rawBitmap.width, targetHeight.toFloat() / rawBitmap.height)
-                val destW = (rawBitmap.width * scale).toInt().coerceAtLeast(1)
-                val destH = (rawBitmap.height * scale).toInt().coerceAtLeast(1)
-                Bitmap.createScaledBitmap(rawBitmap, destW, destH, true).also {
-                    if (it != rawBitmap) rawBitmap.recycle()
-                }
-            } else {
-                rawBitmap
-            }
+            null
         } catch (e: Exception) {
             Log.w("VP", "MediaMetadataRetriever failed for $path: ${e.message}")
             null
@@ -83,7 +90,16 @@ class MpvFallbackFrameExtractor : FrameExtractor {
     ): Bitmap? {
         val started = android.os.SystemClock.elapsedRealtime()
         return try {
-            engine.extract(path, targetWidth, targetHeight).also { bitmap ->
+            var bitmap: Bitmap? = null
+            for (percent in listOf(10, 25, 50, 75)) {
+                val frame = engine.extract(path, targetWidth, targetHeight, percent) ?: continue
+                if (isUsableThumbnail(frame)) {
+                    bitmap = frame
+                    break
+                }
+                frame.recycle()
+            }
+            bitmap.also { bitmap ->
                 val elapsed = android.os.SystemClock.elapsedRealtime() - started
                 Log.i("VP-Perf", "software thumbnail path=$path elapsedMs=$elapsed success=${bitmap != null}")
             }
@@ -94,6 +110,27 @@ class MpvFallbackFrameExtractor : FrameExtractor {
             null
         }
     }
+}
+
+/** Reject fully/near-black extraction results so the cache can retry a later point in the clip. */
+internal fun isUsableThumbnail(bitmap: Bitmap): Boolean {
+    if (bitmap.width <= 0 || bitmap.height <= 0) return false
+    val columns = 16
+    val rows = 9
+    var visible = 0
+    val total = columns * rows
+    for (row in 0 until rows) {
+        for (column in 0 until columns) {
+            val color = bitmap.getPixel(
+                ((column + 0.5f) * bitmap.width / columns).toInt().coerceIn(0, bitmap.width - 1),
+                ((row + 0.5f) * bitmap.height / rows).toInt().coerceIn(0, bitmap.height - 1)
+            )
+            val luminance = ((android.graphics.Color.red(color) * 299 +
+                android.graphics.Color.green(color) * 587 + android.graphics.Color.blue(color) * 114) / 1000)
+            if (luminance > 18) visible++
+        }
+    }
+    return visible >= total / 20 // at least 5% of samples contain picture detail
 }
 
 /**

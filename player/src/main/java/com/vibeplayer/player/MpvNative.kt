@@ -42,7 +42,7 @@ object MpvNative {
     external fun destroy(handle: Long)
 
     /** Creates an isolated software-only mpv instance and returns a scaled BGR0 frame. */
-    external fun extractThumbnail(path: String, targetWidth: Int, targetHeight: Int, timeoutMs: Int): ThumbnailFrame?
+    external fun extractThumbnail(path: String, targetWidth: Int, targetHeight: Int, timeoutMs: Int, startPercent: Int): ThumbnailFrame?
 }
 
 data class ThumbnailFrame(val width: Int, val height: Int, val stride: Int, val pixels: ByteArray)

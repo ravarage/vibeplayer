@@ -545,16 +545,18 @@ static mpv_node *map_value(mpv_node *node, const char *key) {
 
 JNIEXPORT jobject JNICALL
 Java_com_vibeplayer_player_MpvNative_extractThumbnail(JNIEnv *env, jobject thiz,
-        jstring jpath, jint width, jint height, jint timeout_ms) {
+        jstring jpath, jint width, jint height, jint timeout_ms, jint start_percent) {
     if (!jpath || width < 1 || height < 1) return NULL;
     const char *path = (*env)->GetStringUTFChars(env, jpath, NULL);
     mpv_handle *mpv = mpv_create();
     if (!mpv) { (*env)->ReleaseStringUTFChars(env, jpath, path); return NULL; }
     char vf[96];
+    char start[16];
     snprintf(vf, sizeof(vf), "scale=%d:%d:force_original_aspect_ratio=decrease", width, height);
+    snprintf(start, sizeof(start), "%d%%", start_percent < 1 ? 1 : (start_percent > 90 ? 90 : start_percent));
     const char *options[][2] = {
         {"vo", "null"}, {"ao", "null"}, {"aid", "no"}, {"sid", "no"},
-        {"hwdec", "no"}, {"pause", "yes"}, {"start", "10%"},
+        {"hwdec", "no"}, {"pause", "yes"}, {"start", start},
         {"vd-lavc-threads", "2"}, {"vd-lavc-skiploopfilter", "all"},
         {"vd-lavc-fast", "yes"}, {"hr-seek", "no"}, {"vf", vf},
         {"msg-level", "all=no"}, {NULL, NULL}
