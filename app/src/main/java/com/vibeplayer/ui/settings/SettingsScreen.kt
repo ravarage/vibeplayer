@@ -193,7 +193,7 @@ fun SettingsScreen(
             SettingsClickableRow(
                 title = "Shader Preset",
                 subtitle = settings.shaderPreset.displayName,
-                description = settings.shaderPreset.description,
+                description = "${settings.shaderPreset.description}\nNote: Shaders apply in Quality mode only (inactive in Efficient mode; will take effect once Quality mode is selected)",
                 onClick = { showShaderDialog = true }
             )
 
@@ -358,7 +358,17 @@ fun SettingsScreen(
     if (showShaderDialog) {
         AlertDialog(
             onDismissRequest = { showShaderDialog = false },
-            title = { Text("Shader Preset") },
+            title = {
+                Column {
+                    Text("Shader Preset")
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Shaders apply in Quality mode only (inactive in Efficient mode).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
             text = {
                 Column {
                     ShaderPresetOption.entries.forEach { option ->

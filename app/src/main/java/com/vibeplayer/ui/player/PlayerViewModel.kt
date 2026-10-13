@@ -8,11 +8,13 @@ import com.vibeplayer.data.db.AppDatabase
 import com.vibeplayer.data.db.FileSettings
 import com.vibeplayer.data.db.FolderSettings
 import com.vibeplayer.data.prefs.AppSettingsRepository
+import com.vibeplayer.data.prefs.ShaderPresetOption
 import com.vibeplayer.data.prefs.SubtitlePreferenceMode
 import com.vibeplayer.player.FileTrackChoice
 import com.vibeplayer.player.FolderTrackChoice
 import com.vibeplayer.player.LanguagePreferences
 import com.vibeplayer.player.PlayerEngine
+import com.vibeplayer.player.ShaderPreset
 import com.vibeplayer.player.SubtitleMode
 import com.vibeplayer.player.TrackSelector
 import kotlinx.coroutines.Dispatchers
@@ -90,6 +92,66 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 wasEof = state.eof
             }
         }
+
+        val shadersDir = File(application.filesDir, "shaders")
+        playerEngine.setShaderDirectory(shadersDir.absolutePath)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            ensureShadersExtracted(application)
+        }
+
+        viewModelScope.launch {
+            appSettingsRepository.appSettingsFlow
+                .map { it.shaderPreset }
+                .distinctUntilChanged()
+                .collect { presetOption ->
+                    playerEngine.setShaderPreset(mapShaderPreset(presetOption))
+                }
+        }
+    }
+
+    private fun mapShaderPreset(option: ShaderPresetOption): ShaderPreset = when (option) {
+        ShaderPresetOption.NONE -> ShaderPreset.NONE
+        ShaderPresetOption.ANIME4K_A -> ShaderPreset.ANIME4K_A
+        ShaderPresetOption.ANIME4K_B -> ShaderPreset.ANIME4K_B
+        ShaderPresetOption.ANIME4K_C -> ShaderPreset.ANIME4K_C
+        ShaderPresetOption.SNAPDRAGON_GSR -> ShaderPreset.SNAPDRAGON_GSR
+    }
+
+    private fun ensureShadersExtracted(context: android.content.Context): File {
+        val targetDir = File(context.filesDir, "shaders")
+        val versionFile = File(targetDir, ".version")
+        val targetVersion = com.vibeplayer.BuildConfig.VERSION_CODE.toString()
+
+        if (targetDir.exists() && versionFile.exists()) {
+            val currentVersion = try { versionFile.readText().trim() } catch (_: Exception) { "" }
+            if (currentVersion == targetVersion) {
+                return targetDir
+            }
+        }
+
+        if (!targetDir.exists()) {
+            targetDir.mkdirs()
+        }
+
+        try {
+            val assetManager = context.assets
+            val assetFiles = assetManager.list("shaders") ?: emptyArray()
+            for (fileName in assetFiles) {
+                val outFile = File(targetDir, fileName)
+                assetManager.open("shaders/$fileName").use { input ->
+                    outFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            versionFile.writeText(targetVersion)
+            Log.i("VP", "Extracted ${assetFiles.size} shaders to ${targetDir.absolutePath} (v$targetVersion)")
+        } catch (e: Exception) {
+            Log.e("VP", "Failed to extract shaders from assets", e)
+        }
+
+        return targetDir
     }
 
     private suspend fun onPlaybackEnded() {
@@ -237,6 +299,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val subEnabled = fileChoice?.subEnabled ?: true
             val speed = fileSettings?.speed?.toDouble() ?: 1.0
             val aspect = fileSettings?.aspect
+
+            playerEngine.setShaderPreset(mapShaderPreset(appSettings.shaderPreset))
 
             playerEngine.load(
                 path = path,

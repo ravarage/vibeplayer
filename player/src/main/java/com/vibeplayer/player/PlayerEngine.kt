@@ -45,6 +45,8 @@ class PlayerEngine(
         private set
     @Volatile private var currentFilePath: String = ""
     private var attachedSurface: Surface? = null
+    @Volatile private var shaderDirectory: String = ""
+    @Volatile private var currentShaderPreset: ShaderPreset = ShaderPreset.NONE
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
@@ -316,6 +318,7 @@ class PlayerEngine(
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
         MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
         MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+        applyShaderPresetInternal()
     }
 
     fun setControlsVisible(visible: Boolean) {
@@ -462,6 +465,8 @@ class PlayerEngine(
                     }
                 }
 
+                applyShaderPresetInternal()
+
                 val cmd = if (options.isNotEmpty()) {
                     val optStr = options.joinToString(",")
                     Log.i("VP", "Loading $path with options: $optStr")
@@ -474,6 +479,29 @@ class PlayerEngine(
                 Log.i("VP", "loadfile res=$res for $path")
             }
         }
+    }
+
+    fun setShaderDirectory(dir: String) {
+        shaderDirectory = dir
+    }
+
+    fun setShaderPreset(preset: ShaderPreset, dir: String? = null) {
+        if (dir != null) {
+            shaderDirectory = dir
+        }
+        currentShaderPreset = preset
+        executeCommand {
+            assertCommandThread()
+            applyShaderPresetInternal()
+        }
+    }
+
+    private fun applyShaderPresetInternal() {
+        assertCommandThread()
+        if (handle == 0L) return
+        val glslShadersValue = currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory)
+        MpvNative.setPropertyString(handle, "glsl-shaders", glslShadersValue)
+        Log.i("VP", "Applied shader preset $currentShaderPreset (mode=${playbackConfig.mode}): $glslShadersValue")
     }
 
     fun setHwdec(hwdec: String) {
