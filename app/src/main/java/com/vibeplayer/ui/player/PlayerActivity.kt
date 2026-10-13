@@ -64,6 +64,8 @@ import android.media.AudioManager
 import android.view.KeyEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 class PlayerActivity : ComponentActivity() {
 
@@ -190,9 +192,10 @@ class PlayerActivity : ComponentActivity() {
 
         // Maintain up-to-date PiP params as playback/file state changes
         lifecycleScope.launch {
-            playerEngine.state.collect { state ->
-                updatePipParams(state)
-            }
+            playerEngine.state
+                .map { PipState(it.videoWidth, it.videoHeight, it.paused, it.durationMs > 0L) }
+                .distinctUntilChanged()
+                .collect { state -> updatePipParams(state) }
         }
 
         // Auto-advance and the skip buttons change the ViewModel path without a new Intent.
@@ -324,6 +327,7 @@ class PlayerActivity : ComponentActivity() {
                                 onSelectAudioTrack = { viewModel.setAudioTrack(it) },
                                 onSelectSubTrack = { viewModel.setSubtitleTrack(it) },
                                 onSelectSpeed = { viewModel.setSpeed(it) },
+                                onPersistSpeed = { viewModel.persistSpeed(it) },
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                                     val current = playerState.aspect ?: "fit"
@@ -566,7 +570,7 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun updatePipParams(state: com.vibeplayer.player.PlayerState = playerEngine.state.value) {
+    private fun updatePipParams(state: PipState) {
         val bounds = windowManager.currentWindowMetrics.bounds
         val params = PipHelper.buildPipParams(
             context = this,
@@ -575,7 +579,7 @@ class PlayerActivity : ComponentActivity() {
             windowWidth = bounds.width(),
             windowHeight = bounds.height(),
             isPaused = state.paused,
-            hasDuration = state.durationMs > 0L
+            hasDuration = state.hasDuration
         )
         try {
             setPictureInPictureParams(params)
@@ -583,6 +587,13 @@ class PlayerActivity : ComponentActivity() {
             Log.w("VP", "Failed to setPictureInPictureParams: ${e.message}")
         }
     }
+
+    private data class PipState(
+        val videoWidth: Int,
+        val videoHeight: Int,
+        val paused: Boolean,
+        val hasDuration: Boolean
+    )
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()

@@ -1,7 +1,9 @@
 package com.vibeplayer.data.media
 
 import android.net.Uri
+import androidx.compose.runtime.Immutable
 
+@Immutable
 data class VideoItem(
     val id: Long,
     val uri: Uri,

@@ -103,10 +103,10 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P6-06 | Default renderer | TODO | | | |
 | P7-01 | Release build | TODO | | | |
 | P7-02 | Start time | TODO | | | |
-| P7-03 | Recomposition | TODO | | | |
+| P7-03 | Recomposition | IN PROGRESS | CODEX | pending | Review items: 2 fixed (pinch zoom/pan values no longer recompose GestureLayer; zoom display collects in ResetZoomButton); 7 fixed (scrub state isolated and hide timer event-driven); 8 fixed (speed persisted on release); 12 fixed (PiP fields distinct); 19 fixed (whole-second labels, layout offset lambda, keyed/remembered track sheets). Code-path/build checked; no device measurements. Next: measure on device: recomposition counts, gfxinfo jank, idle cost. |
 | P7-04 | Baseline Profile | TODO | | | |
-| P7-05 | Browser smoothness | TODO | | | |
-| P7-06 | Idle cost | TODO | | | |
+| P7-05 | Browser smoothness | IN PROGRESS | CODEX | pending | Review items: 9 fixed (remembered flows and lifecycle collection); 10 fixed (history/file matching on IO by path only); 11 fixed (conflated/debounced shared full query and BUCKET_ID filtering); 15 fixed (scanFolder on IO); 17 fixed (per-key in-flight extraction, temp-file rename, cache-owned extraction scope); 19 fixed (direct history-key lookup, cache hash and mkdirs off main, immutable VideoItem). Code-path/build checked; no device measurements. Next: measure on device: recomposition counts, gfxinfo jank, idle cost. |
+| P7-06 | Idle cost | IN PROGRESS | CODEX | pending | Review items: 8 fixed (speed persisted on release); 14 fixed (controls disposal and idempotent time-pos observation confirmed in current code); 18 fixed (periodic saves only while playing); 19 fixed (whole-second player labels). Code-path/build checked; no device measurements. Next: measure on device: recomposition counts, gfxinfo jank, idle cost. |
 | P8-01 | Shader plumbing | TODO | | | |
 | P8-02 | Anime4K light presets | TODO | | | |
 | P8-03 | Snapdragon GSR | TODO | | | |

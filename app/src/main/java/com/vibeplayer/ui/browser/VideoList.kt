@@ -187,7 +187,7 @@ fun VideoListScreen(
                             key = { it.id }
                         ) { video ->
                             val setting = historyMap["${video.path}:${video.sizeBytes}"]
-                                ?: historyMap.values.find { it.key.startsWith(video.path) }
+                                ?: historyMap[video.path]
 
                             VideoItemRow(
                                 video = video,

@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -19,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,6 +31,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
 
@@ -63,6 +65,7 @@ fun VideoSeekBar(
     val view = LocalView.current
     var isDragging by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableFloatStateOf(0f) }
+    var containerWidthPx by remember { mutableIntStateOf(0) }
     var lastEndHit by remember { mutableStateOf<Int?>(null) }
 
     val currentProgress = if (durationMs > 0) {
@@ -77,21 +80,9 @@ fun VideoSeekBar(
         0L
     }
 
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val totalWidth = maxWidth
+    Box(modifier = modifier.fillMaxWidth().onSizeChanged { containerWidthPx = it.width }) {
         val labelWidth = 64.dp
         val density = LocalDensity.current
-
-        // Calculate thumb offset so label can follow the thumb
-        val thumbOffset = with(density) {
-            val totalWidthPx = totalWidth.toPx()
-            val thumbPaddingPx = 10.dp.toPx() // Slider thumb radius approximation
-            val effectiveWidthPx = (totalWidthPx - 2 * thumbPaddingPx).coerceAtLeast(0f)
-            val thumbXPx = thumbPaddingPx + currentProgress * effectiveWidthPx
-            val labelWidthPx = labelWidth.toPx()
-            val labelXPx = (thumbXPx - labelWidthPx / 2f).coerceIn(0f, totalWidthPx - labelWidthPx)
-            labelXPx.toDp()
-        }
 
         Column(modifier = Modifier.fillMaxWidth()) {
             // Position label that follows the thumb while dragging
@@ -104,7 +95,14 @@ fun VideoSeekBar(
                     visible = isDragging,
                     enter = fadeIn(),
                     exit = fadeOut(),
-                    modifier = Modifier.offset(x = thumbOffset)
+                    modifier = Modifier.offset {
+                        val labelWidthPx = with(density) { labelWidth.roundToPx() }
+                        val thumbPaddingPx = with(density) { 10.dp.roundToPx() }
+                        val widthPx = containerWidthPx
+                        val thumbX = thumbPaddingPx + currentProgress * (widthPx - 2 * thumbPaddingPx).coerceAtLeast(0)
+                        val maxX = (widthPx - labelWidthPx).coerceAtLeast(0)
+                        IntOffset((thumbX - labelWidthPx / 2).toInt().coerceIn(0, maxX), 0)
+                    }
                 ) {
                     Box(
                         modifier = Modifier

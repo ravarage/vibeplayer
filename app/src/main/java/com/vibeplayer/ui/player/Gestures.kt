@@ -84,17 +84,16 @@ fun GestureLayer(
     var lastTapTime by remember { mutableStateOf(0L) }
     var lastTapPos by remember { mutableStateOf(Offset.Zero) }
 
-    val latestZoom by rememberUpdatedState(zoomState.value)
     val latestDurationMs by rememberUpdatedState(durationMs)
-    var currentLocalZoom by remember { mutableStateOf(zoomState.value) }
-    LaunchedEffect(zoomState) { zoomState.collect { currentLocalZoom = it } }
-    var currentLocalPanX by remember { mutableStateOf(0.0) }
-    var currentLocalPanY by remember { mutableStateOf(0.0) }
+    val currentLocalZoom = remember(zoomState) { java.util.concurrent.atomic.AtomicReference(zoomState.value) }
+    LaunchedEffect(zoomState) { zoomState.collect { currentLocalZoom.set(it) } }
+    val currentLocalPanX = remember { java.util.concurrent.atomic.AtomicReference(0.0) }
+    val currentLocalPanY = remember { java.util.concurrent.atomic.AtomicReference(0.0) }
     var initialPinchDistance by remember { mutableFloatStateOf(0f) }
     var initialPinchCenter by remember { mutableStateOf(Offset.Zero) }
-    var baseZoom by remember { mutableStateOf(0.0) }
-    var basePanX by remember { mutableStateOf(0.0) }
-    var basePanY by remember { mutableStateOf(0.0) }
+    var baseZoom by remember { mutableFloatStateOf(0f) }
+    var basePanX by remember { mutableFloatStateOf(0f) }
+    var basePanY by remember { mutableFloatStateOf(0f) }
 
     var brightnessLevel by remember { mutableFloatStateOf(initialBrightness) }
     LaunchedEffect(initialBrightness) { brightnessLevel = initialBrightness }
@@ -178,9 +177,9 @@ fun GestureLayer(
                                 onGestureTypeChanged(GestureType.PINCH)
                                 initialPinchDistance = currentDistance
                                 initialPinchCenter = currentCenter
-                                baseZoom = latestZoom
-                                basePanX = currentLocalPanX
-                                basePanY = currentLocalPanY
+                                baseZoom = currentLocalZoom.get().toFloat()
+                                basePanX = currentLocalPanX.get().toFloat()
+                                basePanY = currentLocalPanY.get().toFloat()
                                 pendingSingleTapJob?.cancel()
                                 pendingSingleTapJob = null
                                 lastTapTime = 0L
@@ -193,16 +192,16 @@ fun GestureLayer(
                                 if (initialPinchDistance > 10f && currentDistance > 10f) {
                                     val ratio = (currentDistance / initialPinchDistance).coerceAtLeast(0.01f)
                                     val zoomDelta = kotlin.math.ln(ratio.toDouble()) / kotlin.math.ln(2.0)
-                                    val newZoom = (baseZoom + zoomDelta).coerceIn(0.0, 3.0)
-                                    currentLocalZoom = newZoom
+                                    val newZoom = (baseZoom.toDouble() + zoomDelta).coerceIn(0.0, 3.0)
+                                    currentLocalZoom.set(newZoom)
                                     onZoomChange(newZoom)
 
                                     val panDx = (currentCenter.x - initialPinchCenter.x) / width
                                     val panDy = (currentCenter.y - initialPinchCenter.y) / height
-                                    val newPanX = (basePanX + panDx.toDouble()).coerceIn(-1.5, 1.5)
-                                    val newPanY = (basePanY + panDy.toDouble()).coerceIn(-1.5, 1.5)
-                                    currentLocalPanX = newPanX
-                                    currentLocalPanY = newPanY
+                                    val newPanX = (basePanX.toDouble() + panDx.toDouble()).coerceIn(-1.5, 1.5)
+                                    val newPanY = (basePanY.toDouble() + panDy.toDouble()).coerceIn(-1.5, 1.5)
+                                    currentLocalPanX.set(newPanX)
+                                    currentLocalPanY.set(newPanY)
                                     onPanChange(newPanX, newPanY)
                                 }
                             }
@@ -399,14 +398,14 @@ fun GestureLayer(
                         }
                     }
                     if (lockedGesture == GestureType.PINCH) {
-                        if (currentLocalZoom < 0.05) {
-                            currentLocalZoom = 0.0
-                            currentLocalPanX = 0.0
-                            currentLocalPanY = 0.0
+                        if (currentLocalZoom.get() < 0.05) {
+                            currentLocalZoom.set(0.0)
+                            currentLocalPanX.set(0.0)
+                            currentLocalPanY.set(0.0)
                             onResetZoom()
                         } else {
-                            onZoomCommit(currentLocalZoom)
-                            onPanCommit(currentLocalPanX, currentLocalPanY)
+                            onZoomCommit(currentLocalZoom.get())
+                            onPanCommit(currentLocalPanX.get(), currentLocalPanY.get())
                         }
                     }
                     onGestureEnded(lockedGesture)
@@ -453,9 +452,9 @@ fun GestureLayer(
         ResetZoomButton(
             zoomState = zoomState,
             onReset = {
-                currentLocalZoom = 0.0
-                currentLocalPanX = 0.0
-                currentLocalPanY = 0.0
+                currentLocalZoom.set(0.0)
+                currentLocalPanX.set(0.0)
+                currentLocalPanY.set(0.0)
                 onResetZoom()
             },
             modifier = Modifier

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,7 +25,7 @@ fun AudioTrackSheet(
     onSelectTrack: (Int?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val audioTracks = tracks.filter { it.type == "audio" }
+    val audioTracks = remember(tracks) { tracks.filter { it.type == "audio" } }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -62,7 +63,7 @@ fun AudioTrackSheet(
                     )
                 }
 
-                items(audioTracks) { track ->
+                items(audioTracks, key = { it.id }) { track ->
                     val isSelected = (track.id == selectedTrackId) || track.selected
                     val lang = track.lang?.uppercase() ?: "UNKNOWN"
                     val codec = track.codec?.uppercase() ?: ""
@@ -102,7 +103,7 @@ fun SubtitleTrackSheet(
     onSelectTrack: (Int?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val subTracks = tracks.filter { it.type == "sub" }
+    val subTracks = remember(tracks) { tracks.filter { it.type == "sub" } }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -140,7 +141,7 @@ fun SubtitleTrackSheet(
                     )
                 }
 
-                items(subTracks) { track ->
+                items(subTracks, key = { it.id }) { track ->
                     val isSelected = (selectedTrackId != null && track.id == selectedTrackId)
                     val lang = track.lang?.uppercase() ?: ""
                     val rawCodec = track.codec

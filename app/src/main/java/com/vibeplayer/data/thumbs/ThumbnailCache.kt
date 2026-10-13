@@ -18,7 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.awaitAll
+import java.util.concurrent.ConcurrentHashMap
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -27,9 +33,9 @@ class ThumbnailCache(
     private val context: Context,
     private val generator: ThumbnailGenerator = ThumbnailGenerator()
 ) {
-    private val cacheDir = File(context.cacheDir, "thumbnails").apply {
-        if (!exists()) mkdirs()
-    }
+    private val cacheDir = File(context.cacheDir, "thumbnails")
+    private val extractionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val inFlight = ConcurrentHashMap<String, Deferred<Bitmap?>>()
 
     companion object {
         const val NEGATIVE_CACHE_VERSION = 2
@@ -50,7 +56,10 @@ class ThumbnailCache(
     private val negativeMemoryCache = java.util.Collections.synchronizedSet(java.util.LinkedHashSet<String>())
 
     fun makeCacheKey(path: String, sizeBytes: Long, mtime: Long): String {
-        val raw = "$path:$sizeBytes:$mtime"
+        return "$path:$sizeBytes:$mtime"
+    }
+
+    private fun diskKey(raw: String): String {
         val md = MessageDigest.getInstance("MD5")
         val digest = md.digest(raw.toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
@@ -96,19 +105,33 @@ class ThumbnailCache(
         mtime: Long,
         targetWidth: Int = 320,
         targetHeight: Int = 180
-    ): Bitmap? = withContext(Dispatchers.IO) {
+    ): Bitmap? {
         val key = makeCacheKey(path, sizeBytes, mtime)
-
-        // 1. In-memory cache check (positive & negative)
         memoryCache.get(key)?.let {
-            return@withContext it
+            return it
         }
         if (negativeMemoryCache.contains(key)) {
-            return@withContext null
+            return null
         }
+        val deferred = inFlight.computeIfAbsent(key) {
+            extractionScope.async { loadThumbnail(key, path, targetWidth, targetHeight) }
+        }
+        deferred.invokeOnCompletion { inFlight.remove(key, deferred) }
+        try {
+            return deferred.await()?.also { memoryCache.put(key, it) }
+        } finally {
+            if (deferred.isCompleted) inFlight.remove(key, deferred)
+        }
+    }
+
+    private suspend fun loadThumbnail(key: String, path: String, targetWidth: Int, targetHeight: Int): Bitmap? = withContext(Dispatchers.IO) {
+        if (!cacheDir.exists() && !cacheDir.mkdirs() && !cacheDir.isDirectory) {
+            Log.w("VP", "Failed to create thumbnail cache directory")
+        }
+        val fileKey = diskKey(key)
 
         // 2. Disk negative cache check (marker file)
-        val markerFile = File(cacheDir, "$key.failed")
+        val markerFile = File(cacheDir, "$fileKey.failed")
         if (markerFile.exists()) {
             try {
                 val versionStr = markerFile.readText().trim()
@@ -125,7 +148,7 @@ class ThumbnailCache(
         }
 
         // 3. Disk cache check with display-size decode
-        val diskFile = File(cacheDir, "$key.webp")
+        val diskFile = File(cacheDir, "$fileKey.webp")
         if (diskFile.exists() && diskFile.length() > 0) {
             val bitmap = decodeSampledBitmap(diskFile, targetWidth, targetHeight)
             if (bitmap != null) {
@@ -144,14 +167,21 @@ class ThumbnailCache(
         if (generated != null) {
             memoryCache.put(key, generated)
             try {
-                FileOutputStream(diskFile).use { out ->
+                val tempFile = File(cacheDir, "$fileKey.webp.tmp")
+                tempFile.delete()
+                FileOutputStream(tempFile).use { out ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         generated.compress(Bitmap.CompressFormat.WEBP_LOSSY, 80, out)
                     } else {
                         generated.compress(Bitmap.CompressFormat.PNG, 85, out)
                     }
                 }
-                Log.d("VP", "Saved thumbnail to disk cache: ${diskFile.name}")
+                if (!tempFile.renameTo(diskFile)) {
+                    tempFile.delete()
+                    Log.w("VP", "Failed to atomically publish thumbnail cache file: ${diskFile.name}")
+                } else {
+                    Log.d("VP", "Saved thumbnail to disk cache: ${diskFile.name}")
+                }
             } catch (e: Exception) {
                 Log.w("VP", "Failed to write thumbnail to disk cache for $path", e)
             }

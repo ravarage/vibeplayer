@@ -5,8 +5,9 @@ import android.os.Environment
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -22,6 +23,10 @@ import com.vibeplayer.data.prefs.VideoSortOrder
 import com.vibeplayer.ui.browser.FolderListScreen
 import com.vibeplayer.ui.browser.VideoListScreen
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import java.io.File
 
 object NavRoutes {
@@ -41,6 +46,9 @@ object NavRoutes {
     }
 }
 
+private fun normalizeMediaPath(path: String): String =
+    path.replace("/sdcard/", "/storage/emulated/0/")
+
 @Composable
 fun BrowserNavGraph(
     repository: MediaRepository,
@@ -54,11 +62,40 @@ fun BrowserNavGraph(
     thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val historyList by db.fileSettingsDao().observeHistory().collectAsState(initial = emptyList())
-    val allVideos by repository.observeAllVideos().collectAsState(initial = emptyList())
-
-    fun normalizePath(p: String): String =
-        p.replace("/sdcard/", "/storage/emulated/0/")
+    val historyFlow = remember(db) { db.fileSettingsDao().observeHistory() }
+    val allVideosFlow = remember(repository) { repository.observeAllVideos() }
+    val historyList by historyFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val continueWatchingFlow = remember(historyFlow, allVideosFlow) {
+        combine(historyFlow, allVideosFlow) { history, videos -> history to videos }
+            .map { (history, videos) ->
+                val videosByPath = videos.associateBy { normalizeMediaPath(it.path) }
+                history.asSequence()
+                    .filter { it.positionMs > 0L && it.durationMs > 0L }
+                    .mapNotNull { setting ->
+                        val path = setting.key.substringBeforeLast(":")
+                        val normalizedPath = normalizeMediaPath(path)
+                        val video = videosByPath[normalizedPath]
+                            ?: File(path).takeIf { it.exists() }?.let { file ->
+                                VideoItem(
+                                    id = -1L,
+                                    uri = android.net.Uri.fromFile(file),
+                                    path = path,
+                                    displayName = file.name,
+                                    bucketId = "unknown",
+                                    bucketName = "Unknown",
+                                    durationMs = setting.durationMs,
+                                    sizeBytes = setting.key.substringAfterLast(":").toLongOrNull() ?: file.length(),
+                                    dateModified = file.lastModified() / 1000,
+                                    width = 0,
+                                    height = 0
+                                )
+                            }
+                        video?.let { com.vibeplayer.ui.browser.ContinueWatchingItem(it, setting) }
+                    }.toList()
+            }
+            .flowOn(Dispatchers.IO)
+    }
+    val continueWatchingList by continueWatchingFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val historyMap = androidx.compose.runtime.remember(historyList) {
         val map = mutableMapOf<String, com.vibeplayer.data.db.FileSettings>()
@@ -66,38 +103,9 @@ fun BrowserNavGraph(
             map[item.key] = item
             val p = item.key.substringBeforeLast(":")
             map[p] = item
-            map[normalizePath(p)] = item
+            map[normalizeMediaPath(p)] = item
         }
         map
-    }
-
-    val continueWatchingList = androidx.compose.runtime.remember(historyList, allVideos) {
-        historyList.filter { it.positionMs > 0 && it.durationMs > 0 }.mapNotNull { setting ->
-            val path = setting.key.substringBeforeLast(":")
-            val pathNorm = normalizePath(path)
-            val fileName = java.io.File(path).name
-            val video = allVideos.find {
-                normalizePath(it.path) == pathNorm || it.displayName == fileName
-            } ?: run {
-                val file = java.io.File(path)
-                if (file.exists()) {
-                    VideoItem(
-                        id = -1L,
-                        uri = android.net.Uri.fromFile(file),
-                        path = path,
-                        displayName = file.name,
-                        bucketId = "unknown",
-                        bucketName = "Unknown",
-                        durationMs = setting.durationMs,
-                        sizeBytes = setting.key.substringAfterLast(":").toLongOrNull() ?: file.length(),
-                        dateModified = file.lastModified() / 1000,
-                        width = 0,
-                        height = 0
-                    )
-                } else null
-            }
-            video?.let { com.vibeplayer.ui.browser.ContinueWatchingItem(it, setting) }
-        }
     }
 
     NavHost(
@@ -106,7 +114,8 @@ fun BrowserNavGraph(
         modifier = modifier
     ) {
         composable(NavRoutes.FOLDERS) {
-            val folders by repository.observeFolders().collectAsState(initial = emptyList())
+            val foldersFlow = remember(repository) { repository.observeFolders() }
+            val folders by foldersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
             FolderListScreen(
                 folders = folders,
@@ -126,8 +135,8 @@ fun BrowserNavGraph(
         }
 
         composable(NavRoutes.SETTINGS) {
-            val currentSettings by settingsRepository.appSettingsFlow.collectAsState(
-                initial = com.vibeplayer.data.prefs.AppSettings()
+            val currentSettings by settingsRepository.appSettingsFlow.collectAsStateWithLifecycle(
+                initialValue = com.vibeplayer.data.prefs.AppSettings()
             )
 
             com.vibeplayer.ui.settings.SettingsScreen(
@@ -156,8 +165,9 @@ fun BrowserNavGraph(
             val encodedName = backStackEntry.arguments?.getString("bucketName") ?: ""
             val folderName = Uri.decode(encodedName)
 
-            val videos by repository.observeVideosInBucket(bucketId).collectAsState(initial = emptyList())
-            val sortOrder by preferences.sortOrderFlow.collectAsState(initial = VideoSortOrder.DATE_DESC)
+            val videosFlow = remember(repository, bucketId) { repository.observeVideosInBucket(bucketId) }
+            val videos by videosFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+            val sortOrder by preferences.sortOrderFlow.collectAsStateWithLifecycle(initialValue = VideoSortOrder.DATE_DESC)
 
             VideoListScreen(
                 folderName = folderName,

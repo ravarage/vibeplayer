@@ -24,6 +24,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,11 +57,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val neighbours: StateFlow<Neighbours> = _neighbours.asStateFlow()
 
     init {
-        // Periodic save every 10 seconds while playing
+        // Periodic save only while actively playing; pause transitions save below.
         periodicSaveJob = viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                delay(10_000L)
-                saveCurrentPosition()
+            playerEngine.state.map { it.paused }.distinctUntilChanged().collectLatest { paused ->
+                if (!paused) {
+                    while (isActive) {
+                        delay(10_000L)
+                        saveCurrentPosition()
+                    }
+                }
             }
         }
 
@@ -345,6 +352,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setSpeed(speed: Double) {
         playerEngine.setSpeed(speed)
+    }
+
+    fun persistSpeed(speed: Double) {
         val key = currentKey ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val existing = dao.getByKey(key)

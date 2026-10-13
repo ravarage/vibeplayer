@@ -21,9 +21,11 @@ import kotlin.math.roundToInt
 fun SpeedSheet(
     currentSpeed: Double,
     onSpeedChanged: (Double) -> Unit,
+    onSpeedChangeFinished: (Double) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val presets = listOf(0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0)
+    var sliderSpeed by remember(currentSpeed) { mutableFloatStateOf(currentSpeed.toFloat()) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -50,7 +52,7 @@ fun SpeedSheet(
                 )
 
                 Text(
-                    text = String.format(Locale.US, "%.2fx", currentSpeed),
+                    text = String.format(Locale.US, "%.2fx", sliderSpeed),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFBB86FC),
@@ -71,6 +73,7 @@ fun SpeedSheet(
                     onClick = {
                         val next = ((currentSpeed - 0.1) * 100).roundToInt() / 100.0
                         onSpeedChanged(next.coerceIn(0.25, 4.0))
+                        onSpeedChangeFinished(next.coerceIn(0.25, 4.0))
                     },
                     modifier = Modifier.size(36.dp)
                 ) {
@@ -78,11 +81,14 @@ fun SpeedSheet(
                 }
 
                 Slider(
-                    value = currentSpeed.toFloat(),
+                    value = sliderSpeed,
                     onValueChange = { newFloat ->
                         val rounded = (newFloat * 20).roundToInt() / 20.0 // 0.05 increments
-                        onSpeedChanged(rounded.coerceIn(0.25, 4.0))
+                        val speed = rounded.coerceIn(0.25, 4.0)
+                        sliderSpeed = speed.toFloat()
+                        onSpeedChanged(speed)
                     },
+                    onValueChangeFinished = { onSpeedChangeFinished(sliderSpeed.toDouble()) },
                     valueRange = 0.25f..4.0f,
                     colors = SliderDefaults.colors(
                         thumbColor = Color(0xFFBB86FC),
@@ -96,6 +102,7 @@ fun SpeedSheet(
                     onClick = {
                         val next = ((currentSpeed + 0.1) * 100).roundToInt() / 100.0
                         onSpeedChanged(next.coerceIn(0.25, 4.0))
+                        onSpeedChangeFinished(next.coerceIn(0.25, 4.0))
                     },
                     modifier = Modifier.size(36.dp)
                 ) {
@@ -126,6 +133,7 @@ fun SpeedSheet(
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 onSpeedChanged(speed)
+                                onSpeedChangeFinished(speed)
                                 onDismiss()
                             }
                         )

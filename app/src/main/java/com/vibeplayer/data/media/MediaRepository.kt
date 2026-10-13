@@ -12,17 +12,31 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
 class MediaRepository(private val context: Context) {
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val allVideoSnapshots by lazy {
+        observeQuery(null).shareIn(repositoryScope, SharingStarted.WhileSubscribed(5_000L), replay = 1)
+    }
 
-    fun scanFolder(folderPath: String) {
+    suspend fun scanFolder(folderPath: String) = withContext(Dispatchers.IO) {
         val dir = File(folderPath)
         if (dir.exists() && dir.isDirectory) {
             val files = dir.listFiles { file ->
@@ -38,7 +52,7 @@ class MediaRepository(private val context: Context) {
         }
     }
 
-    suspend fun queryVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
+    suspend fun queryVideos(bucketId: String? = null): List<VideoItem> = withContext(Dispatchers.IO) {
         val videos = mutableListOf<VideoItem>()
         val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
 
@@ -61,8 +75,8 @@ class MediaRepository(private val context: Context) {
             val cursor: Cursor? = context.contentResolver.query(
                 collection,
                 projection,
-                null,
-                null,
+                bucketId?.let { "${MediaStore.Video.Media.BUCKET_ID} = ?" },
+                bucketId?.let { arrayOf(it) },
                 sortOrder
             )
 
@@ -116,7 +130,10 @@ class MediaRepository(private val context: Context) {
     }
 
     suspend fun getFolders(): List<VideoFolder> = withContext(Dispatchers.IO) {
-        val videos = queryVideos()
+        foldersFromVideos(queryVideos())
+    }
+
+    private fun foldersFromVideos(videos: List<VideoItem>): List<VideoFolder> {
         val grouped = videos.groupBy { it.bucketId }
         val folders = grouped.map { (bucketId, list) ->
             val first = list.firstOrNull()
@@ -135,21 +152,25 @@ class MediaRepository(private val context: Context) {
             Log.d("VP", "Folder '${folder.name}' (id=${folder.bucketId}): ${folder.videoCount} videos")
         }
 
-        folders
+        return folders
     }
 
     suspend fun getVideosInBucket(bucketId: String): List<VideoItem> = withContext(Dispatchers.IO) {
-        val all = queryVideos()
-        all.filter { it.bucketId == bucketId }
+        queryVideos(bucketId)
     }
 
-    fun observeFolders(): Flow<List<VideoFolder>> = callbackFlow {
+    fun observeFolders(): Flow<List<VideoFolder>> = allVideoSnapshots
+        .map { foldersFromVideos(it) }
+        .flowOn(Dispatchers.IO)
+
+    fun observeVideosInBucket(bucketId: String): Flow<List<VideoItem>> = observeQuery(bucketId)
+
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    private fun observeQuery(bucketId: String?): Flow<List<VideoItem>> = callbackFlow {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                Log.d("VP", "MediaStore ContentObserver onChange: folders refreshing (uri=$uri)")
-                launch(Dispatchers.IO) {
-                    trySend(getFolders())
-                }
+                Log.d("VP", "MediaStore ContentObserver onChange: refreshing bucket=$bucketId (uri=$uri)")
+                trySend(Unit)
             }
         }
 
@@ -159,62 +180,15 @@ class MediaRepository(private val context: Context) {
             observer
         )
 
-        launch(Dispatchers.IO) {
-            trySend(getFolders())
-        }
+        trySend(Unit)
 
         awaitClose {
             context.contentResolver.unregisterContentObserver(observer)
         }
-    }.flowOn(Dispatchers.IO)
+    }.conflate()
+        .debounce(250L)
+        .mapLatest { queryVideos(bucketId) }
+        .flowOn(Dispatchers.IO)
 
-    fun observeVideosInBucket(bucketId: String): Flow<List<VideoItem>> = callbackFlow {
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean, uri: Uri?) {
-                Log.d("VP", "MediaStore ContentObserver onChange: bucket $bucketId refreshing (uri=$uri)")
-                launch(Dispatchers.IO) {
-                    trySend(getVideosInBucket(bucketId))
-                }
-            }
-        }
-
-        context.contentResolver.registerContentObserver(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            true,
-            observer
-        )
-
-        launch(Dispatchers.IO) {
-            trySend(getVideosInBucket(bucketId))
-        }
-
-        awaitClose {
-            context.contentResolver.unregisterContentObserver(observer)
-        }
-    }.flowOn(Dispatchers.IO)
-
-    fun observeAllVideos(): Flow<List<VideoItem>> = callbackFlow {
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean, uri: Uri?) {
-                Log.d("VP", "MediaStore ContentObserver onChange: all videos refreshing (uri=$uri)")
-                launch(Dispatchers.IO) {
-                    trySend(queryVideos())
-                }
-            }
-        }
-
-        context.contentResolver.registerContentObserver(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            true,
-            observer
-        )
-
-        launch(Dispatchers.IO) {
-            trySend(queryVideos())
-        }
-
-        awaitClose {
-            context.contentResolver.unregisterContentObserver(observer)
-        }
-    }.flowOn(Dispatchers.IO)
+    fun observeAllVideos(): Flow<List<VideoItem>> = allVideoSnapshots
 }

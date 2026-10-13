@@ -48,8 +48,11 @@ import androidx.compose.ui.unit.sp
 import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.PlayerState
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import java.io.File
-import java.util.Locale
 
 import androidx.compose.runtime.collectAsState
 
@@ -73,12 +76,11 @@ fun PlayerControls(
     onSelectAudioTrack: ((Int?) -> Unit)? = null,
     onSelectSubTrack: ((Int?) -> Unit)? = null,
     onSelectSpeed: ((Double) -> Unit)? = null,
+    onPersistSpeed: ((Double) -> Unit)? = null,
     onCycleAspect: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    var userSeeking by remember { mutableStateOf(false) }
-    var seekProgress by remember { mutableFloatStateOf(0f) }
-    var lastInteraction by remember { mutableStateOf(System.currentTimeMillis()) }
+    val interactionEvents = remember { MutableStateFlow(System.currentTimeMillis()) }
 
     DisposableEffect(playerEngine) {
         onDispose { playerEngine.setControlsVisible(false) }
@@ -88,7 +90,7 @@ fun PlayerControls(
     LaunchedEffect(controlsVisible) {
         playerEngine.setControlsVisible(controlsVisible)
         if (controlsVisible) {
-            lastInteraction = System.currentTimeMillis()
+            interactionEvents.value = System.currentTimeMillis()
         }
     }
 
@@ -97,10 +99,14 @@ fun PlayerControls(
     var showSpeedSheet by remember { mutableStateOf(false) }
 
     // Auto-hide controls after 3 seconds of inactivity (paused while sheet is open)
-    LaunchedEffect(controlsVisible, lastInteraction, userSeeking, playerState.paused, showAudioTrackSheet, showSubTrackSheet, showSpeedSheet) {
-        if (controlsVisible && !userSeeking && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet && !showSpeedSheet) {
-            delay(3000)
-            onHideControls()
+    LaunchedEffect(controlsVisible, playerState.paused, showAudioTrackSheet, showSubTrackSheet, showSpeedSheet) {
+        if (controlsVisible && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet && !showSpeedSheet) {
+            interactionEvents.collectLatest { timestamp ->
+                if (timestamp != Long.MAX_VALUE) {
+                    delay(3000)
+                    onHideControls()
+                }
+            }
         }
     }
 
@@ -211,7 +217,7 @@ fun PlayerControls(
                                 .pointerInput(Unit) {
                                     detectTapGestures(
                                         onLongPress = {
-                                            lastInteraction = System.currentTimeMillis()
+                                            interactionEvents.value = System.currentTimeMillis()
                                             onToggleDebug()
                                         }
                                     )
@@ -238,7 +244,7 @@ fun PlayerControls(
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (playerState.speed != 1.0) Color(0x33BB86FC) else Color(0x22FFFFFF))
                                 .clickable {
-                                    lastInteraction = System.currentTimeMillis()
+                                    interactionEvents.value = System.currentTimeMillis()
                                     showSpeedSheet = true
                                 }
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -261,7 +267,7 @@ fun PlayerControls(
 
                         IconButton(
                             onClick = {
-                                lastInteraction = System.currentTimeMillis()
+                                interactionEvents.value = System.currentTimeMillis()
                                 showAudioTrackSheet = true
                             },
                             modifier = Modifier.size(48.dp)
@@ -277,7 +283,7 @@ fun PlayerControls(
 
                         IconButton(
                             onClick = {
-                                lastInteraction = System.currentTimeMillis()
+                                interactionEvents.value = System.currentTimeMillis()
                                 showSubTrackSheet = true
                             },
                             modifier = Modifier.size(48.dp)
@@ -293,7 +299,7 @@ fun PlayerControls(
 
                         IconButton(
                             onClick = {
-                                lastInteraction = System.currentTimeMillis()
+                                interactionEvents.value = System.currentTimeMillis()
                                 onCycleAspect?.invoke()
                             },
                             modifier = Modifier.size(48.dp)
@@ -310,7 +316,7 @@ fun PlayerControls(
 
                         IconButton(
                             onClick = {
-                                lastInteraction = System.currentTimeMillis()
+                                interactionEvents.value = System.currentTimeMillis()
                                 onEnterPip()
                             },
                             modifier = Modifier.size(48.dp)
@@ -327,7 +333,7 @@ fun PlayerControls(
 
                         IconButton(
                             onClick = {
-                                lastInteraction = System.currentTimeMillis()
+                                interactionEvents.value = System.currentTimeMillis()
                                 onToggleLock()
                             },
                             modifier = Modifier.size(48.dp)
@@ -348,7 +354,7 @@ fun PlayerControls(
                 ) {
                     IconButton(
                         onClick = {
-                            lastInteraction = System.currentTimeMillis()
+                            interactionEvents.value = System.currentTimeMillis()
                             onSkipPrevious()
                         },
                         enabled = canSkipPrevious,
@@ -364,7 +370,7 @@ fun PlayerControls(
                             .size(72.dp)
                             .background(Color(0x88000000), shape = CircleShape)
                             .clickable {
-                                lastInteraction = System.currentTimeMillis()
+                                interactionEvents.value = System.currentTimeMillis()
                                 playerEngine.togglePause()
                             },
                         contentAlignment = Alignment.Center
@@ -379,7 +385,7 @@ fun PlayerControls(
 
                     IconButton(
                         onClick = {
-                            lastInteraction = System.currentTimeMillis()
+                            interactionEvents.value = System.currentTimeMillis()
                             onSkipNext()
                         },
                         enabled = canSkipNext,
@@ -391,59 +397,16 @@ fun PlayerControls(
                     }
                 }
 
-                // Bottom Bar: Time labels + Seek Bar
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color(0xCC000000))
-                            )
-                        )
-                        .padding(horizontal = 16.dp, vertical = 20.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CurrentPositionLabel(
-                            positionFlow = playerEngine.position,
-                            userSeeking = userSeeking,
-                            seekProgress = seekProgress,
-                            durationMs = durationMs
-                        )
-
-                        Text(
-                            text = formatTime(durationMs),
-                            color = Color(0xFFCCCCCC),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    VideoSeekBar(
-                        positionFlow = playerEngine.position,
-                        durationMs = durationMs,
-                        onSeekProgress = { targetMs ->
-                            userSeeking = true
-                            if (durationMs > 0) {
-                                seekProgress = (targetMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-                            }
-                            lastInteraction = System.currentTimeMillis()
-                            playerEngine.seekTo(targetMs, exact = false)
-                        },
-                        onSeekFinished = { targetMs ->
-                            playerEngine.seekTo(targetMs, exact = true)
-                            userSeeking = false
-                            lastInteraction = System.currentTimeMillis()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                SeekControls(
+                    positionFlow = playerEngine.position,
+                    durationMs = durationMs,
+                    onSeekProgress = { playerEngine.seekTo(it, exact = false) },
+                    onSeekFinished = { playerEngine.seekTo(it, exact = true) },
+                    onScrubbingChanged = { scrubbing ->
+                        interactionEvents.value = if (scrubbing) Long.MAX_VALUE else System.currentTimeMillis()
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
             }
         }
 
@@ -460,7 +423,7 @@ fun PlayerControls(
                 },
                 onDismiss = {
                     showAudioTrackSheet = false
-                    lastInteraction = System.currentTimeMillis()
+                    interactionEvents.value = System.currentTimeMillis()
                 }
             )
         }
@@ -478,7 +441,7 @@ fun PlayerControls(
                 },
                 onDismiss = {
                     showSubTrackSheet = false
-                    lastInteraction = System.currentTimeMillis()
+                    interactionEvents.value = System.currentTimeMillis()
                 }
             )
         }
@@ -493,9 +456,12 @@ fun PlayerControls(
                         playerEngine.setSpeed(speed)
                     }
                 },
+                onSpeedChangeFinished = { speed ->
+                    onPersistSpeed?.invoke(speed)
+                },
                 onDismiss = {
                     showSpeedSheet = false
-                    lastInteraction = System.currentTimeMillis()
+                    interactionEvents.value = System.currentTimeMillis()
                 }
             )
         }
@@ -504,37 +470,77 @@ fun PlayerControls(
 }
 
 fun formatTime(millis: Long): String {
-    val totalSeconds = (millis / 1000).coerceAtLeast(0)
+    return formatTimeSeconds((millis / 1000).coerceAtLeast(0))
+}
+
+private fun formatTimeSeconds(totalSeconds: Long): String {
     val seconds = totalSeconds % 60
     val minutes = (totalSeconds / 60) % 60
     val hours = totalSeconds / 3600
     return if (hours > 0) {
-        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+        "$hours:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     } else {
-        String.format(Locale.US, "%02d:%02d", minutes, seconds)
+        "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     }
 }
 
 @Composable
-private fun CurrentPositionLabel(
+private fun SeekControls(
     positionFlow: kotlinx.coroutines.flow.StateFlow<Long>,
-    userSeeking: Boolean,
-    seekProgress: Float,
     durationMs: Long,
+    onSeekProgress: (Long) -> Unit,
+    onSeekFinished: (Long) -> Unit,
+    onScrubbingChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val positionMs by positionFlow.collectAsState()
-    val currentPosition = if (userSeeking) {
-        (seekProgress * durationMs).toLong()
-    } else {
-        positionMs
-    }
-    Text(
-        text = formatTime(currentPosition),
-        color = Color.White,
-        fontSize = 14.sp,
-        fontWeight = FontWeight.Medium,
+    val positionSeconds by remember(positionFlow) {
+        positionFlow.map { it / 1000 }.distinctUntilChanged()
+    }.collectAsState(initial = positionFlow.value / 1000)
+    var userSeeking by remember { mutableStateOf(false) }
+    var seekProgress by remember { mutableFloatStateOf(0f) }
+
+    Column(
         modifier = modifier
-    )
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color(0xCC000000))))
+            .padding(horizontal = 16.dp, vertical = 20.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val shownSeconds = if (userSeeking) (seekProgress * durationMs / 1000).toLong() else positionSeconds
+            Text(
+                text = formatTimeSeconds(shownSeconds),
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = formatTime(durationMs),
+                color = Color(0xFFCCCCCC),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        VideoSeekBar(
+            positionFlow = positionFlow,
+            durationMs = durationMs,
+            onSeekProgress = { targetMs ->
+                userSeeking = true
+                if (durationMs > 0L) seekProgress = (targetMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                onScrubbingChanged(true)
+                onSeekProgress(targetMs)
+            },
+            onSeekFinished = { targetMs ->
+                onSeekFinished(targetMs)
+                userSeeking = false
+                onScrubbingChanged(false)
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
 }
 
