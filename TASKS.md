@@ -462,7 +462,9 @@ numbers are not reliable enough to decide anything; the harness and the matrix m
 - _**AV1 4K is not yet attributed.** av1_4k.mp4 is 4K 10-bit 60 fps decoded on the CPU; mpv counts
   late frames as output drops even when slow decoding caused them, so output drops do not prove a
   GPU limit. Separate the two: (a) an AV1 1080p60 clip and an AV1 4K 30 fps clip (make them with
-  ffmpeg on the PC from av1_4k.mp4 if needed and push them to the test folder): if drops mostly go,
+  the reviewer made them from av1_4k.mp4 with SVT-AV1 at bitrates proportional to the original's
+  40 Mbit/s and pushed them to `/sdcard/Movies/vibeplayer-bench/`: `av1_1080p60_10bit.mp4` (10M),
+  `av1_4k30_10bit.mp4` (20M), `av1_4k60_8bit.mp4` (40M); the original stays in the test folder): if drops mostly go,
   CPU decode is the limit; (b) `gpu-next` with `profile=fast` versus plain `gpu-next` versus `gpu`:
   if fast brings gpu-next down to gpu's level it is per-frame GPU work, not the driver; (c) record
   per-core CPU load and `decoder-frame-drop-count`, `frame-drop-count`, `mistimed-frame-count`,
