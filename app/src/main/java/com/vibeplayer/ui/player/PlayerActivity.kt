@@ -181,6 +181,19 @@ class PlayerActivity : ComponentActivity() {
         val debugMsgLevel = if (com.vibeplayer.BuildConfig.DEBUG) {
             intent.getStringExtra("mpv_msg_level")?.takeIf { it.isNotBlank() }
         } else null
+        val shaderCache = File(cacheDir, "gpu-shader-cache").apply { mkdirs() }.absolutePath
+        PlaybackConfig.defaultShaderCacheDir = shaderCache
+
+        val fastProfile = intent.getBooleanExtra("fast_profile", false) ||
+            intent.getBooleanExtra("profile_fast", false) ||
+            intent.getStringExtra("profile")?.lowercase() == "fast"
+        val decoderExtra = intent.getStringExtra("decoder")?.lowercase()
+        val hwdecOverride = when (decoderExtra) {
+            "software", "sw", "no" -> "no"
+            "auto" -> null
+            else -> intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
+        }
+
         if (com.vibeplayer.BuildConfig.DEBUG) {
             val probeVo = intent.getStringExtra("probe_vo")
             val probeRenderer = intent.getStringExtra("probe_renderer")
@@ -190,7 +203,10 @@ class PlayerActivity : ComponentActivity() {
                     renderer = if (probeRenderer == "vulkan") com.vibeplayer.player.Renderer.VULKAN
                     else com.vibeplayer.player.Renderer.GLES,
                     voOverride = probeVo,
-                    debugMsgLevel = debugMsgLevel
+                    debugMsgLevel = debugMsgLevel,
+                    shaderCacheDir = shaderCache,
+                    fastProfile = fastProfile,
+                    hwdecOverride = hwdecOverride
                 )
             }
         }
@@ -198,7 +214,10 @@ class PlayerActivity : ComponentActivity() {
             mode = mode,
             efficientPath = path,
             renderer = resolvedRenderer,
-            debugMsgLevel = debugMsgLevel
+            debugMsgLevel = debugMsgLevel,
+            shaderCacheDir = shaderCache,
+            fastProfile = fastProfile,
+            hwdecOverride = hwdecOverride
         )
     }
 
