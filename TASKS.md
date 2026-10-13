@@ -448,6 +448,30 @@ P6 tasks compare Vulkan vs GLES as SPEC.md originally says, and the renderer set
 (drops, decoder drops, app CPU %, GPU busy if readable, average battery current, temperature).
 *Files*: app/src/debug/.../Benchmark.kt. *Accept*: one adb command produces a CSV on the device.
 
+_Reviewer notes for P6-03/P6-04 (from a review of the P6-00b numbers, 2026-10-13). The earlier 20 s
+numbers are not reliable enough to decide anything; the harness and the matrix must do this:_
+- _**Sample stats while the clip is playing.** The P6-00b "last stats line" for the GLES AV1 run was
+  taken after the file had ended (`drops=0 fps=0.0`, empty hwdec). The harness records the counters
+  at a fixed time before the end of the run and also once per second, with timestamps, so a row can be
+  re-derived from the log. Never read counters after EOF or after auto-play has switched file (turn
+  auto-play next off for benchmark runs)._
+- _**Time of each drop.** Log `frame-drop-count` every second. If all drops of a run fall in the
+  first one or two seconds they are shader compilation at start: report them separately as "startup
+  drops". Set `gpu-shader-cache-dir` (and `icc-cache-dir` is not needed) to a directory in the app
+  cache so libplacebo/mpv reuse compiled shaders on later plays, and measure cold and warm start._
+- _**AV1 4K is not yet attributed.** av1_4k.mp4 is 4K 10-bit 60 fps decoded on the CPU; mpv counts
+  late frames as output drops even when slow decoding caused them, so output drops do not prove a
+  GPU limit. Separate the two: (a) an AV1 1080p60 clip and an AV1 4K 30 fps clip (make them with
+  ffmpeg on the PC from av1_4k.mp4 if needed and push them to the test folder): if drops mostly go,
+  CPU decode is the limit; (b) `gpu-next` with `profile=fast` versus plain `gpu-next` versus `gpu`:
+  if fast brings gpu-next down to gpu's level it is per-frame GPU work, not the driver; (c) record
+  per-core CPU load and `decoder-frame-drop-count`, `frame-drop-count`, `mistimed-frame-count`,
+  `vo-delayed-frame-count`, `estimated-vf-fps` and the display fps._
+- _**Identify the driver build.** The Vulkan driver is the user's own port and changes between
+  sessions while still reporting API 1.3.295 / driverVersion 2151018497: record
+  `sha256sum /vendor/lib64/hw/vulkan.adreno.so` (first 16 hex digits) and its date with every row.
+  Build at 2026-10-13 21:09: `c0b92d25178c8b21`._
+
 **P6-04 Benchmark: short matrix** — {Vulkan, GLES} × {H.264 1080p, HEVC 4K, AV1 1080p} × 5 min,
 unplugged, fixed brightness. Commit after each row so a resumed agent continues mid-matrix.
 *Files*: docs/BENCHMARK.md. *Accept*: 6 result rows. Needs the user to set up wireless adb, otherwise
