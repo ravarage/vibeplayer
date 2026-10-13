@@ -22,6 +22,15 @@ _none_
 
 ## Resolved
 
+## B-05 Phone disconnected before final aspect checks            Status: RESOLVED
+- Task: P4-06
+- Agent / date: CODEX / 2026-10-13
+- Problem: The phone went offline during the post-force-stop reopen check. `adb devices` is empty and `adb reconnect offline` did not restore it. The on-device test left `ichiban.mp4` saved as `4:3`; Case Closed was returned to `fit` through the controls.
+- Tried: Rechecked `adb devices` and ran `adb reconnect offline`; no device appeared. Before disconnect, cycled and inspected all five modes on Case Closed (4:3) and ichiban (wide), with `tools/check_video.py` passing in every mode.
+- Options: Reconnect the phone via USB or Wi-Fi adb, then reopen ichiban to verify the saved 4:3 mode, set it to fit through the aspect button, and force-stop/reopen to confirm fit and that Case Closed remains fit.
+- Needs from user: Reconnect the phone so the remaining UI reset and reopen checks can be completed.
+- Resolution: the user moved the phone to the 5 GHz network and unplugged USB, so its address changed (now 192.168.1.3, in tools/bin/phone_wifi). The reviewer reconnected and completed the remaining P4-06 checks on 2026-10-13.
+
 ## B-04 Device Vulkan 1.1 below libplacebo 1.2 requirement            Status: RESOLVED
 - Task: P6-00
 - Agent / date: AGY-2C / 2026-10-12

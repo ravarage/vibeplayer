@@ -68,6 +68,7 @@ fun PlayerControls(
     onSelectAudioTrack: ((Int?) -> Unit)? = null,
     onSelectSubTrack: ((Int?) -> Unit)? = null,
     onSelectSpeed: ((Double) -> Unit)? = null,
+    onCycleAspect: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var userSeeking by remember { mutableStateOf(false) }
@@ -276,6 +277,23 @@ fun PlayerControls(
                                 text = "💬",
                                 fontSize = 20.sp,
                                 color = if (playerState.selectedSubTrackId != null) Color(0xFFBB86FC) else Color.White
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        IconButton(
+                            onClick = {
+                                lastInteraction = System.currentTimeMillis()
+                                onCycleAspect?.invoke()
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            androidx.compose.material3.Icon(
+                                painter = androidx.compose.ui.res.painterResource(id = com.vibeplayer.R.drawable.ic_aspect_ratio),
+                                contentDescription = "Aspect ratio",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 

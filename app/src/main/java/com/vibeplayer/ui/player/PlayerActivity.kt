@@ -27,6 +27,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -213,6 +214,17 @@ class PlayerActivity : ComponentActivity() {
             var showDebugOverlay by remember { mutableStateOf(false) }
             var controlsVisible by remember { mutableStateOf(true) }
             var isLocked by remember { mutableStateOf(false) }
+            var aspectIndicatorText by remember { mutableStateOf("") }
+            var showAspectIndicator by remember { mutableStateOf(false) }
+            var aspectIndicatorTrigger by remember { mutableStateOf(0L) }
+
+            LaunchedEffect(aspectIndicatorTrigger) {
+                if (aspectIndicatorTrigger > 0L) {
+                    showAspectIndicator = true
+                    kotlinx.coroutines.delay(1200)
+                    showAspectIndicator = false
+                }
+            }
 
             BackHandler(enabled = isLocked && !isInPip) {
                 Log.i("VP", "Back press ignored: screen is locked")
@@ -285,7 +297,22 @@ class PlayerActivity : ComponentActivity() {
                                 onSelectAudioTrack = { viewModel.setAudioTrack(it) },
                                 onSelectSubTrack = { viewModel.setSubtitleTrack(it) },
                                 onSelectSpeed = { viewModel.setSpeed(it) },
+                                onCycleAspect = {
+                                    val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
+                                    val current = playerState.aspect ?: "fit"
+                                    val currentIndex = modes.indexOf(current).let { if (it >= 0) it else 0 }
+                                    val nextMode = modes[(currentIndex + 1) % modes.size]
+                                    viewModel.setAspect(nextMode)
+                                    aspectIndicatorText = nextMode
+                                    aspectIndicatorTrigger = System.currentTimeMillis()
+                                },
                                 modifier = Modifier.fillMaxSize()
+                            )
+
+                            AspectIndicator(
+                                visible = showAspectIndicator,
+                                aspect = aspectIndicatorText,
+                                modifier = Modifier.align(Alignment.Center)
                             )
 
                             if (showDebugOverlay) {

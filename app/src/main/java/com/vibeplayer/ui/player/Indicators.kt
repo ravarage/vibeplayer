@@ -314,3 +314,40 @@ fun ResetZoomButton(
         }
     }
 }
+
+@Composable
+fun AspectIndicator(
+    visible: Boolean,
+    aspect: String,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(150)),
+        exit = fadeOut(animationSpec = tween(300)),
+        modifier = modifier
+    ) {
+        val label = when (aspect.lowercase()) {
+            "fit" -> "Fit"
+            "crop" -> "Crop"
+            "stretch" -> "Stretch"
+            "16:9" -> "16:9"
+            "4:3" -> "4:3"
+            else -> aspect.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
+        }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xCC1E1E1E))
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}

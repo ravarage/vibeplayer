@@ -299,6 +299,10 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_VIDEO_FORMAT, "video-format", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_AID, "aid", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_SID, "sid", MpvFormat.STRING)
+
+        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
     }
 
     fun setControlsVisible(visible: Boolean) {
@@ -394,12 +398,48 @@ class PlayerEngine(
                     options.add("speed=$spd")
                 }
 
-                when (aspect?.lowercase()) {
-                    "16:9" -> options.add("video-aspect-override=16:9")
-                    "4:3" -> options.add("video-aspect-override=4:3")
-                    "crop" -> options.add("panscan=1.0")
-                    "stretch" -> options.add("video-aspect-override=0")
-                    "fit" -> options.add("video-aspect-override=-1")
+                val normAspect = aspect ?: "fit"
+                when (normAspect.lowercase()) {
+                    "16:9" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "16:9")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                        options.add("keepaspect=yes")
+                        options.add("video-aspect-override=16:9")
+                        options.add("panscan=0.0")
+                    }
+                    "4:3" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "4:3")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                        options.add("keepaspect=yes")
+                        options.add("video-aspect-override=4:3")
+                        options.add("panscan=0.0")
+                    }
+                    "crop" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                        MpvNative.setPropertyDouble(handle, "panscan", 1.0)
+                        options.add("keepaspect=yes")
+                        options.add("video-aspect-override=-1")
+                        options.add("panscan=1.0")
+                    }
+                    "stretch" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "no")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                        options.add("keepaspect=no")
+                        options.add("video-aspect-override=-1")
+                        options.add("panscan=0.0")
+                    }
+                    else -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                        options.add("keepaspect=yes")
+                        options.add("video-aspect-override=-1")
+                        options.add("panscan=0.0")
+                    }
                 }
 
                 val cmd = if (options.isNotEmpty()) {
@@ -473,13 +513,48 @@ class PlayerEngine(
                 if (curSpeed != 1.0) {
                     options.add("speed=${String.format(java.util.Locale.US, "%.2f", curSpeed)}")
                 }
-                val curAspect = _state.value.aspect
-                when (curAspect?.lowercase()) {
-                    "16:9" -> options.add("video-aspect-override=16:9")
-                    "4:3" -> options.add("video-aspect-override=4:3")
-                    "crop" -> options.add("panscan=1.0")
-                    "stretch" -> options.add("video-aspect-override=0")
-                    "fit" -> options.add("video-aspect-override=-1")
+                val curAspect = _state.value.aspect ?: "fit"
+                when (curAspect.lowercase()) {
+                    "16:9" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "16:9")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                        options.add("keepaspect=yes")
+                        options.add("video-aspect-override=16:9")
+                        options.add("panscan=0.0")
+                    }
+                    "4:3" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "4:3")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                        options.add("keepaspect=yes")
+                        options.add("video-aspect-override=4:3")
+                        options.add("panscan=0.0")
+                    }
+                    "crop" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                        MpvNative.setPropertyDouble(handle, "panscan", 1.0)
+                        options.add("keepaspect=yes")
+                        options.add("video-aspect-override=-1")
+                        options.add("panscan=1.0")
+                    }
+                    "stretch" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "no")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                        options.add("keepaspect=no")
+                        options.add("video-aspect-override=-1")
+                        options.add("panscan=0.0")
+                    }
+                    else -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
+                        MpvNative.setPropertyDouble(handle, "panscan", 0.0)
+                        options.add("keepaspect=yes")
+                        options.add("video-aspect-override=-1")
+                        options.add("panscan=0.0")
+                    }
                 }
                 val cmd = if (options.isNotEmpty()) {
                     val optStr = options.joinToString(",")
@@ -679,22 +754,27 @@ class PlayerEngine(
             if (handle != 0L) {
                 when (aspect?.lowercase()) {
                     "16:9" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
                         MpvNative.setPropertyString(handle, "video-aspect-override", "16:9")
                         MpvNative.setPropertyDouble(handle, "panscan", 0.0)
                     }
                     "4:3" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
                         MpvNative.setPropertyString(handle, "video-aspect-override", "4:3")
                         MpvNative.setPropertyDouble(handle, "panscan", 0.0)
                     }
                     "crop" -> {
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
                         MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
                         MpvNative.setPropertyDouble(handle, "panscan", 1.0)
                     }
                     "stretch" -> {
-                        MpvNative.setPropertyString(handle, "video-aspect-override", "0")
+                        MpvNative.setPropertyString(handle, "keepaspect", "no")
+                        MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
                         MpvNative.setPropertyDouble(handle, "panscan", 0.0)
                     }
                     else -> { // "fit" or null
+                        MpvNative.setPropertyString(handle, "keepaspect", "yes")
                         MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
                         MpvNative.setPropertyDouble(handle, "panscan", 0.0)
                     }
