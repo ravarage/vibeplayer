@@ -732,13 +732,17 @@ class PlaybackService : Service() {
     }
 
     fun computeKey(path: String, sizeBytes: Long = 0L): String {
+        val normalized = com.vibeplayer.ui.normalizeMediaPath(path)
         val size = if (sizeBytes > 0L) {
             sizeBytes
         } else {
-            val f = File(path)
-            if (f.exists()) f.length() else 0L
+            val f = File(normalized)
+            if (f.exists()) f.length() else {
+                val fOrig = File(path)
+                if (fOrig.exists()) fOrig.length() else 0L
+            }
         }
-        return if (size > 0L) "$path:$size" else path
+        return if (size > 0L) "$normalized:$size" else normalized
     }
 
     fun openVideo(
@@ -795,7 +799,10 @@ class PlaybackService : Service() {
             val keyDeferred = async(Dispatchers.IO) { computeKey(identityKey ?: path, sizeBytes) }
             val fileDeferred = async(Dispatchers.IO) {
                 val k = keyDeferred.await()
-                dao.getByKey(k) ?: dao.getByKey(path)
+                dao.getByKey(k)
+                    ?: dao.getByKey(path)
+                    ?: (if (k.contains("/storage/emulated/0/")) dao.getByKey(k.replace("/storage/emulated/0/", "/sdcard/")) else null)
+                    ?: (if (path.contains("/storage/emulated/0/")) dao.getByKey(path.replace("/storage/emulated/0/", "/sdcard/")) else null)
             }
             val folderDeferred = async(Dispatchers.IO) {
                 if (resolvedFolderKey.isNotEmpty()) folderDao.getByPath(resolvedFolderKey) else null

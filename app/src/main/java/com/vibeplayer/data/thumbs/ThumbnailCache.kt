@@ -94,7 +94,7 @@ class ThumbnailCache(
     private val negativeMemoryCache = java.util.Collections.synchronizedSet(java.util.LinkedHashSet<String>())
 
     fun makeCacheKey(path: String, sizeBytes: Long, mtime: Long): String {
-        return "$path:$sizeBytes:$mtime"
+        return "${com.vibeplayer.ui.normalizeMediaPath(path)}:$sizeBytes:$mtime"
     }
 
     private fun diskKey(raw: String): String {
