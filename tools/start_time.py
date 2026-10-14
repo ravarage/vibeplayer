@@ -21,7 +21,7 @@ import time
 TOOLS = "/home/rava/vibeplayer/tools"
 os.environ["PATH"] = TOOLS + "/bin:" + os.environ.get("PATH", "")
 PKG = "com.vibeplayer"
-VIDEO = "file:///sdcard/Movies/vibeplayer-test/h264_1080p.mp4"
+VIDEO = "file:///sdcard/Movies/vibeplayer-test/ichiban.mp4"
 COMPONENT = PKG + "/.ui.player.PlayerActivity"
 LINE = re.compile(r"^\s*(\d{9,}\.\d+)\s+\d+\s+\d+\s+([VDIWEF])\s+(.*?)\s*:\s(.*)$")
 
