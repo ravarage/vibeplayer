@@ -338,6 +338,7 @@ class PlayerActivity : ComponentActivity() {
         // Before the ViewModel exists: it decides whether the service may post a notification.
         PlaybackService.benchmarkRun = intent.getBooleanExtra("benchmark", false)
         PerfLog.mark("intent-received")
+        com.vibeplayer.playback.FormatTableLoader.loadAsync(this) // P6-06 table, background thread
         // P7-02: touching the engine creates it and starts its mpv initialisation on its own thread,
         // in parallel with everything below. Thumbnail extraction (browser) waits until the first
         // frame is up so it does not compete with start-up.

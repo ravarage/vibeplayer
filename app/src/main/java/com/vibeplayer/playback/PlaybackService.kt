@@ -269,6 +269,7 @@ class PlaybackService : Service() {
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         createNotificationChannel()
+        FormatTableLoader.loadAsync(this) // P6-06: per-format table for this Vulkan driver (background)
 
         // Ensure engine is instantiated
         getOrCreateEngine()
@@ -880,7 +881,7 @@ class PlaybackService : Service() {
             )
             playerEngine.setCurrentFormatProfile(resolvedConfig)
 
-            Log.i("VP", "Picked configuration for ${detectedFormat.label}: ${resolvedConfig.chosenRowDescription} (reason: ${resolvedConfig.reason})")
+            Log.i("VP", "Picked configuration for ${detectedFormat.label}: ${resolvedConfig.chosenRowDescription} (table: ${resolvedConfig.tableSource}, reason: ${resolvedConfig.reason})")
 
             val targetConfig = if (playbackConfig?.voOverride != null) {
                 playbackConfig

@@ -1,0 +1,35 @@
+{
+  "comment": "Inputs for make_table.py that are not benchmark numbers: the decision rule tolerances, which clip stands for which format, configurations excluded for a measured reason, and rows for formats the power benchmark does not cover.",
+  "rule": {
+    "dropTolerance": 0.05,
+    "currentTieTolerance": 0.02
+  },
+  "clips": {
+    "ichiban.mp4": "h264_8bit",
+    "hevc10_4k.mp4": "hevc",
+    "av1_4k.mp4": "av1",
+    "vp9_1080p.webm": "vp9"
+  },
+  "exclude": [
+    {
+      "format": "h264_8bit",
+      "hwdec": "mediacodec",
+      "reason": "B-08: zero-copy stalled at start in 12/40 and 5/60 cold opens, copy-back 0/80 on GLES"
+    }
+  ],
+  "fixedRows": {
+    "h264_10bit": {
+      "hwdec": "no",
+      "renderer": "vulkan",
+      "vo": "gpu",
+      "reason": "no hardware decoder on the 778G",
+      "gles": {"hwdec": "no", "vo": "gpu", "reason": "no hardware decoder on the 778G"}
+    },
+    "other": {
+      "hwdec": "no",
+      "renderer": "gles",
+      "vo": "gpu",
+      "reason": "safe default"
+    }
+  }
+}

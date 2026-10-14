@@ -1,0 +1,119 @@
+{
+  "default": {
+    "rows": {
+      "av1": {
+        "gles": {
+          "hwdec": "no",
+          "reason": "P6 c0b92d25 GLES: 918 drops, 1668 mA, 592% CPU",
+          "vo": "gpu"
+        },
+        "hwdec": "no",
+        "reason": "P6 c0b92d25: 362 drops, 1563 mA, 579% CPU (vs Vulkan gpu-next software 385 drops 1340 mA; GLES gpu software 918 drops 1668 mA)",
+        "renderer": "vulkan",
+        "vo": "gpu"
+      },
+      "h264_10bit": {
+        "gles": {
+          "hwdec": "no",
+          "reason": "no hardware decoder on the 778G",
+          "vo": "gpu"
+        },
+        "hwdec": "no",
+        "reason": "no hardware decoder on the 778G",
+        "renderer": "vulkan",
+        "vo": "gpu"
+      },
+      "h264_8bit": {
+        "gles": {
+          "hwdec": "mediacodec-copy",
+          "reason": "P6 c0b92d25 GLES: 0 drops, 720 mA, 34% CPU",
+          "vo": "gpu"
+        },
+        "hwdec": "mediacodec-copy",
+        "reason": "P6 c0b92d25: 0 drops, 549 mA, 36% CPU (vs GLES gpu copy-back 0 drops 720 mA; Vulkan gpu copy-back 0 drops 768 mA); excluded B-08: zero-copy stalled at start in 12/40 and 5/60 cold opens, copy-back 0/80 on GLES",
+        "renderer": "vulkan",
+        "vo": "gpu-next"
+      },
+      "hevc": {
+        "hwdec": "mediacodec",
+        "reason": "P6 c0b92d25: 1241 drops, 604 mA, 29% CPU (vs Vulkan gpu copy-back 1207 drops 1254 mA; GLES gpu copy-back 1350 drops 1024 mA)",
+        "renderer": "gles",
+        "vo": "gpu"
+      },
+      "other": {
+        "hwdec": "no",
+        "reason": "safe default",
+        "renderer": "gles",
+        "vo": "gpu"
+      },
+      "vp9": {
+        "hwdec": "mediacodec",
+        "reason": "P6 c0b92d25: 0 drops, 339 mA, 40% CPU (vs GLES gpu copy-back 0 drops 794 mA; Vulkan gpu copy-back 0 drops 913 mA)",
+        "renderer": "gles",
+        "vo": "gpu"
+      }
+    },
+    "source": "copy of driver c0b92d25178c8b21"
+  },
+  "rule": "smoothest first (steady drops within 5% of the fewest count as equal), then lowest battery current (within 2% counts as equal), then lowest CPU; ties go to lower power",
+  "tables": [
+    {
+      "driverHash": "c0b92d25178c8b21",
+      "rows": {
+        "av1": {
+          "gles": {
+            "hwdec": "no",
+            "reason": "P6 c0b92d25 GLES: 918 drops, 1668 mA, 592% CPU",
+            "vo": "gpu"
+          },
+          "hwdec": "no",
+          "reason": "P6 c0b92d25: 362 drops, 1563 mA, 579% CPU (vs Vulkan gpu-next software 385 drops 1340 mA; GLES gpu software 918 drops 1668 mA)",
+          "renderer": "vulkan",
+          "vo": "gpu"
+        },
+        "h264_10bit": {
+          "gles": {
+            "hwdec": "no",
+            "reason": "no hardware decoder on the 778G",
+            "vo": "gpu"
+          },
+          "hwdec": "no",
+          "reason": "no hardware decoder on the 778G",
+          "renderer": "vulkan",
+          "vo": "gpu"
+        },
+        "h264_8bit": {
+          "gles": {
+            "hwdec": "mediacodec-copy",
+            "reason": "P6 c0b92d25 GLES: 0 drops, 720 mA, 34% CPU",
+            "vo": "gpu"
+          },
+          "hwdec": "mediacodec-copy",
+          "reason": "P6 c0b92d25: 0 drops, 549 mA, 36% CPU (vs GLES gpu copy-back 0 drops 720 mA; Vulkan gpu copy-back 0 drops 768 mA); excluded B-08: zero-copy stalled at start in 12/40 and 5/60 cold opens, copy-back 0/80 on GLES",
+          "renderer": "vulkan",
+          "vo": "gpu-next"
+        },
+        "hevc": {
+          "hwdec": "mediacodec",
+          "reason": "P6 c0b92d25: 1241 drops, 604 mA, 29% CPU (vs Vulkan gpu copy-back 1207 drops 1254 mA; GLES gpu copy-back 1350 drops 1024 mA)",
+          "renderer": "gles",
+          "vo": "gpu"
+        },
+        "other": {
+          "hwdec": "no",
+          "reason": "safe default",
+          "renderer": "gles",
+          "vo": "gpu"
+        },
+        "vp9": {
+          "hwdec": "mediacodec",
+          "reason": "P6 c0b92d25: 0 drops, 339 mA, 40% CPU (vs GLES gpu copy-back 0 drops 794 mA; Vulkan gpu copy-back 0 drops 913 mA)",
+          "renderer": "gles",
+          "vo": "gpu"
+        }
+      },
+      "source": "BENCHMARK.md: Power comparison"
+    }
+  ],
+  "version": 1
+}

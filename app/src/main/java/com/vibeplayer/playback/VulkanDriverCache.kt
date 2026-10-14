@@ -43,7 +43,7 @@ object VulkanDriverCache {
     private const val KEY_DRIVER_FAILED = "driver_failed"
     private const val KEY_FORMAT_FAILURES = "format_failures"
 
-    private val VULKAN_SO_PATHS = listOf(
+    val VULKAN_SO_PATHS = listOf(
         "/vendor/lib64/hw/vulkan.adreno.so",
         "/vendor/lib/hw/vulkan.adreno.so",
         "/system/vendor/lib64/hw/vulkan.adreno.so",
