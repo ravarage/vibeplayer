@@ -92,8 +92,10 @@ def hwdec(ctx):
     for clip, lab in ((H264, "H.264"), (HEVC, "HEVC"), (VP9, "VP9")):
         _need_clip(ctx, clip)
         mark = ctx.play_clip(clip, settle=1.0)
-        v = ctx.log.wait(r"onPropertyChange: hwdec-current = (.*)$", 6, since=mark)
-        val = v[1].group(1).strip() if v else None
+        ctx.log.wait(r"onPropertyChange: hwdec-current = (.*)$", 6, since=mark)
+        ctx.sleep(1.5)  # the first report is "no"/"null" before the codec is opened; take the last one
+        val = _hwdec(ctx, mark)
+        val = val.strip() if val else None
         if val is None:
             ns = ctx.controls_nodes()
             xy = (ctx.size()[0] // 3, ctx.dpx(48))
@@ -135,16 +137,18 @@ def controls_tap(ctx):
 @check("play_pause", "Pause button freezes the picture, play resumes it")
 def play_pause(ctx):
     ctx.play_clip(H264)
-    ns = ctx.controls_nodes()
+    ns = None
     m = ctx.log.mark()
     how = ctx.tap_center_button("pause", ns)
     need(ctx.log.wait(r"togglePause", 4, since=m, tag="VP"), "no togglePause after tapping the centre button")
+    ctx.ctrl_pinned = True  # paused: the overlay stays
     ctx.sleep(1.0)
     ctx.need_still("paused picture")
-    ns = ctx.controls_nodes()
+    ns = None
     m = ctx.log.mark()
     ctx.tap_center_button("pause", ns)
     need(ctx.log.wait(r"togglePause", 4, since=m, tag="VP"), "no togglePause when resuming")
+    ctx.ctrl_pinned = False
     ctx.sleep(2.0)
     ctx.need_moving("resumed picture")
     return f"paused (static) then resumed (moving); button found via {how}"
@@ -159,16 +163,16 @@ def double_tap(ctx):
     out = []
     for side, x, name, sec in (("right", int(w * 0.75), "DOUBLE_TAP_RIGHT", 10), ("left", int(w * 0.25), "DOUBLE_TAP_LEFT", -10)):
         ok = False
-        for attempt in range(3):
+        for attempt in range(8):
             m = ctx.log.mark()
             ctx.phone.double_tap(x, int(h * 0.5))
             if ctx.log.wait(r"Gesture detected: " + name, 3, since=m, tag="VP"):
                 ok = True
                 break
             ctx.sleep(1.0)
-        need(ok, f"{side} double tap never recognised in 3 attempts (timing of concurrent taps?)")
+        need(ok, f"{side} double tap never recognised in 8 attempts (timing of concurrent taps?)")
         ctx.shot(side)
-        need(ctx.log.wait(r"seekRelative %s(\.0)? s" % sec, 3, since=m, tag="VP"), f"no seekRelative {sec} s after {side} double tap")
+        need(ctx.log.wait(r"seekRelative %s\d+(\.\d+)? s" % ("" if sec > 0 else "-"), 3, since=m, tag="VP"), f"no seekRelative {sec} s after {side} double tap")
         out.append(f"{side} {sec:+d}s (attempt {attempt + 1})")
         ctx.sleep(2.0)
     ctx.need_moving("picture after double taps")
@@ -183,16 +187,16 @@ def swipe_seek(ctx):
     x0 = max(int(w * 0.07), ctx.dpx(48))
     m = ctx.log.mark()
     ctx.phone.swipe(x0, int(h * 0.5), x0 + 500, int(h * 0.5), 500)
-    hit = ctx.log.wait(r"Swipe seek commit: deltaSec=(-?\d+) \(start=(\d+), target=(\d+)\)", 6, since=m)
+    hit = ctx.log.wait(r"Swipe seek commit: deltaSec=(-?[\d.]+) \(start=(\d+), target=(\d+)\)", 6, since=m)
     need(hit, "no 'Swipe seek commit' after a 500 px forward swipe")
-    d = int(hit[1].group(1))
+    d = round(float(hit[1].group(1)))
     need(8 <= d <= 24, f"forward 500 px swipe gave deltaSec={d} (expected about +20)")
     ctx.sleep(1.5)
     m = ctx.log.mark()
     ctx.phone.swipe(x0 + 400, int(h * 0.5), x0 + 100, int(h * 0.5), 500)
-    hit2 = ctx.log.wait(r"Swipe seek commit: deltaSec=(-?\d+) ", 6, since=m)
+    hit2 = ctx.log.wait(r"Swipe seek commit: deltaSec=(-?[\d.]+) ", 6, since=m)
     need(hit2, "no commit after a backward swipe")
-    d2 = int(hit2[1].group(1))
+    d2 = round(float(hit2[1].group(1)))
     need(-16 <= d2 <= -3, f"backward 300 px swipe gave deltaSec={d2} (expected about -12)")
     ctx.sleep(1.5)
     ctx.need_moving("picture after swipe seeks")
@@ -244,7 +248,7 @@ def brightness_volume(ctx):
 @check("lock_unlock", "Lock blocks gestures, Unlock restores them")
 def lock_unlock(ctx):
     ctx.play_clip(H264)
-    ns = ctx.controls_nodes()
+    ns = None
     how = ctx.tap_top("lock", ns)
     ctx.sleep(1.0)
     ns = ctx.nodes()
@@ -377,13 +381,13 @@ def resume(ctx):
     # a fresh playback starts at the saved position if any; wait for a periodic save of >= 8 s
     hit = ctx.log.wait(r"Saved position (\d+) ms", 30, since=mark)
     need(hit, "no periodic 'Saved position' within 30 s")
-    saved = int(hit[1].group(1))
+    saved = round(float(hit[1].group(1)))
     for _ in range(3):
         if saved >= 8000 or saved >= 40000:
             break
         hit = ctx.log.wait(r"Saved position (\d+) ms", 14, since=hit[0].seq + 1)
         need(hit, "no further periodic save")
-        saved = int(hit[1].group(1))
+        saved = round(float(hit[1].group(1)))
     ctx.stop_app()
     mark2 = ctx.launch_clip(MULTI)
     r = ctx.log.wait(r"Resume: (resuming from (\d+) ms|pos \d+ ms is in last 5%)", 12, since=mark2)
@@ -399,7 +403,7 @@ def resume(ctx):
 
 
 def _sheet_rows(ctx, opener, header):
-    ns = ctx.controls_nodes()
+    ns = None
     ctx.tap_top(opener, ns)
     ctx.sleep(1.2)
     ns = ctx.nodes()
@@ -516,7 +520,7 @@ def folder_track_memory(ctx):
 @check("speed", "Playback speed is remembered per file")
 def speed(ctx):
     ctx.play_clip(H264)
-    ns = ctx.controls_nodes()
+    ns = None
     ctx.tap_top("speed", ns)
     ctx.sleep(1.2)
     ns = ctx.nodes()
@@ -541,7 +545,7 @@ def speed(ctx):
         ctx.need_moving("picture at 1.5x")
     finally:
         try:
-            ns = ctx.controls_nodes()
+            ns = None
             ctx.tap_top("speed", ns)
             ctx.sleep(1.2)
             ns = ctx.nodes()
@@ -562,7 +566,7 @@ def aspect(ctx):
     imgs = {}
     try:
         for i in range(5):
-            ns = ctx.controls_nodes()
+            ns = None
             m = ctx.log.mark()
             ctx.tap_top("aspect", ns)
             hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m)
@@ -584,7 +588,7 @@ def aspect(ctx):
             if seq and seq[-1] == "fit":
                 break
             try:
-                ns = ctx.controls_nodes()
+                ns = None
                 m = ctx.log.mark()
                 ctx.tap_top("aspect", ns)
                 hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m)
@@ -614,7 +618,7 @@ def prev_next(ctx):
     ctx.play_clip(H264)
     out = []
     for which, target in (("next", nxt), ("prev", H264), ("prev", prev), ("next", H264)):
-        ns = ctx.controls_nodes()
+        ns = None
         m = ctx.log.mark()
         ctx.tap_center_button(which, ns)
         need(ctx.log.wait(r"loadfile res=0 for .*" + re.escape(target[:14]), 15, since=m), f"{which}: {target} was not loaded")

@@ -96,14 +96,15 @@ class Ctx:
 
     def size(self):
         if self._size is None:
-            self._size = self.phone.wm_size()
+            w, h = self.phone.wm_size()
+            self._size = (max(w, h), min(w, h))  # the player is always landscape for the test clips
         return self._size
 
     def shot(self, label="s"):
         self._shot_n += 1
         path = os.path.join(self.outdir, self.cur, f"{self._shot_n:02d}_{label}.png")
         img = self.phone.screenshot(path)
-        self._size = img.size
+        self._size = (max(img.size), min(img.size))
         self.evidence.append(path)
         return img
 
@@ -140,6 +141,8 @@ class Ctx:
         self.sleep(0.5)
 
     def launch_clip(self, name, extras=""):
+        self.ctrl_pinned = False
+        self._ctrl_until = 0.0
         """Cold start of the player on a test clip. Returns the log mark taken before the launch."""
         self.phone.wake()
         self.stop_app()
@@ -224,41 +227,39 @@ class Ctx:
         need(uix.find(ns, text=PAUSE_TXT) or uix.find(ns, text=PLAY_TXT), "controls did not appear on tap")
         return ns
 
+    # The overlay hides 3 s after the last interaction (unless paused) and a uiautomator dump takes ~2 s, so the
+    # buttons are tapped at fixed dp positions (measured from a dump on the phone) right after showing the overlay.
+    _ctrl_until = 0.0
+    ctrl_pinned = False   # set by checks while the video is paused (overlay does not auto-hide)
+
+    def tap_ctrl(self, x, y):
+        """Tap an overlay button without knowing whether the overlay is visible: a tap that lands on the gesture
+        layer (overlay hidden) logs 'Gesture detected: TAP' and shows the overlay, so repeat the tap once then."""
+        m = self.log.mark()
+        self.phone.tap(x, y)
+        self.sleep(0.5)
+        self.log.refresh()
+        if self.log.find(r"Gesture detected: TAP", since=m):
+            self.sleep(0.2)
+            self.phone.tap(x, y)
+
     def top_xy(self, k_dp):
         w, h = self.size()
-        return w - self.dpx(k_dp), self.dpx(48)
+        return w - self.dpx(k_dp), self.dpx(45)
 
-    TOP = {"lock": 40, "pip": 92, "aspect": 144, "sub": 196, "audio": 248, "speed": 318}
+    TOP = {"lock": 37, "pip": 86, "aspect": 135, "sub": 184, "audio": 232, "speed": 279}
 
-    def tap_top(self, which, ns):
-        spec = {"lock": dict(text="🔒"), "pip": dict(desc="Mini player"), "aspect": dict(desc="Aspect ratio"),
-                "sub": dict(text="💬"), "audio": dict(text="🎵"),
-                "speed": dict(regex=r"^\d+(\.\d+)?x$")}[which]
-        cands = uix.find_all(ns, **spec) if ns else []
-        if which == "speed":
-            cands = [n for n in cands if n.bounds[1] < self.dpx(120)]
-        if cands:
-            self.phone.tap(*uix.center(cands[0]))
-            return "ui"
-        self.phone.tap(*self.top_xy(self.TOP[which]))
-        return "fallback-xy"
+    def tap_top(self, which, ns=None):
+        self.tap_ctrl(*self.top_xy(self.TOP[which]))
+        return "fixed-xy"
 
-    def tap_center_button(self, which, ns):
+    def tap_center_button(self, which, ns=None):
         w, h = self.size()
         if which == "pause":
-            n = uix.find(ns, text=PAUSE_TXT) or uix.find(ns, text=PLAY_TXT) if ns else None
-            if n:
-                self.phone.tap(*uix.center(n))
-                return "ui"
-            self.phone.tap(w // 2, h // 2)
+            self.tap_ctrl(w // 2, h // 2)
         else:
-            n = uix.find(ns, text="|◀" if which == "prev" else "▶|") if ns else None
-            if n:
-                self.phone.tap(*uix.center(n))
-                return "ui"
-            off = self.dpx(84) * (-1 if which == "prev" else 1)
-            self.phone.tap(w // 2 + off, h // 2)
-        return "fallback-xy"
+            self.tap_ctrl(w // 2 + self.dpx(78) * (-1 if which == "prev" else 1), h // 2)
+        return "fixed-xy"
 
     def set_gesture_mark(self):
         return self.log.mark()
@@ -286,7 +287,7 @@ class Ctx:
             mark = self.log.mark()
             x0 = max(int(w * 0.07), self.dpx(48))
             self.phone.swipe(x0, int(h * 0.5), x0 + dx, int(h * 0.5), 500)
-            hit = self.log.wait(r"Swipe seek commit: deltaSec=-?\d+ \(start=(\d+), target=(\d+)\)", 6, since=mark)
+            hit = self.log.wait(r"Swipe seek commit: deltaSec=-?[\d.]+ \(start=(\d+), target=(\d+)\)", 6, since=mark)
             need(hit, "swipe seek did not commit (no 'Swipe seek commit' log)")
             pos = int(hit[1].group(2)) / 1000.0
             self.sleep(0.8)

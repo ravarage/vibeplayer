@@ -73,7 +73,7 @@ class Phone:
     def double_tap(self, x, y):
         """Two taps from two concurrent `input` processes (process start-up is slower than the app's
         250 ms double-tap window, so they are not run back to back)."""
-        self.sh(f"input tap {int(x)} {int(y)} & input tap {int(x)} {int(y)} & wait", 15)
+        self.sh(f"input tap {int(x)} {int(y)} & input tap {int(x)} {int(y)} & input tap {int(x)} {int(y)} & wait", 15)
 
     def swipe(self, x1, y1, x2, y2, ms=400):
         self.sh(f"input swipe {int(x1)} {int(y1)} {int(x2)} {int(y2)} {int(ms)}", 20)
