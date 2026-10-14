@@ -18,7 +18,11 @@ enum class VideoFormat(val label: String, val formatKey: String) {
 enum class DecodeMode(val hwdec: String) {
     MEDIACODEC_COPY("mediacodec-copy"),
     MEDIACODEC_ZERO_COPY("mediacodec"),
-    SOFTWARE("no")
+    SOFTWARE("no");
+
+    companion object {
+        fun fromHwdec(value: String): DecodeMode? = entries.firstOrNull { it.hwdec == value }
+    }
 }
 
 /**
@@ -38,7 +42,11 @@ data class FormatProfile(
     val decodeMode: DecodeMode,
     val preferredRenderer: Renderer,
     val vo: String,
-    val reason: String
+    val reason: String,
+    /** Used instead of [decodeMode]/[vo]/[reason] when the row prefers Vulkan but runs on OpenGL ES. */
+    val glesDecodeMode: DecodeMode? = null,
+    val glesVo: String? = null,
+    val glesReason: String? = null
 )
 
 /**
@@ -51,139 +59,12 @@ data class ResolvedConfiguration(
     val renderer: Renderer,
     val vo: String,
     val reason: String,
-    val isQualityMode: Boolean = false
+    val isQualityMode: Boolean = false,
+    /** Which table the row came from: a driver hash, "default" or "built-in". */
+    val tableSource: String = ""
 ) {
     val chosenRowDescription: String
-        get() = "${format.label} -> ${decodeMode.hwdec} / $renderer ($vo)"
+        get() = "${format.label} -> ${decodeMode.hwdec} / $renderer ($vo)" +
+            if (tableSource.isNotEmpty()) " [table ${tableSource.take(8)}]" else ""
 }
 
-/**
- * Per-format best configuration table chosen before opening (TASKS.md P6-07).
- *
- * Measured on Snapdragon 778G / Adreno 642L.
- */
-object FormatProfileTable {
-
-    val H264_8BIT_PROFILE = FormatProfile(
-        format = VideoFormat.H264_8BIT,
-        decodeMode = DecodeMode.MEDIACODEC_COPY,
-        preferredRenderer = Renderer.VULKAN,
-        vo = "gpu",
-        reason = "zero-copy stalled 12/40 and 5/60 opens; copy-back 0/80 on GLES, 5/80 on Vulkan"
-    )
-
-    val H264_10BIT_PROFILE = FormatProfile(
-        format = VideoFormat.H264_10BIT,
-        decodeMode = DecodeMode.SOFTWARE,
-        preferredRenderer = Renderer.VULKAN,
-        vo = "gpu",
-        reason = "no hardware decoder on the 778G"
-    )
-
-    val HEVC_PROFILE = FormatProfile(
-        format = VideoFormat.HEVC,
-        decodeMode = DecodeMode.MEDIACODEC_ZERO_COPY,
-        preferredRenderer = Renderer.GLES,
-        vo = "gpu",
-        reason = "0/20 stalls zero-copy; lowest power path"
-    )
-
-    val VP9_PROFILE = FormatProfile(
-        format = VideoFormat.VP9,
-        decodeMode = DecodeMode.MEDIACODEC_ZERO_COPY,
-        preferredRenderer = Renderer.GLES,
-        vo = "gpu",
-        reason = "0/20 stalls"
-    )
-
-    val AV1_PROFILE = FormatProfile(
-        format = VideoFormat.AV1,
-        decodeMode = DecodeMode.SOFTWARE,
-        preferredRenderer = Renderer.VULKAN,
-        vo = "gpu",
-        reason = "fewest drops in the 4K test (359 vs 517/565)"
-    )
-
-    val OTHER_PROFILE = FormatProfile(
-        format = VideoFormat.OTHER,
-        decodeMode = DecodeMode.SOFTWARE,
-        preferredRenderer = Renderer.GLES,
-        vo = "gpu",
-        reason = "safe default"
-    )
-
-    val ALL_PROFILES: Map<VideoFormat, FormatProfile> = mapOf(
-        VideoFormat.H264_8BIT to H264_8BIT_PROFILE,
-        VideoFormat.H264_10BIT to H264_10BIT_PROFILE,
-        VideoFormat.HEVC to HEVC_PROFILE,
-        VideoFormat.VP9 to VP9_PROFILE,
-        VideoFormat.AV1 to AV1_PROFILE,
-        VideoFormat.OTHER to OTHER_PROFILE
-    )
-
-    fun getProfile(format: VideoFormat): FormatProfile =
-        ALL_PROFILES[format] ?: OTHER_PROFILE
-
-    /**
-     * Resolves the target configuration given the video format, playback mode, renderer setting,
-     * and whether Vulkan is available for this format on the current driver build.
-     *
-     * Rules:
-     * 1. Setting Renderer = GLES forces OpenGL ES.
-     * 2. Setting Renderer = VULKAN forces Vulkan if available, else falls back to GLES.
-     * 3. Setting Renderer = AUTO:
-     *    - Quality mode overrides renderer column with gpu-next on Vulkan (if available, else GLES).
-     *    - Efficient mode picks the table's preferred renderer (Vulkan if available, else GLES).
-     * 4. In Quality mode, vo is "gpu-next". In Efficient mode, vo is "gpu".
-     * 5. In Quality mode, decode mode uses mediacodec-copy for hardware-capable formats, and software
-     *    for software-only formats.
-     */
-    fun resolve(
-        format: VideoFormat,
-        mode: PlaybackMode,
-        rendererSetting: RendererSetting,
-        isVulkanAvailableForFormat: Boolean
-    ): ResolvedConfiguration {
-        val profile = getProfile(format)
-
-        val targetRenderer = when (rendererSetting) {
-            RendererSetting.GLES -> Renderer.GLES
-            RendererSetting.VULKAN -> {
-                if (isVulkanAvailableForFormat) Renderer.VULKAN else Renderer.GLES
-            }
-            RendererSetting.AUTO -> {
-                if (mode == PlaybackMode.QUALITY) {
-                    if (isVulkanAvailableForFormat) Renderer.VULKAN else Renderer.GLES
-                } else {
-                    if (profile.preferredRenderer == Renderer.VULKAN && isVulkanAvailableForFormat) {
-                        Renderer.VULKAN
-                    } else {
-                        Renderer.GLES
-                    }
-                }
-            }
-        }
-
-        val targetVo = if (mode == PlaybackMode.QUALITY) {
-            "gpu-next"
-        } else {
-            profile.vo
-        }
-
-        val targetDecode = if (mode == PlaybackMode.QUALITY) {
-            if (profile.decodeMode == DecodeMode.SOFTWARE) DecodeMode.SOFTWARE else DecodeMode.MEDIACODEC_COPY
-        } else {
-            profile.decodeMode
-        }
-
-        return ResolvedConfiguration(
-            format = format,
-            profile = profile,
-            decodeMode = targetDecode,
-            renderer = targetRenderer,
-            vo = targetVo,
-            reason = profile.reason,
-            isQualityMode = (mode == PlaybackMode.QUALITY)
-        )
-    }
-}

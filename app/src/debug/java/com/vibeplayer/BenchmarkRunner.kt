@@ -47,7 +47,9 @@ object BenchmarkRunner {
         decoder: String = "auto",
         driverHash: String? = null,
         driverMtime: String? = null,
-        runId: String? = null
+        runId: String? = null,
+        /** Debug A/B: extra mpv options (see DebugMpvOptions), recorded in the CSV profile column. */
+        mpvOpts: String? = null
     ) {
         activeJob?.cancel()
         activeJob = scope.launch {
@@ -124,6 +126,7 @@ object BenchmarkRunner {
                 putExtra("fast_profile", profile.equals("fast", ignoreCase = true))
                 putExtra("profile", profile)
                 putExtra("decoder", decoder)
+                if (!mpvOpts.isNullOrBlank()) putExtra("mpv_opts", mpvOpts)
             }
             context.startActivity(launchIntent)
 
@@ -271,7 +274,9 @@ object BenchmarkRunner {
                 mode = mode,
                 vo = resolvedVo,
                 renderer = actualRenderer,
-                profile = profile,
+                profile = com.vibeplayer.player.DebugMpvOptions.parse(mpvOpts).options
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { "$profile+${com.vibeplayer.player.DebugMpvOptions.label(it)}" } ?: profile,
                 decoder = decoder,
                 shader = shader,
                 shaderCache = cacheState,
@@ -293,7 +298,24 @@ object BenchmarkRunner {
             // 12. Cleanup
             app.unregisterActivityLifecycleCallbacks(lifecycleListener)
             kotlinx.coroutines.withContext(Dispatchers.Main) { activity?.finish() }
+            endBenchmarkMode()
         }
+    }
+
+    /**
+     * The benchmark flag is process-wide: clear it when the run is over so a later normal open is not
+     * treated as a benchmark (no history, no notification). Not before the service is gone: its onUnbind
+     * relies on the flag to stop instead of playing on in the background.
+     */
+    private suspend fun endBenchmarkMode() {
+        for (i in 1..50) {
+            if (com.vibeplayer.playback.PlaybackService.currentInstance == null) break
+            delay(100L)
+        }
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
+            com.vibeplayer.playback.PlaybackService.benchmarkRun = false
+        }
+        Log.i("VP", "Benchmark: run over, benchmark mode off (service gone: ${com.vibeplayer.playback.PlaybackService.currentInstance == null})")
     }
 
     private fun getMpvHandle(engine: PlayerEngine): Long {

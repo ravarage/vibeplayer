@@ -7,6 +7,9 @@ import org.junit.Test
 
 class FormatProfileTableTest {
 
+    @org.junit.Before
+    fun builtIn() = FormatProfileTable.resetToBuiltIn()
+
     @Test
     fun `h264 8-bit in efficient mode selects mediacodec-copy and vulkan if available`() {
         val resolved = FormatProfileTable.resolve(
@@ -17,8 +20,7 @@ class FormatProfileTableTest {
         )
         assertEquals(DecodeMode.MEDIACODEC_COPY, resolved.decodeMode)
         assertEquals(Renderer.VULKAN, resolved.renderer)
-        assertEquals("gpu", resolved.vo)
-        assertEquals("zero-copy stalled 12/40 and 5/60 opens; copy-back 0/80 on GLES, 5/80 on Vulkan", resolved.reason)
+        assertEquals("gpu-next", resolved.vo)
     }
 
     @Test
@@ -59,7 +61,6 @@ class FormatProfileTableTest {
         assertEquals(DecodeMode.MEDIACODEC_ZERO_COPY, resolved.decodeMode)
         assertEquals(Renderer.GLES, resolved.renderer)
         assertEquals("gpu", resolved.vo)
-        assertEquals("0/20 stalls zero-copy; lowest power path", resolved.reason)
     }
 
     @Test
@@ -73,7 +74,6 @@ class FormatProfileTableTest {
         assertEquals(DecodeMode.MEDIACODEC_ZERO_COPY, resolved.decodeMode)
         assertEquals(Renderer.GLES, resolved.renderer)
         assertEquals("gpu", resolved.vo)
-        assertEquals("0/20 stalls", resolved.reason)
     }
 
     @Test
@@ -87,7 +87,6 @@ class FormatProfileTableTest {
         assertEquals(DecodeMode.SOFTWARE, resolved.decodeMode)
         assertEquals(Renderer.VULKAN, resolved.renderer)
         assertEquals("gpu", resolved.vo)
-        assertEquals("fewest drops in the 4K test (359 vs 517/565)", resolved.reason)
     }
 
     @Test

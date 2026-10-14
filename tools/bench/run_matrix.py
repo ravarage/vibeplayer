@@ -19,6 +19,7 @@ import argparse
 import csv
 import io
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -468,6 +469,12 @@ def main() -> int:
         help="Local directory to pull the CSVs into",
     )
     parser.add_argument(
+        "--mpv-opts",
+        default="",
+        help="Debug A/B: extra mpv options for every row, ';'-separated (e.g. 'vd-queue-enable=yes;hwdec-extra-frames=12'); "
+        "only names in DebugMpvOptions.ALLOWED are applied; recorded in the CSV profile column as '<profile>+<opts>'",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print matrix rows and actions without executing on device",
@@ -540,6 +547,9 @@ def main() -> int:
             "--es", "driver_mtime", driver_mtime,
             "--es", "run_id", run_id,
         ]
+        if args.mpv_opts:
+            # adb shell joins the arguments into one remote command line: quote the ';'-separated list.
+            broadcast_args += ["--es", "mpv_opts", shlex.quote(args.mpv_opts)]
 
         run_adb(broadcast_args, timeout=30)
 

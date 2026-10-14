@@ -247,6 +247,13 @@ class PlayerActivity : ComponentActivity() {
         val fastProfile = intent.getBooleanExtra("fast_profile", false) ||
             intent.getBooleanExtra("profile_fast", false) ||
             intent.getStringExtra("profile")?.lowercase() == "fast"
+        // Debug-only A/B hook (HEVC 10-bit 4K drop investigation, docs/BENCHMARK.md): extra mpv options.
+        val debugMpvOptions = if (com.vibeplayer.BuildConfig.DEBUG) {
+            com.vibeplayer.player.DebugMpvOptions.parse(intent.getStringExtra("mpv_opts")).also {
+                if (it.options.isNotEmpty()) Log.i("VP", "Debug mpv_opts: ${it.options}")
+                if (it.rejected.isNotEmpty()) Log.w("VP", "Debug mpv_opts rejected (not in the allowlist): ${it.rejected}")
+            }.options
+        } else emptyMap()
         val decoderExtra = intent.getStringExtra("decoder")?.lowercase()
         val hwdecOverride = when (decoderExtra) {
             "software", "sw", "no" -> "no"
@@ -268,7 +275,8 @@ class PlayerActivity : ComponentActivity() {
                     shaderCacheDir = shaderCache,
                     fastProfile = fastProfile,
                     hwdecOverride = hwdecOverride,
-                    formatProfile = resolvedProfile
+                    formatProfile = resolvedProfile,
+                    debugMpvOptions = debugMpvOptions
                 )
             }
         }
@@ -288,7 +296,8 @@ class PlayerActivity : ComponentActivity() {
             shaderCacheDir = shaderCache,
             fastProfile = fastProfile,
             hwdecOverride = hwdecOverride,
-            formatProfile = resolvedProfile
+            formatProfile = resolvedProfile,
+            debugMpvOptions = debugMpvOptions
         )
     }
 
@@ -339,6 +348,7 @@ class PlayerActivity : ComponentActivity() {
         // Before the ViewModel exists: it decides whether the service may post a notification.
         PlaybackService.benchmarkRun = intent.getBooleanExtra("benchmark", false)
         PerfLog.mark("intent-received")
+        com.vibeplayer.playback.FormatTableLoader.loadAsync(this) // P6-06 table, background thread
         // P7-02: touching the engine creates it and starts its mpv initialisation on its own thread,
         // in parallel with everything below. Thumbnail extraction (browser) waits until the first
         // frame is up so it does not compete with start-up.
@@ -629,6 +639,9 @@ class PlayerActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // singleTop: a benchmark launch can arrive here, and a normal open (notification, browser) after
+        // a benchmark must not keep the benchmark flag (no history writes, no notification).
+        PlaybackService.benchmarkRun = intent.getBooleanExtra("benchmark", false)
         val oldPath = viewModel.currentPath.value ?: currentVideoPath
         resolveVideoPath()
         val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
