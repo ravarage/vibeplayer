@@ -1218,12 +1218,20 @@ class PlayerEngine(
         return lines.takeLast(10)
     }
 
-    fun togglePlaybackMode(userRendererSetting: RendererSetting = RendererSetting.AUTO) {
+    /**
+     * @param isVulkanAvailableForFormat the caller's driver-cache answer for [currentFormat]
+     * (remembered per-format failures); null falls back to libmpv support and this session.
+     */
+    fun togglePlaybackMode(
+        userRendererSetting: RendererSetting = RendererSetting.AUTO,
+        isVulkanAvailableForFormat: Boolean? = null
+    ) {
         executeCommand {
             assertCommandThread()
             val current = playbackConfig
             val newMode = if (current.mode == PlaybackMode.QUALITY) PlaybackMode.EFFICIENT else PlaybackMode.QUALITY
-            val isVulkanAvailable = availableGpuApis.any { it.equals("vulkan", ignoreCase = true) } && !sessionVulkanFailed
+            val isVulkanAvailable = (isVulkanAvailableForFormat
+                ?: availableGpuApis.any { it.equals("vulkan", ignoreCase = true) }) && !sessionVulkanFailed
             val resolved = FormatProfileTable.resolve(
                 format = currentFormat,
                 mode = newMode,
