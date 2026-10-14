@@ -118,7 +118,7 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
   new option table, reloads the file and seeks.
 
 ## Vulkan status update (2026-10-13)
-**User decision 2026-10-14 (supersedes the GLES-default notes below): Vulkan is the default renderer everywhere when it can start; fallback chain Vulkan -> OpenGL ES -> software decoding, automatic, with VULKAN-FAIL logs. See TASKS.md P6-07.**
+**User decision 2026-10-14 (supersedes the GLES-default notes below): one phone, so the configuration is chosen BEFORE opening from a per-format table of what was measured best on it (Vulkan where it measured best and is available); fallback chain Vulkan -> OpenGL ES -> software only as a safety net. See TASKS.md P6-07.**
 
 **User note 2026-10-13: the Vulkan 1.3 driver on the phone is the user's own port and is not finished.** Keep Vulkan support in the app and the Vulkan-enabled libraries as the default build, but treat the Vulkan renderer as experimental: OpenGL ES stays the default renderer for every mode unless the P6 benchmark and a stability run show Vulkan is at least as good, the automatic fallback to GLES is mandatory, and a Vulkan failure (init error, device lost, corruption, crash in `vulkan.adreno.so`) is to be reported to the user with the log lines, since it is useful for their driver work, not treated as an app bug to work around silently. The driver may change between sessions: re-read its version (`cmd gpu vkjson`) at the start of any P6 task and record it next to every benchmark number.
 
