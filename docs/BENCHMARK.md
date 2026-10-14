@@ -162,3 +162,40 @@ Dalvik 6 MB.
 | C Vulkan copy-back gpu / gpu-next | 40 / 40 | 1 / 4 | all | 0 | - |
 | D GLES copy-back gpu / gpu-next | 40 / 40 | 0 / 0 | - | 0 | - |
 | A_hevc / A_vp9 | 20 / 20 | 0 / 0 | - | 0 | - |
+
+## Power comparison (2026-10-14, unplugged, driver c0b92d25178c8b21)
+
+Measured on POCO X5 Pro 5G (redwood), Snapdragon 778G, Adreno 642L, Android 17.
+Unplugged on battery (`dumpsys battery` status 3, 51% -> 43%).
+Vulkan driver hash: `c0b92d25178c8b21` (`/vendor/lib64/hw/vulkan.adreno.so`).
+Screen on, brightness and media volume unchanged, phone untouched throughout runs.
+Order interleaved (GLES, Vulkan, GLES, Vulkan...) with 10 s rest between rows to balance thermal drift.
+Current sampled at 1 Hz via `BatteryManager.BATTERY_PROPERTY_CURRENT_NOW` (steady average excludes first 5 s).
+Steady dropped frames: delta in `frame-drop-count` after first 2 s. Decoder drops: delta in `decoder-frame-drop-count` after first 2 s.
+
+| Clip | Format | Configuration | VO | Renderer | HWDEC | Steady Current (mA) | Steady Drops | Decoder Drops | CPU % | Temp Start/End (°C) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `ichiban.mp4` | H.264 1080p | GLES zero-copy | `gpu` | GLES | `mediacodec` | 637.0 | 0 | 0 | 28.1% | 32.0 → 32.0 |
+| `ichiban.mp4` | H.264 1080p | Vulkan copy-back | `gpu` | Vulkan | `mediacodec-copy` | 768.2 | 0 | 0 | 38.6% | 32.0 → 32.0 |
+| `ichiban.mp4` | H.264 1080p | GLES copy-back | `gpu` | GLES | `mediacodec-copy` | 720.4 | 0 | 0 | 34.3% | 32.0 → 32.0 |
+| `ichiban.mp4` | H.264 1080p | Vulkan copy-back | `gpu-next` | Vulkan | `mediacodec-copy` | 549.0 | 0 | 0 | 36.3% | 35.0 → 35.0 |
+| `hevc10_4k.mp4` | HEVC 10-bit 4K | GLES zero-copy | `gpu` | GLES | `mediacodec` | 604.5 | 1241 | 0 | 29.0% | 32.0 → 32.0 |
+| `hevc10_4k.mp4` | HEVC 10-bit 4K | Vulkan copy-back | `gpu` | Vulkan | `mediacodec-copy` | 1254.3 | 1207 | 0 | 117.3% | 32.0 → 33.0 |
+| `hevc10_4k.mp4` | HEVC 10-bit 4K | GLES copy-back | `gpu` | GLES | `mediacodec-copy` | 1023.8 | 1350 | 0 | 63.1% | 33.0 → 33.0 |
+| `hevc10_4k.mp4` | HEVC 10-bit 4K | Vulkan copy-back | `gpu-next` | Vulkan | `mediacodec-copy` | 1202.0 | 1362 | 0 | 89.8% | 33.0 → 34.0 |
+| `av1_4k.mp4` | AV1 4K | GLES software | `gpu` | GLES | `software (dav1d)` | 1668.0 | 918 | 0 | 592.0% | 34.0 → 35.0 |
+| `av1_4k.mp4` | AV1 4K | Vulkan software | `gpu` | Vulkan | `software (dav1d)` | 1563.0 | 362 | 0 | 579.1% | 35.0 → 36.0 |
+| `av1_4k.mp4` | AV1 4K | Vulkan software | `gpu-next` | Vulkan | `software (dav1d)` | 1340.0 | 385 | 0 | 576.7% | 36.0 → 37.0 |
+| `vp9_1080p.webm` | VP9 1080p | GLES zero-copy | `gpu` | GLES | `mediacodec` | 338.6 | 0 | 0 | 40.4% | 37.0 → 37.0 |
+| `vp9_1080p.webm` | VP9 1080p | Vulkan copy-back | `gpu` | Vulkan | `mediacodec-copy` | 912.6 | 0 | 0 | 92.7% | 37.0 → 37.0 |
+| `vp9_1080p.webm` | VP9 1080p | GLES copy-back | `gpu` | GLES | `mediacodec-copy` | 794.2 | 0 | 0 | 57.1% | 37.0 → 37.0 |
+| `vp9_1080p.webm` | VP9 1080p | Vulkan copy-back | `gpu-next` | Vulkan | `mediacodec-copy` | 1026.0 | 0 | 0 | 58.9% | 37.0 → 37.0 |
+| `ichiban.mp4` (ctrl) | H.264 1080p | GLES zero-copy (repeat) | `gpu` | GLES | `mediacodec` | 643.2 | 0 | 0 | 30.3% | 37.0 → 37.0 |
+
+### Conclusions (Rule: smoothest first, then lowest battery, then lowest CPU, ties to lower-power)
+- **H.264 1080p (`ichiban.mp4`)**: All configurations deliver 0 steady drops. Vulkan `vo=gpu-next` achieves the lowest power draw (549.0 mA) beating GLES zero-copy (637.0 mA), while GLES zero-copy draws lowest CPU (28.1%). Winner: **Vulkan (`vo=gpu-next`)** on lowest battery.
+- **HEVC 10-bit 4K (`hevc10_4k.mp4`)**: Vulkan `vo=gpu` has marginally fewer steady output drops (1207 vs 1241 on GLES zero-copy), but GLES zero-copy consumes less than half the battery power (604.5 mA vs 1254.3 mA) and a fraction of CPU load (29.0% vs 117.3%). Winner: **OpenGL ES zero-copy (`vo=gpu`)**.
+- **AV1 4K (`av1_4k.mp4`, dav1d)**: Vulkan `vo=gpu` is smoothest with only 362 drops (vs 918 on GLES and 385 on gpu-next), and Vulkan `vo=gpu-next` has lowest battery power (1340.0 mA vs 1668.0 mA on GLES). Winner: **Vulkan (`vo=gpu`)** on smoothness (lowest drops).
+- **VP9 1080p (`vp9_1080p.webm`)**: All configurations have 0 steady drops. OpenGL ES zero-copy draws drastically lower battery current (338.6 mA vs 794.2–1026.0 mA) and lowest CPU (40.4%). Winner: **OpenGL ES zero-copy (`vo=gpu`)**.
+- **Control**: H.264 GLES zero-copy repeated at the end of the 20-minute suite measured 643.2 mA vs 637.0 mA at the start (a negligible +0.97% drift despite battery warming from 32°C to 37°C), confirming battery current stability across the session.
+
