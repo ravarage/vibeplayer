@@ -505,6 +505,17 @@ with its table configuration (overlay + log), first frame time is not worse than
 forced Vulkan failure lands on GLES, forced GLES failure on software; unit tests for the table lookup,
 format detection parsing and the chain.
 
+_User goal for choosing configurations (2026-10-14): smoothest playback first, then lowest battery,
+then lowest CPU. Per format, whichever of OpenGL ES or Vulkan measures better on those criteria wins;
+no renderer is preferred on principle. The user's Vulkan driver is maturing (they report Vulkan felt
+smoother and used less battery today), so the decision must follow measurements per driver build:
+the P6-04 matrix covers every table row on both renderers (incl. HEVC/VP9/H.264 hardware decode with
+Vulkan copy-back vs OpenGL ES zero-copy) and records dropped and mistimed frames, frame-time
+variance, battery current (unplugged), app CPU and temperature. P6-06 turns the results into the
+P6-07 table; keep the table as data (an asset generated from the benchmark CSV, keyed by the Vulkan
+driver hash) so a new driver build can be re-benchmarked and the table regenerated without code
+changes. Ties go to the lower-power option._
+
 **P6-01 Quality mode** — Quality option table; mode setting and in-player toggle using
 `reconfigure()`. *Files*: PlaybackMode.kt, PlayerEngine.kt, ui/settings/*. *Accept*: overlay shows
 `gpu-next` and `mediacodec-copy`; switching mid-file keeps position and tracks.
