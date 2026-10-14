@@ -430,11 +430,20 @@ def _sheet_rows(ctx, opener, header):
         if hdr:
             break
     need(hdr, f"sheet '{header}' not found in the UI dump")
-    ctx.sleep(0.8)  # the sheet slides up; rows below the screen edge are missing from an early dump
-    ns2 = ctx.nodes()
-    if uix.find(ns2, text=header):
-        ns, hdr = ns2, uix.find(ns2, text=header)
     prefix = "audio_track_" if opener == "audio" else "sub_track_"
+    # the sheet slides up; rows below the screen edge are missing from an early dump: wait until two
+    # consecutive dumps show the same number of track rows
+    prev = len([n for n in ns if n.desc and n.desc.startswith(prefix)])
+    for _ in range(4):
+        ctx.sleep(0.8)
+        ns2 = ctx.nodes()
+        if not uix.find(ns2, text=header):
+            break
+        ns, hdr = ns2, uix.find(ns2, text=header)
+        cnt = len([n for n in ns if n.desc and n.desc.startswith(prefix)])
+        if cnt == prev and cnt > 0:
+            break
+        prev = cnt
     cands = [n for n in ns if n.desc and n.desc.startswith(prefix)]
     if cands:
         rows = []
