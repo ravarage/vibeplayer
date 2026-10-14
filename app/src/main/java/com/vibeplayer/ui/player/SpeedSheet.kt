@@ -32,6 +32,8 @@ fun SpeedSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        // Open fully: in landscape the half-expanded sheet shows only the first row.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = Color(0xFF1E1E1E),
         contentColor = Color.White,
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
