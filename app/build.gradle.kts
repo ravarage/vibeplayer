@@ -89,6 +89,7 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
 
+    testImplementation("junit:junit:4.13.2")
     debugImplementation(libs.androidx.compose.ui.tooling)
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

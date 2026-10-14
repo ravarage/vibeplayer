@@ -48,6 +48,8 @@ class PlayerEngine(
     }
 
     @Volatile private var handle: Long = 0L
+    /** P3-09 temporary speed (hold to fast-forward). Never part of [PlayerState.speed], never persisted. */
+    @Volatile private var speedOverride: Double? = null
     @Volatile var playbackConfig: PlaybackConfig = initialConfig
         private set
     @Volatile private var currentFilePath: String = ""
@@ -184,6 +186,8 @@ class PlayerEngine(
                     _state.update { it.copy(buffering = buffering) }
                 }
                 "speed" -> {
+                    // P3-09: while a hold override is active mpv reports the override; state.speed stays the file's own.
+                    if (speedOverride != null) return
                     val spd = (value as? Number)?.toDouble() ?: 1.0
                     _state.update { it.copy(speed = spd) }
                 }
@@ -554,6 +558,8 @@ class PlayerEngine(
         speed: Double = 1.0,
         aspect: String? = null
     ) {
+        val hadOverride = speedOverride != null
+        speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null) }
         lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect)
@@ -567,6 +573,7 @@ class PlayerEngine(
                 playbackConfig.getOptionTable()["hwdec"]?.let { MpvNative.setPropertyString(handle, "hwdec", it) }
                 Log.i("VP", "B-08 recovery over: hardware decoding restored for the next file")
             }
+            if (hadOverride && handle != 0L) MpvNative.setPropertyDouble(handle, "speed", 1.0)
             currentFilePath = path
             _zoomState.value = 0.0
             currentPanX = 0.0
@@ -937,9 +944,26 @@ class PlayerEngine(
             assertCommandThread()
             if (handle != 0L) {
                 val clamped = speed.coerceIn(0.25, 4.0)
-                MpvNative.setPropertyDouble(handle, "speed", clamped)
+                // During a hold the new user speed is remembered and applied when the hold ends.
+                if (speedOverride == null) MpvNative.setPropertyDouble(handle, "speed", clamped)
                 Log.i("VP", "setSpeed: speed=$clamped")
                 _state.update { it.copy(speed = clamped) }
+            }
+        }
+    }
+
+    /**
+     * P3-09: temporarily plays at [factor] (null restores the file's own speed in [PlayerState.speed]).
+     * Runs on the command thread; pitch correction (audio-pitch-correction) is left untouched.
+     */
+    fun setSpeedOverride(factor: Double?) {
+        val target = factor?.coerceIn(0.25, 4.0)
+        speedOverride = target
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L && speedOverride == target) {
+                MpvNative.setPropertyDouble(handle, "speed", target ?: _state.value.speed)
+                Log.i("VP", "setSpeedOverride: ${target ?: "cleared"}")
             }
         }
     }
@@ -1093,6 +1117,7 @@ class PlayerEngine(
     fun release(sync: Boolean = false) {
         if (released) return
         released = true
+        speedOverride = null
         watchdog.shutdownNow()
         statsJob?.cancel()
         statsJob = null

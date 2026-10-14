@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -38,6 +39,7 @@ data class AppSettings(
     val renderer: RendererOption = RendererOption.OPENGL,
     val gesturesEnabled: Boolean = true,
     val skipSeconds: Int = 10,
+    val holdSpeed: Double = 2.0,
     val backgroundAudio: Boolean = false,
     val autoPlayNext: Boolean = true,
     val shaderPreset: ShaderPresetOption = ShaderPresetOption.NONE,
@@ -54,6 +56,7 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_RENDERER = stringPreferencesKey("renderer")
         private val KEY_GESTURES_ENABLED = booleanPreferencesKey("gestures_enabled")
         private val KEY_SKIP_SECONDS = intPreferencesKey("skip_seconds")
+        private val KEY_HOLD_SPEED = doublePreferencesKey("hold_speed")
         private val KEY_BACKGROUND_AUDIO = booleanPreferencesKey("background_audio")
         private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
         private val KEY_SHADER_PRESET = stringPreferencesKey("shader_preset")
@@ -100,6 +103,7 @@ class AppSettingsRepository(private val context: Context) {
             renderer = renderer,
             gesturesEnabled = prefs[KEY_GESTURES_ENABLED] ?: true,
             skipSeconds = prefs[KEY_SKIP_SECONDS] ?: 10,
+            holdSpeed = com.vibeplayer.ui.player.HoldGesture.normalize(prefs[KEY_HOLD_SPEED] ?: 2.0),
             backgroundAudio = prefs[KEY_BACKGROUND_AUDIO] ?: false,
             autoPlayNext = prefs[KEY_AUTO_PLAY_NEXT] ?: true,
             shaderPreset = shaderPreset,
@@ -151,6 +155,7 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_RENDERER] = settings.renderer.name
             prefs[KEY_GESTURES_ENABLED] = settings.gesturesEnabled
             prefs[KEY_SKIP_SECONDS] = settings.skipSeconds
+            prefs[KEY_HOLD_SPEED] = settings.holdSpeed
             prefs[KEY_BACKGROUND_AUDIO] = settings.backgroundAudio
             prefs[KEY_AUTO_PLAY_NEXT] = settings.autoPlayNext
             prefs[KEY_SHADER_PRESET] = settings.shaderPreset.name

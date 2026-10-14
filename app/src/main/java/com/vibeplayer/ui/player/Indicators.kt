@@ -19,7 +19,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -350,6 +354,44 @@ fun AspectIndicator(
                 color = Color.White,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+/** P3-09: pill shown at the top centre while a hold-for-fast-playback is active. */
+@Composable
+fun HoldSpeedIndicator(
+    speed: Double?,
+    modifier: Modifier = Modifier
+) {
+    var lastSpeed by remember { mutableStateOf(HoldGesture.DEFAULT_SPEED) }
+    if (speed != null) lastSpeed = speed
+    AnimatedVisibility(
+        visible = speed != null,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xCC1E1E1E))
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(com.vibeplayer.R.drawable.ic_fast_forward),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = HoldGesture.label(lastSpeed),
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
             )
         }
     }

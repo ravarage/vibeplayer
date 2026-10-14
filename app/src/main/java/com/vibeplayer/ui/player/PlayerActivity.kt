@@ -313,6 +313,9 @@ class PlayerActivity : ComponentActivity() {
                                 onSeekRelative = { deltaSec, exact ->
                                     playerEngine.seekRelative(deltaSec, exact)
                                 },
+                                holdSpeed = { viewModel.holdSpeed.value },
+                                onHoldStart = { playerEngine.setSpeedOverride(it) },
+                                onHoldEnd = { playerEngine.setSpeedOverride(null) },
                                 onSingleTap = {
                                     controlsVisible = !controlsVisible
                                 },
