@@ -152,3 +152,13 @@ Dalvik 6 MB.
 | 4K AV1 playing 2 min | not measured | not measured | | | | |
 | Mini player (PiP) | not measured | not measured | | | | |
 | Browser after closing the player | not measured | not measured | | | | <= 150 MB |
+
+## B-08 stall recovery (2026-10-14, build 1cc3d61, default path, tools/stall_test.sh, ichiban.mp4, cold start each open)
+| run | opens | stalls | recovered by watchdog | permanent black | ANR |
+|---|---|---|---|---|---|
+| P60 default path (engine in PlaybackService) | 60 | 5 (8.3 %) | 5 | 0 | 0 |
+| A current libs GLES zero-copy | 40 | 12 | 12 | 0 | - |
+| B old GLES-only libs | 40 | 6 | 6 | 0 | - |
+| C Vulkan copy-back gpu / gpu-next | 40 / 40 | 1 / 4 | all | 0 | - |
+| D GLES copy-back gpu / gpu-next | 40 / 40 | 0 / 0 | - | 0 | - |
+| A_hevc / A_vp9 | 20 / 20 | 0 / 0 | - | 0 | - |

@@ -18,7 +18,7 @@ Newest entry first. Keep entries short; no long logs.
 
 ## Open
 
-## B-08 Video sometimes never starts: MediaCodec decoder stalls after the first frame            Status: OPEN
+## B-08 Video sometimes never starts: MediaCodec decoder stalls after the first frame            Status: RESOLVED (recovery reliable; root stall remains a known MediaCodec/driver behaviour)
 - Task: found during P4-11 (not one of its review items); affects every playback task
 - Agent / date: CLAUDE-A / 2026-10-13
 - Problem: opening `ichiban.mp4` (H.264, resume position, default Efficient path B, `hwdec=mediacodec`) stays black in roughly 1 of 5 to 1 of 12 opens: 1/12, 1/3, 4/20 in three runs; also 1/20 with `--es hwdec mediacodec-copy`, so it is not only the aimagereader path. mpv logs `Using hardware decoding (mediacodec)` and then never prints `VO: [gpu] 1920x1080 mediacodec` or `playback-restart`. It never recovers; mpv commands (`getProperty`, detach, destroy) then block for good.
@@ -26,7 +26,7 @@ Newest entry first. Keep entries short; no long logs.
 - Tried: bounded the main-thread detach wait (P4-11 commit) so the app no longer shows "isn't responding"; leaving and reopening then works. The stuck engine's threads and its codec stay alive (spinning every 8 ms) until the process dies. No native fix attempted.
 - Options: A) find the cause in the MediaCodec path (next discriminators: `msg-level=ffmpeg=trace` to see queued input / output buffers before the stall; a load without `start=` to see whether hr-seek frame dropping is needed; the GLES-only libraries from before the Vulkan-enabled build became default on 2026-10-13); B) add an engine watchdog (no `playback-restart` N s after `file-loaded` -> abandon the handle and reload once with `hwdec=no`), which hides the stall but leaks the stuck handle.
 - Needs from user: nothing to decide yet; reviewer picks A or B. Not known whether this is older than today's commits.
-- Resolution:
+- Resolution (CLAUDE-V, 2026-10-14, build 1cc3d61, engine in PlaybackService, default path, driver vulkan.adreno.so sha256 c0b92d25178c8b21): 60 cold opens of ichiban.mp4 (tools/stall_test.sh, force-stop each time): 55 OK, 5 stalls (8.3 %, opens 10, 16, 44, 54, 59), 5 of 5 recovered by the watchdog (playback-restart seen 3-7 s after the watchdog line, stall opens took 6.8-7.0 s), 0 permanent black screens, 0 ANR (no new data_app_anr dropbox entry for com.vibeplayer on 2026-10-14; last ones are from 2026-10-13). Earlier comparison runs (40 opens each unless noted): A current libs GLES zero-copy 12 stalls, B old GLES-only libs 6, C Vulkan copy-back gpu 1 and gpu-next 4, D GLES copy-back 0 and 0, A_hevc 0/20, A_vp9 0/20; all recovered. The stall itself (MediaCodec output never arrives after the first frame) is not fixed; the watchdog is the fix of record. Logs: /tmp/vp_stall60/P60.log, /tmp/vp_stall/*.log.
 
 ## Resolved
 
