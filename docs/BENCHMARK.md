@@ -264,6 +264,10 @@ adb shell "$B --es mpv_opts 'vd-queue-enable=yes'"                  # H1 fix can
 adb shell "$B --es mpv_opts 'display-fps-override=120'"             # H2
 adb shell "$B --es mpv_opts 'hwdec-extra-frames=12'"                # H4
 ```
-Wait for each row to appear in `benchmark.csv` before the next; compare `steady_drops`, `estimated_vf_fps`,
-`container_fps` and `display_fps`.
+Before the next command wait for the log line `Benchmark: run over` (the CSV row is written before the
+activity and service are torn down). For every row check in logcat that the options reached mpv
+(`Debug mpv_opts applied at init: {...}`; a `rejected` line means a typo) and that hardware decoding stayed
+on (`onPropertyChange: hwdec-current = mediacodec`): an option that breaks MediaCodec configuration makes
+mpv fall back to software decoding, and the CSV has no hwdec column, so discard such rows. Then compare
+`steady_drops`, `estimated_vf_fps`, `container_fps` and `display_fps`.
 

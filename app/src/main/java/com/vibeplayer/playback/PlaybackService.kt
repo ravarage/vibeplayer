@@ -913,7 +913,8 @@ class PlaybackService : Service() {
             if (playerEngine.playbackConfig.mode != targetConfig.mode ||
                 playerEngine.playbackConfig.renderer != targetConfig.renderer ||
                 playerEngine.playbackConfig.vo != targetConfig.vo ||
-                playerEngine.playbackConfig.hwdecOverride != targetConfig.hwdecOverride
+                playerEngine.playbackConfig.hwdecOverride != targetConfig.hwdecOverride ||
+                playerEngine.playbackConfig.debugMpvOptions != targetConfig.debugMpvOptions
             ) {
                 playerEngine.reconfigure(targetConfig)
             }
