@@ -769,12 +769,24 @@ class PlaybackService : Service() {
             val formatDeferred = async(Dispatchers.IO) {
                 VideoFormatDetector.detect(applicationContext, path, identityKey)
             }
+            // IO: the gpu-api query can create a temporary mpv handle, and the driver cache reads
+            // SharedPreferences and stats the Vulkan driver file.
+            val vulkanDeferred = async(Dispatchers.IO) {
+                val libMpvChoices = playerEngine.availableGpuApis.ifEmpty { PlayerEngine.getGpuApiChoices() }
+                val libMpvHasVulkan = libMpvChoices.any { it.equals("vulkan", ignoreCase = true) }
+                VulkanDriverCache.isVulkanAvailable(
+                    context = applicationContext,
+                    format = formatDeferred.await(),
+                    libMpvHasVulkan = libMpvHasVulkan
+                ) && !PlayerEngine.sessionVulkanFailed
+            }
 
             val key = keyDeferred.await()
             val fileSettings = fileDeferred.await()
             val folderSettings = folderDeferred.await()
             val appSettings = settingsDeferred.await()
             val detectedFormat = formatDeferred.await()
+            val isVulkanAvailable = vulkanDeferred.await()
             if (generation != loadGeneration || currentVideoPath != path) return@launch
 
             val startPositionMs = if (startPositionOverride != null) {
@@ -863,14 +875,6 @@ class PlaybackService : Service() {
                 RendererOption.VULKAN -> RendererSetting.VULKAN
                 RendererOption.OPENGL -> RendererSetting.GLES
             }
-
-            val libMpvChoices = playerEngine.availableGpuApis.ifEmpty { PlayerEngine.getGpuApiChoices() }
-            val libMpvHasVulkan = libMpvChoices.any { it.equals("vulkan", ignoreCase = true) }
-            val isVulkanAvailable = VulkanDriverCache.isVulkanAvailable(
-                context = applicationContext,
-                format = detectedFormat,
-                libMpvHasVulkan = libMpvHasVulkan
-            ) && !PlayerEngine.sessionVulkanFailed
 
             val resolvedConfig = FormatProfileTable.resolve(
                 format = detectedFormat,
