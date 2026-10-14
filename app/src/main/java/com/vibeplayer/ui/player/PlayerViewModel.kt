@@ -37,6 +37,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val holdSpeed: StateFlow<Double> = appSettingsRepository.appSettingsFlow
         .map { it.holdSpeed }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, HoldGesture.DEFAULT_SPEED)
+
+    val gesturesEnabled: StateFlow<Boolean> = appSettingsRepository.appSettingsFlow
+        .map { it.gesturesEnabled }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, true)
+
+    val skipSeconds: StateFlow<Int> = appSettingsRepository.appSettingsFlow
+        .map { it.skipSeconds }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, 10)
     /**
      * Debug benchmark run: the service skips history writes and does not post a notification.
      * Process-wide, set by PlayerActivity before this ViewModel is created.
