@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 rootProject.name = "VibePlayer"
 include(":app")
 include(":player")
+include(":baselineprofile")
