@@ -273,11 +273,13 @@ class PlaybackService : Service() {
         // Ensure engine is instantiated
         getOrCreateEngine()
 
-        playerEngine.onVulkanFailureListener = { format, reason ->
-            val isGlobal = reason.contains("suitable GPU context", ignoreCase = true) ||
-                reason.contains("pl_vulkan", ignoreCase = true) ||
-                reason.contains("Found no suitable device", ignoreCase = true)
-            VulkanDriverCache.recordVulkanFailure(applicationContext, format, isGlobal)
+        // The engine classifies the failure from the failing handle's mpv log: no Vulkan instance or
+        // device is remembered for the whole driver build, a VO/swapchain problem only for the format.
+        playerEngine.onVulkanFailureListener = { format, failure ->
+            VulkanDriverCache.recordVulkanFailure(
+                applicationContext, format,
+                isGlobalDriverFailure = failure.scope == com.vibeplayer.player.VulkanFailureScope.DRIVER
+            )
         }
         serviceScope.launch(Dispatchers.IO) {
             appSettingsRepository.migrateRendererDefaultIfNeeded()

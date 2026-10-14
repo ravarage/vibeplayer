@@ -206,7 +206,10 @@ class PlayerEngine(
     private var fallbackCheckJob: Job? = null
     @Volatile var currentFormat: VideoFormat = VideoFormat.OTHER
     @Volatile var currentResolvedConfig: ResolvedConfiguration? = null
-    @Volatile var onVulkanFailureListener: ((format: VideoFormat?, errorReason: String) -> Unit)? = null
+    /** Told about every Vulkan fallback; [VulkanFailure.scope] says whether the whole driver failed. */
+    @Volatile var onVulkanFailureListener: ((format: VideoFormat?, failure: VulkanFailure) -> Unit)? = null
+    /** Wall clock of the current handle's creation: the log window for classifying a Vulkan failure. */
+    @Volatile private var handleCreatedAtMs = 0L
     /** Debug builds: simulate one forced Vulkan failure. */
     @Volatile var debugForceVulkanFailureOnce = false
     /** Debug builds: simulate one forced OpenGL ES failure. */
@@ -700,6 +703,7 @@ class PlayerEngine(
 
     private fun initHandle() {
         assertCommandThread()
+        handleCreatedAtMs = System.currentTimeMillis()
         handle = MpvNative.create(BuildConfig.DEBUG)
         if (handle == 0L) {
             Log.e("VP", "Failed to create mpv handle")
@@ -1139,7 +1143,7 @@ class PlayerEngine(
         vulkanCheckJob = scope.launch {
             if (BuildConfig.DEBUG && debugForceVulkanFailureOnce) {
                 debugForceVulkanFailureOnce = false
-                handleVulkanFailure("Debug forced Vulkan failure")
+                handleVulkanFailure("Debug forced Vulkan failure", forcedScope = VulkanFailureScope.FORMAT)
                 return@launch
             }
             val startTime = System.currentTimeMillis()
@@ -1183,10 +1187,13 @@ class PlayerEngine(
         }
     }
 
-    fun handleVulkanFailure(reason: String) {
+    fun handleVulkanFailure(reason: String, forcedScope: VulkanFailureScope? = null) {
         sessionVulkanFailed = true
-        val errorLines = dumpMpvErrorLines()
-        Log.e("VP", "VULKAN-FAIL: $reason")
+        val mpvLines = dumpMpvLogSince(handleCreatedAtMs)
+        val classified = VulkanFailureClassifier.classify(mpvLines, reason)
+        val failure = if (forcedScope != null) classified.copy(scope = forcedScope) else classified
+        val errorLines = mpvLines.filter(::isErrorLine).takeLast(10)
+        Log.e("VP", "VULKAN-FAIL: $reason (scope=${failure.scope}${failure.evidence?.let { ", evidence: $it" } ?: ""})")
         for (err in errorLines) {
             Log.e("VP", "VULKAN-FAIL: $err")
         }
@@ -1196,7 +1203,7 @@ class PlayerEngine(
         _onScreenMessage.tryEmit("Vulkan failed, using OpenGL ES")
         Log.w("VP", "Vulkan failed, falling back to OpenGL ES")
         try {
-            onVulkanFailureListener?.invoke(currentFormat, reason)
+            onVulkanFailureListener?.invoke(currentFormat, failure)
         } catch (t: Throwable) {
             Log.w("VP", "Error notifying onVulkanFailureListener: ${t.message}")
         }
@@ -1229,21 +1236,27 @@ class PlayerEngine(
         }
     }
 
-    private fun dumpMpvErrorLines(): List<String> {
+    private fun isErrorLine(l: String): Boolean =
+        l.contains("E/") || l.contains("W/") || l.contains("vulkan", ignoreCase = true) ||
+            l.contains("Error", ignoreCase = true) || l.contains("Failed", ignoreCase = true)
+
+    /**
+     * mpv log lines (tag "mpv") of this process since [sinceWallMs]. Bounded to this process and to
+     * the current handle, so a line of an earlier handle, file or process cannot decide the scope.
+     */
+    private fun dumpMpvLogSince(sinceWallMs: Long): List<String> {
         val lines = mutableListOf<String>()
         try {
-            val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "brief", "-s", "mpv"))
-            process.inputStream.bufferedReader().useLines { logLines ->
-                for (l in logLines) {
-                    if (l.contains("E/") || l.contains("W/") || l.contains("vulkan", ignoreCase = true) || l.contains("Error", ignoreCase = true) || l.contains("Failed", ignoreCase = true)) {
-                        lines.add(l)
-                    }
-                }
-            }
+            val since = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+                .format(java.util.Date(if (sinceWallMs > 0L) sinceWallMs else System.currentTimeMillis()))
+            val process = Runtime.getRuntime().exec(arrayOf(
+                "logcat", "-d", "-v", "brief", "--pid=${android.os.Process.myPid()}", "-t", since, "-s", "mpv"
+            ))
+            process.inputStream.bufferedReader().useLines { logLines -> logLines.forEach { lines.add(it) } }
         } catch (e: Exception) {
             Log.w("VP", "Failed to dump logcat: ${e.message}")
         }
-        return lines.takeLast(10)
+        return lines
     }
 
     /**

@@ -28,6 +28,34 @@ object VulkanDriverPolicy {
     ): String {
         return "${buildFingerprint}_$soMtime"
     }
+
+    /** What the cache remembers; everything in it belongs to [driverKey]. */
+    data class Stored(
+        val driverKey: String?,
+        val driverFailed: Boolean,
+        val formatFailures: Set<String>
+    )
+
+    /** The stored state as it applies to [currentKey]: failures of another driver build are dropped. */
+    fun forDriver(stored: Stored, currentKey: String): Stored =
+        if (stored.driverKey == currentKey) stored else Stored(currentKey, false, emptySet())
+
+    /**
+     * State after a failure on [currentKey]. A driver-wide failure (no Vulkan instance or device)
+     * disables Vulkan for every format of this driver build; a per-format one only for [formatKey].
+     */
+    fun afterFailure(
+        stored: Stored,
+        currentKey: String,
+        formatKey: String?,
+        isGlobalDriverFailure: Boolean
+    ): Stored {
+        val base = forDriver(stored, currentKey)
+        return base.copy(
+            driverFailed = base.driverFailed || isGlobalDriverFailure,
+            formatFailures = if (formatKey != null) base.formatFailures + formatKey else base.formatFailures
+        )
+    }
 }
 
 /**
@@ -113,6 +141,7 @@ object VulkanDriverCache {
     /**
      * Records a failure for a specific format (or global driver failure) on this driver build.
      */
+    @Synchronized
     fun recordVulkanFailure(
         context: Context,
         format: VideoFormat?,
@@ -120,21 +149,23 @@ object VulkanDriverCache {
     ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val currentKey = computeDriverKey()
-        val editor = prefs.edit().putString(KEY_DRIVER_FINGERPRINT, currentKey)
-
+        val stored = VulkanDriverPolicy.Stored(
+            driverKey = prefs.getString(KEY_DRIVER_FINGERPRINT, null),
+            driverFailed = prefs.getBoolean(KEY_DRIVER_FAILED, false),
+            formatFailures = prefs.getStringSet(KEY_FORMAT_FAILURES, emptySet())?.toSet() ?: emptySet()
+        )
+        val updated = VulkanDriverPolicy.afterFailure(stored, currentKey, format?.formatKey, isGlobalDriverFailure)
         if (isGlobalDriverFailure) {
-            Log.e("VP", "VulkanDriverCache: recording global Vulkan driver failure on $currentKey")
-            editor.putBoolean(KEY_DRIVER_FAILED, true)
+            Log.e("VP", "VulkanDriverCache: recording global Vulkan driver failure on $currentKey (Vulkan off for every format until the driver changes)")
         }
-
         if (format != null) {
-            val formatFailures = prefs.getStringSet(KEY_FORMAT_FAILURES, emptySet())?.toMutableSet() ?: mutableSetOf()
-            formatFailures.add(format.formatKey)
             Log.e("VP", "VulkanDriverCache: recording Vulkan failure for format ${format.label} on $currentKey")
-            editor.putStringSet(KEY_FORMAT_FAILURES, formatFailures)
         }
-
-        editor.apply()
+        prefs.edit()
+            .putString(KEY_DRIVER_FINGERPRINT, currentKey)
+            .putBoolean(KEY_DRIVER_FAILED, updated.driverFailed)
+            .putStringSet(KEY_FORMAT_FAILURES, updated.formatFailures)
+            .apply()
     }
 
     fun getFormatFailures(context: Context): Set<String> {
