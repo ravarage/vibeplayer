@@ -253,6 +253,15 @@ class Ctx:
     TOP = {"lock": 37, "pip": 86, "aspect": 135, "sub": 184, "audio": 232, "speed": 279}
 
     def tap_top(self, which, ns=None):
+        if not ns:
+            # prefer the contentDescription hooks over fixed dp positions (the top bar layout changes, e.g.
+            # the quality chip moved the speed chip): show the controls if hidden, then dump
+            ns = self.nodes()
+            if ns and not uix.find_all(ns, desc=which):
+                w, h = self.size()
+                self.phone.tap(w // 2, h // 3)
+                self.sleep(0.6)
+                ns = self.nodes()
         cands = uix.find_all(ns, desc=which) if ns else []
         if not cands and ns:
             spec = {"lock": dict(text="🔒"), "pip": dict(desc="Mini player"), "aspect": dict(desc="Aspect ratio"),

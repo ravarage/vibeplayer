@@ -414,11 +414,24 @@ def resume(ctx):
 
 def _sheet_rows(ctx, opener, header):
     ns = None
-    ctx.tap_top(opener, ns)
-    ctx.sleep(1.2)
-    ns = ctx.nodes()
-    hdr = uix.find(ns, text=header)
+    hdr = None
+    for attempt in range(3):  # the dump can miss a sheet that is still animating, or the tap can miss
+        ctx.tap_top(opener, ns)
+        ctx.sleep(1.2)
+        ns = ctx.nodes()
+        hdr = uix.find(ns, text=header)
+        if hdr:
+            break
+        ctx.sleep(1.0)
+        ns = ctx.nodes()
+        hdr = uix.find(ns, text=header)
+        if hdr:
+            break
     need(hdr, f"sheet '{header}' not found in the UI dump")
+    ctx.sleep(0.8)  # the sheet slides up; rows below the screen edge are missing from an early dump
+    ns2 = ctx.nodes()
+    if uix.find(ns2, text=header):
+        ns, hdr = ns2, uix.find(ns2, text=header)
     prefix = "audio_track_" if opener == "audio" else "sub_track_"
     cands = [n for n in ns if n.desc and n.desc.startswith(prefix)]
     if cands:
@@ -509,7 +522,7 @@ def folder_track_memory(ctx):
             if cand not in ctx.phone.listing(TEST_DIR):
                 continue
             mk = ctx.play_clip(cand, settle=3)
-            pend = ctx.log.find(r"Pending track selection set: file=(\S+), folder=", mk)
+            pend = ctx.log.find(r"Pending track selection set: file=(\S+)", mk)  # file=FileTrackChoice(... has spaces
             ts = ctx.log.find_all(r"id=(\d+) type=audio lang=(\S+) ", mk, tag="VP-Track")
             audio = {int(x[1].group(1)): x[1].group(2) for x in ts}
             if lang not in audio.values():
@@ -544,9 +557,13 @@ def speed(ctx):
     ctx.play_clip(H264)
     ns = None
     ctx.tap_top("speed", ns)
-    ctx.sleep(1.2)
-    ns = ctx.nodes()
-    chip = uix.find(ns, desc="speed_1.5") or uix.find(ns, text="1.5x")
+    chip = None
+    for _ in range(3):  # the sheet slides up; an early dump misses the preset rows
+        ctx.sleep(1.2)
+        ns = ctx.nodes()
+        chip = uix.find(ns, desc="speed_1.5") or uix.find(ns, text="1.5x")
+        if chip:
+            break
     need(chip, "no '1.5x' preset in the speed sheet (uiautomator)")
     m = ctx.log.mark()
     ctx.phone.tap(*uix.center(chip))
