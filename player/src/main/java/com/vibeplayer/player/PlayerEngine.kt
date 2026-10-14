@@ -227,8 +227,11 @@ class PlayerEngine(
             playbackRestartMs: Long = 0L,
             nowMs: Long = 0L,
             minTimeSinceRestartMs: Long = FALLBACK_GRACE_PERIOD_MS,
-            alreadyFallback: Boolean = false
+            alreadyFallback: Boolean = false,
+            /** Software decoding was chosen (format table row such as H.264 10-bit, or decoder=software). */
+            softwareByDesign: Boolean = false
         ): Boolean {
+            if (softwareByDesign) return false
             if (!hasFilePath || durationMs <= 0 || codec.isNullOrEmpty()) {
                 return false
             }
@@ -241,6 +244,14 @@ class PlayerEngine(
             if (playbackRestartMs <= 0L) return false
             return (nowMs - playbackRestartMs) >= minTimeSinceRestartMs
         }
+
+        /**
+         * Whether a Vulkan VO that did not come up within the check window counts as a Vulkan
+         * failure. Not before the file has loaded (a surface attached while a slow open is still
+         * pending), not without a surface, and not when the file plays no video (audio-only, vid=no).
+         */
+        fun isVulkanVoFailure(fileLoaded: Boolean, surfaceAttached: Boolean, vid: String?, voConfigured: Boolean): Boolean =
+            fileLoaded && surfaceAttached && !voConfigured && !vid.isNullOrEmpty() && vid != "no"
 
         fun getGpuApiChoices(): List<String> {
             if (cachedGpuApis.isNotEmpty()) return cachedGpuApis
@@ -413,6 +424,7 @@ class PlayerEngine(
                     Log.i("VP", "mpv event end-file")
                 }
                 MpvEvent.FILE_LOADED -> {
+                    fileLoaded = true
                     PerfLog.mark("file-loaded")
                     Log.i("VP", "mpv event file-loaded")
                     if (!pendingPauseOnLoad) {
@@ -570,7 +582,8 @@ class PlayerEngine(
             hasFilePath = currentFilePath.isNotEmpty(),
             playbackRestartMs = lastPlaybackRestartMs,
             nowMs = System.currentTimeMillis(),
-            alreadyFallback = _state.value.fallback
+            alreadyFallback = _state.value.fallback,
+            softwareByDesign = playbackConfig.hwdecOverride == "no"
         )
     }
 
@@ -881,6 +894,7 @@ class PlayerEngine(
     ) {
         assertCommandThread()
         currentFilePath = path
+        fileLoaded = false
         lastPlaybackRestartMs = 0L
         fallbackCheckJob?.cancel()
         fallbackCheckJob = null
@@ -921,10 +935,9 @@ class PlayerEngine(
                 options.add("sid=$subTrackId")
             }
 
-            if (speed != 1.0) {
-                val spd = String.format(java.util.Locale.US, "%.2f", speed)
-                options.add("speed=$spd")
-            }
+            // Always written: setSpeed() changes mpv's global speed, so a file without its own
+            // speed (1.0) would otherwise inherit the previous file's.
+            options.add("speed=" + String.format(java.util.Locale.US, "%.2f", speed))
 
             // P4-13: the delays are per file; a new file must not inherit the previous file's values,
             // so the defaults are written explicitly. The subtitle style is global.
@@ -937,6 +950,9 @@ class PlayerEngine(
                 pendingPauseOnLoad = true
             } else {
                 pendingPauseOnLoad = false
+                // pause is global in mpv and survives loadfile: a session paused by the user (or by
+                // keep-open at the end) would open the next file paused while FILE_LOADED reports playing.
+                MpvNative.setPropertyBoolean(handle, "pause", false)
             }
 
             val normAspect = aspect ?: "fit"
@@ -1035,7 +1051,12 @@ class PlayerEngine(
         }
     }
 
-    fun reconfigure(newConfig: PlaybackConfig) {
+    /**
+     * @param reloadCurrentFile false when the caller loads another file right after (openVideo): the
+     * old file is then not reloaded on the new handle (a wasted loadfile whose pause state would
+     * carry over to the next file).
+     */
+    fun reconfigure(newConfig: PlaybackConfig, reloadCurrentFile: Boolean = true) {
         executeCommand {
             assertCommandThread()
             if (playbackConfig == newConfig) return@executeCommand
@@ -1062,6 +1083,7 @@ class PlayerEngine(
                 MpvNative.destroy(handle)
                 handle = 0L
             }
+            fileLoaded = false
 
             playbackConfig = newConfig
             // P3-09: the new mpv handle starts at speed 1.0; a hold in progress ends with the reconfigure
@@ -1078,7 +1100,16 @@ class PlayerEngine(
                 MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
             }
 
-            if (curPath.isNotEmpty()) {
+            // fdclose://N: mpv closed N with the old handle; reopening it would read a dead or reused
+            // fd (another file of this process). The open path has to resolve the URI again.
+            val reloadable = !curPath.startsWith("fdclose://")
+            if (curPath.isNotEmpty() && reloadCurrentFile && !reloadable) {
+                Log.w("VP", "reconfigure: $curPath cannot be reopened on the new handle; reopen the file to continue")
+            }
+            if (curPath.isNotEmpty() && reloadCurrentFile && reloadable) {
+                // A new load for the B-08 watchdog: the previous serial already saw its playback-restart.
+                lastLoad = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay)
+                loadSerial.incrementAndGet()
                 loadInternal(
                     path = curPath,
                     startPositionMs = curPos,
@@ -1097,6 +1128,8 @@ class PlayerEngine(
     }
 
     private var vulkanCheckJob: Job? = null
+    /** file-loaded seen for the current loadfile (reset by every loadfile). */
+    @Volatile private var fileLoaded = false
 
     private fun checkVulkanVoInitialization() {
         if (playbackConfig.renderer != Renderer.VULKAN) {
@@ -1125,7 +1158,10 @@ class PlayerEngine(
                     break
                 }
             }
-            if (!voConfigured && isActive && handle != 0L && attachedSurface != null) {
+            val vid = if (!voConfigured && isActive && handle != 0L) MpvNative.getPropertyString(handle, "vid") else null
+            if (isActive && handle != 0L &&
+                isVulkanVoFailure(fileLoaded, attachedSurface != null, vid, voConfigured)
+            ) {
                 handleVulkanFailure("Vulkan VO failed to initialise (no current-vo/video-out-params within 3s)")
             }
         }
@@ -1210,12 +1246,20 @@ class PlayerEngine(
         return lines.takeLast(10)
     }
 
-    fun togglePlaybackMode(userRendererSetting: RendererSetting = RendererSetting.AUTO) {
+    /**
+     * @param isVulkanAvailableForFormat the caller's driver-cache answer for [currentFormat]
+     * (remembered per-format failures); null falls back to libmpv support and this session.
+     */
+    fun togglePlaybackMode(
+        userRendererSetting: RendererSetting = RendererSetting.AUTO,
+        isVulkanAvailableForFormat: Boolean? = null
+    ) {
         executeCommand {
             assertCommandThread()
             val current = playbackConfig
             val newMode = if (current.mode == PlaybackMode.QUALITY) PlaybackMode.EFFICIENT else PlaybackMode.QUALITY
-            val isVulkanAvailable = availableGpuApis.any { it.equals("vulkan", ignoreCase = true) } && !sessionVulkanFailed
+            val isVulkanAvailable = (isVulkanAvailableForFormat
+                ?: availableGpuApis.any { it.equals("vulkan", ignoreCase = true) }) && !sessionVulkanFailed
             val resolved = FormatProfileTable.resolve(
                 format = currentFormat,
                 mode = newMode,

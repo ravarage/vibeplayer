@@ -96,12 +96,13 @@ class PlayerActivity : ComponentActivity() {
     // State: a content:// title is resolved off the main thread after the first composition.
     private var currentVideoTitle: String by mutableStateOf("ichiban.mp4")
     /** P7-02: content:// URI whose display name / fd are resolved on IO (see resolveContentOnIo). */
-    private var pendingContentUri: Uri? = null
+    @Volatile private var pendingContentUri: Uri? = null
 
     /** P7-02: everything the first open needs from settings, computed on IO while the UI comes up. */
     private class Startup(val config: PlaybackConfig, val preset: com.vibeplayer.player.ShaderPreset?)
     private var startupDeferred: Deferred<Startup>? = null
     private var contentDeferred: Deferred<Unit>? = null
+    private var openJob: kotlinx.coroutines.Job? = null
     private var currentIdentityKey: String? = null
     private var currentFolderKey: String? = null
 
@@ -407,10 +408,11 @@ class PlayerActivity : ComponentActivity() {
 
         checkPermissionAndProceed()
 
-        if (intent.getStringExtra("test") == "p1_02") {
+        // Test hooks: debug builds only (the activity is exported).
+        if (com.vibeplayer.BuildConfig.DEBUG && intent.getStringExtra("test") == "p1_02") {
             runP102Test()
         }
-        if (intent.getStringExtra("test") == "p3_06") {
+        if (com.vibeplayer.BuildConfig.DEBUG && intent.getStringExtra("test") == "p3_06") {
             runP306Test()
         }
 
@@ -582,12 +584,11 @@ class PlayerActivity : ComponentActivity() {
                 VideoFormatDetector.detect(applicationContext, videoPath, targetKey)
             } else null
             val hinted = resolveConfig(modeHint, rendererHint, detectedFormat)
-            if (!engine.provideInitialConfig(hinted)) {
-                // The handle exists already (service-owned engine of a running session, or init did
-                // not wait): keep what the engine runs, as before, never the remembered setting.
-                val current = resolveConfig(null, null, detectedFormat)
-                if (current != engine.playbackConfig) engine.reconfigure(current)
-            }
+            // false: the handle exists already (running session, or init stopped waiting). No
+            // reconfigure here: an open applies the configuration from settings in
+            // PlaybackService.openVideo, and a re-attach must not touch the playing file (a config
+            // resolved without settings uses renderer Auto and would rebuild the handle).
+            engine.provideInitialConfig(hinted)
             val settings = viewModel.appSettingsRepository.appSettingsFlow.first()
             if (settings.playbackMode.name != modeHint?.name || settings.renderer.name != rendererHint?.name) {
                 startupHints.edit()
@@ -628,23 +629,34 @@ class PlayerActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val config = resolveConfig()
         val oldPath = viewModel.currentPath.value ?: currentVideoPath
         resolveVideoPath()
         val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
         if (!forceHwdec.isNullOrEmpty()) {
             playerEngine.setHwdec(forceHwdec)
         }
-        if (config != playerEngine.playbackConfig) {
-            playerEngine.reconfigure(config)
-        }
         val hasExplicitTarget = !intent.getStringExtra("path").isNullOrEmpty() || intent.data != null
         if (currentVideoPath != oldPath) {
+            // openVideo resolves the per-format configuration and reconfigures at most once.
+            // playbackStarted: a cold-start open still waiting for a permission result must not
+            // run afterwards and replace this one.
+            playbackStarted = true
             openResolvedVideo()
-        } else if (hasExplicitTarget && playerEngine.state.value.paused) {
-            playerEngine.play()
+        } else {
+            // Same file (notification tap, re-launch): resolveConfig() without settings and format
+            // never equals the engine's per-format config, so reconfigure only on explicit extras.
+            if (hasConfigExtras(intent)) {
+                val config = resolveConfig()
+                if (config != playerEngine.playbackConfig) playerEngine.reconfigure(config)
+            }
+            if (hasExplicitTarget && playerEngine.state.value.paused) playerEngine.play()
         }
     }
+
+    private fun hasConfigExtras(intent: Intent): Boolean = listOf(
+        "mode", "playback_mode", "renderer", "efficient_path", "path_mode", "decoder",
+        "fast_profile", "profile_fast", "profile", "probe_vo", "probe_renderer", "mpv_msg_level"
+    ).any { intent.hasExtra(it) }
 
     /**
      * @param deferContent onCreate: do not query the content resolver here (main thread); keep the URI
@@ -695,9 +707,17 @@ class PlayerActivity : ComponentActivity() {
     private fun resolveContentOnIo() {
         val uri = pendingContentUri
         if (uri != null) {
-            currentVideoTitle = queryDisplayName(uri)
-            currentVideoPath = resolveContentUri(uri)
-            pendingContentUri = null
+            val title = queryDisplayName(uri)
+            val path = resolveContentUri(uri)
+            // A new intent (onNewIntent -> resolveVideoPath) may have replaced the target meanwhile.
+            if (pendingContentUri == uri) {
+                currentVideoTitle = title
+                currentVideoPath = path
+                pendingContentUri = null
+            } else {
+                path.removePrefix("fdclose://").takeIf { path.startsWith("fdclose://") }?.toIntOrNull()
+                    ?.let { runCatching { android.os.ParcelFileDescriptor.adoptFd(it).close() } }
+            }
         } else if (!currentVideoPath.startsWith("fdclose://")) {
             val file = File(currentVideoPath)
             Log.i("VP", "File access: path=$currentVideoPath exists=${file.exists()} canRead=${file.canRead()} size=${file.length()}")
@@ -706,7 +726,10 @@ class PlayerActivity : ComponentActivity() {
 
     /** @param useStartup the cold-start open: reuse the work started in onCreate instead of redoing it. */
     private fun openResolvedVideo(useStartup: Boolean = false) {
-        lifecycleScope.launch {
+        // A new intent replaces an open still waiting for its start-up work (that one carries the
+        // previous file's format config and would open the new path with it).
+        openJob?.cancel()
+        openJob = lifecycleScope.launch {
             val startup = startupDeferred.takeIf { useStartup }?.await()
                 ?: withContext(Dispatchers.IO) {
                     computeStartup(viewModel.appSettingsRepository.appSettingsFlow.first())

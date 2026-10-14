@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -159,7 +160,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Quality/efficient switch (and renderer re-resolve) on the service-owned engine. */
     fun togglePlaybackMode() {
-        playerEngine.togglePlaybackMode()
+        val engine = playerEngine
+        // IO: settings, gpu-api list and the Vulkan driver cache. The user's renderer setting
+        // (e.g. OpenGL ES) and remembered per-format Vulkan failures must hold for the toggle too.
+        viewModelScope.launch(Dispatchers.IO) {
+            val setting = when (appSettingsRepository.appSettingsFlow.first().renderer) {
+                com.vibeplayer.data.prefs.RendererOption.AUTO -> com.vibeplayer.player.RendererSetting.AUTO
+                com.vibeplayer.data.prefs.RendererOption.VULKAN -> com.vibeplayer.player.RendererSetting.VULKAN
+                com.vibeplayer.data.prefs.RendererOption.OPENGL -> com.vibeplayer.player.RendererSetting.GLES
+            }
+            val libMpvHasVulkan = engine.availableGpuApis.ifEmpty { PlayerEngine.getGpuApiChoices() }
+                .any { it.equals("vulkan", ignoreCase = true) }
+            val vulkanAvailable = com.vibeplayer.playback.VulkanDriverCache.isVulkanAvailable(
+                getApplication(), engine.currentFormat, libMpvHasVulkan
+            )
+            engine.togglePlaybackMode(setting, vulkanAvailable)
+        }
     }
 
     fun skipToNeighbour(forward: Boolean) {
