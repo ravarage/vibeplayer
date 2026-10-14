@@ -16,3 +16,6 @@ native/mpv-android/
 player/src/main/jniLibs/
 
 native/out/
+
+# Release distribution artifacts
+dist/
