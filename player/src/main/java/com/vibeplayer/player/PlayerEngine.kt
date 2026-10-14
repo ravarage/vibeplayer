@@ -227,8 +227,11 @@ class PlayerEngine(
             playbackRestartMs: Long = 0L,
             nowMs: Long = 0L,
             minTimeSinceRestartMs: Long = FALLBACK_GRACE_PERIOD_MS,
-            alreadyFallback: Boolean = false
+            alreadyFallback: Boolean = false,
+            /** Software decoding was chosen (format table row such as H.264 10-bit, or decoder=software). */
+            softwareByDesign: Boolean = false
         ): Boolean {
+            if (softwareByDesign) return false
             if (!hasFilePath || durationMs <= 0 || codec.isNullOrEmpty()) {
                 return false
             }
@@ -579,7 +582,8 @@ class PlayerEngine(
             hasFilePath = currentFilePath.isNotEmpty(),
             playbackRestartMs = lastPlaybackRestartMs,
             nowMs = System.currentTimeMillis(),
-            alreadyFallback = _state.value.fallback
+            alreadyFallback = _state.value.fallback,
+            softwareByDesign = playbackConfig.hwdecOverride == "no"
         )
     }
 

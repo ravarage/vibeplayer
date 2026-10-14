@@ -139,4 +139,20 @@ class FallbackTest {
         )
         assertFalse("Hardware codec recovery must clear fallback badge", result)
     }
+
+    @Test
+    fun testSoftwareByDesignNeverShowsBadge() {
+        // P6-07: H.264 10-bit is decoded in software on purpose (hwdecOverride = "no").
+        val result = PlayerEngine.computeFallback(
+            hwdec = "no",
+            codec = "h264",
+            durationMs = 30_000L,
+            hasFilePath = true,
+            playbackRestartMs = 1000L,
+            nowMs = 5000L,
+            alreadyFallback = true,
+            softwareByDesign = true
+        )
+        assertFalse("Software decoding chosen by the format table is not a fallback", result)
+    }
 }
