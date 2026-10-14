@@ -55,6 +55,7 @@ fun SettingsScreen(
     var showPlaybackModeDialog by remember { mutableStateOf(false) }
     var showRendererDialog by remember { mutableStateOf(false) }
     var showSkipDialog by remember { mutableStateOf(false) }
+    var showHoldSpeedDialog by remember { mutableStateOf(false) }
     var showShaderDialog by remember { mutableStateOf(false) }
     var showAudioLangDialog by remember { mutableStateOf(false) }
     var showSubLangDialog by remember { mutableStateOf(false) }
@@ -159,6 +160,13 @@ fun SettingsScreen(
                 subtitle = "${settings.skipSeconds} seconds",
                 description = "Time skipped when double-tapping left or right screen edges",
                 onClick = { showSkipDialog = true }
+            )
+
+            SettingsClickableRow(
+                title = "Hold Speed",
+                subtitle = com.vibeplayer.ui.player.HoldGesture.label(settings.holdSpeed),
+                description = "Speed while pressing and holding the right half of the video",
+                onClick = { showHoldSpeedDialog = true }
             )
 
             HorizontalDivider(
@@ -318,6 +326,42 @@ fun SettingsScreen(
                 TextButton(onClick = { showRendererDialog = false }) {
                     Text("Close")
                 }
+            }
+        )
+    }
+
+    if (showHoldSpeedDialog) {
+        AlertDialog(
+            onDismissRequest = { showHoldSpeedDialog = false },
+            title = { Text("Hold Speed") },
+            text = {
+                Column {
+                    com.vibeplayer.ui.player.HoldGesture.SPEEDS.forEach { speed ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onUpdateSettings(settings.copy(holdSpeed = speed))
+                                    showHoldSpeedDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = (speed == settings.holdSpeed),
+                                onClick = {
+                                    onUpdateSettings(settings.copy(holdSpeed = speed))
+                                    showHoldSpeedDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = com.vibeplayer.ui.player.HoldGesture.label(speed), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHoldSpeedDialog = false }) { Text("Close") }
             }
         )
     }

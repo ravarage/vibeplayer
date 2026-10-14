@@ -26,6 +26,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
@@ -44,6 +47,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val dao = db.fileSettingsDao()
     private val folderDao = db.folderSettingsDao()
     val appSettingsRepository = AppSettingsRepository(application)
+    /** P3-09: hold speed from settings, collected on IO; read when a hold starts. */
+    val holdSpeed: StateFlow<Double> = appSettingsRepository.appSettingsFlow
+        .map { it.holdSpeed }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, HoldGesture.DEFAULT_SPEED)
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile private var currentKey: String? = null

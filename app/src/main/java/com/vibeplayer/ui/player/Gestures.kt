@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -44,7 +45,8 @@ enum class GestureType {
     LEFT_VERTICAL,   // brightness
     RIGHT_VERTICAL,  // volume
     HORIZONTAL,      // swipe seek
-    PINCH            // zoom
+    PINCH,           // zoom
+    HOLD             // P3-09 hold for fast playback
 }
 
 @Composable
@@ -76,6 +78,10 @@ fun GestureLayer(
     onHorizontalDrag: (deltaPixels: Float) -> Unit = {},
     onPinchZoom: (centroid: Offset, zoomFactor: Float, panDelta: Offset) -> Unit = { _, _, _ -> },
     onGestureEnded: (GestureType) -> Unit = {},
+    holdEnabled: Boolean = true,
+    holdSpeed: () -> Double = { HoldGesture.DEFAULT_SPEED },
+    onHoldStart: (Double) -> Unit = {},
+    onHoldEnd: () -> Unit = {},
     content: @Composable () -> Unit = {}
 ) {
     val view = LocalView.current
@@ -85,6 +91,11 @@ fun GestureLayer(
     var lastTapPos by remember { mutableStateOf(Offset.Zero) }
 
     val latestDurationMs by rememberUpdatedState(durationMs)
+    val latestHoldEnabled by rememberUpdatedState(holdEnabled)
+    val latestHoldSpeed by rememberUpdatedState(holdSpeed)
+    val latestOnHoldStart by rememberUpdatedState(onHoldStart)
+    val latestOnHoldEnd by rememberUpdatedState(onHoldEnd)
+    var heldSpeed by remember { mutableStateOf<Double?>(null) }
     val currentLocalZoom = remember(zoomState) { java.util.concurrent.atomic.AtomicReference(zoomState.value) }
     LaunchedEffect(zoomState) { zoomState.collect { currentLocalZoom.set(it) } }
     val currentLocalPanX = remember { java.util.concurrent.atomic.AtomicReference(0.0) }
@@ -143,6 +154,8 @@ fun GestureLayer(
 
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = true)
+                var holding = false
+                try {
                 val startPos = down.position
                 val width = size.width.toFloat()
                 val height = size.height.toFloat()
@@ -153,8 +166,41 @@ fun GestureLayer(
                 var activePointerId = down.id
 
                 var upConsumed = false
+                var lastMoved = 0f
+                val longPressMs = viewConfiguration.longPressTimeoutMillis
                 while (true) {
-                    val event = awaitPointerEvent()
+                    val holdPossible = latestHoldEnabled && !isLeftZone && !directionLocked
+                    val event = if (holdPossible) {
+                        val remaining = longPressMs - (SystemClock.uptimeMillis() - down.uptimeMillis)
+                        val e = if (remaining > 0) withTimeoutOrNull(remaining) { awaitPointerEvent() } else null
+                        if (e == null) {
+                            val elapsed = SystemClock.uptimeMillis() - down.uptimeMillis
+                            if (HoldGesture.classify(startPos.x, width, elapsed, lastMoved, touchSlop, longPressMs) == HoldGesture.Outcome.HOLD) {
+                                directionLocked = true
+                                lockedGesture = GestureType.HOLD
+                                holding = true
+                                pendingSingleTapJob?.cancel()
+                                pendingSingleTapJob = null
+                                lastTapTime = 0L
+                                if (doubleTapStreakActive) {
+                                    doubleTapStreakActive = false
+                                    doubleTapAccumulatedSec = 0
+                                    doubleTapHideJob?.cancel()
+                                }
+                                val speed = latestHoldSpeed()
+                                heldSpeed = speed
+                                Log.i("VP", "Gesture detected: HOLD speed=$speed")
+                                HapticFeedbackHelper.triggerTick(view, "hold start")
+                                latestOnHoldStart(speed)
+                                onGestureTypeChanged(GestureType.HOLD)
+                                continue
+                            }
+                            // Timeout with the finger beyond slop cannot happen (slop locks first); wait normally.
+                            awaitPointerEvent()
+                        } else e
+                    } else {
+                        awaitPointerEvent()
+                    }
                     val activePointers = event.changes.filter { it.pressed }
                     if (activePointers.isEmpty()) {
                         upConsumed = event.changes.any { it.isConsumed }
@@ -216,6 +262,7 @@ fun GestureLayer(
 
                     val totalDx = change.position.x - startPos.x
                     val totalDy = change.position.y - startPos.y
+                    lastMoved = sqrt(totalDx * totalDx + totalDy * totalDy)
 
                     if (!directionLocked) {
                         val absDx = abs(totalDx)
@@ -373,6 +420,11 @@ fun GestureLayer(
                     }
                 } else {
                     Log.i("VP", "Gesture ended: $lockedGesture")
+                    if (lockedGesture == GestureType.HOLD) {
+                        holding = false
+                        heldSpeed = null
+                        latestOnHoldEnd()
+                    }
                     if (lockedGesture == GestureType.HORIZONTAL) {
                         val deltaSec = (swipeSeekTargetMs - swipeSeekStartPositionMs) / 1000.0
                         Log.i("VP", "Swipe seek commit: deltaSec=$deltaSec (start=$swipeSeekStartPositionMs, target=$swipeSeekTargetMs)")
@@ -411,6 +463,13 @@ fun GestureLayer(
                     onGestureEnded(lockedGesture)
                     onGestureTypeChanged(GestureType.NONE)
                 }
+                } finally {
+                    // Cancellation (lock toggled, PiP, disposal) must not leave the speed overridden.
+                    if (holding) {
+                        heldSpeed = null
+                        latestOnHoldEnd()
+                    }
+                }
             }
         }
     ) {
@@ -447,6 +506,13 @@ fun GestureLayer(
             seconds = doubleTapAccumulatedSec,
             rippleTrigger = doubleTapRippleTrigger,
             modifier = Modifier.align(if (doubleTapIsLeft) Alignment.CenterStart else Alignment.CenterEnd)
+        )
+
+        HoldSpeedIndicator(
+            speed = heldSpeed,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 24.dp)
         )
 
         ResetZoomButton(
