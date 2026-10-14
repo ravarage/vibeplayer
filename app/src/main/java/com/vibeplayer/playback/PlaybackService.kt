@@ -62,6 +62,7 @@ class PlaybackService : Service() {
         const val ACTION_PREVIOUS = "com.vibeplayer.playback.ACTION_PREVIOUS"
         const val ACTION_NEXT = "com.vibeplayer.playback.ACTION_NEXT"
         const val ACTION_STOP = "com.vibeplayer.playback.ACTION_STOP"
+        const val ACTION_DISMISS = "com.vibeplayer.playback.ACTION_DISMISS"
 
         @Volatile
         private var activeService: PlaybackService? = null
@@ -280,6 +281,11 @@ class PlaybackService : Service() {
                     }
                 }
                 if (state.paused != wasPaused) {
+                    if (!state.paused) {
+                        pausedTimeoutJob?.cancel()
+                        pausedTimeoutJob = null
+                        startForegroundCompat()
+                    }
                     updateNotification()
                     // Not immediate: at the end of a file keep-open pauses and eof-reached arrives in
                     // the same burst, and auto-advance (onPlaybackEnded) must get its chance first.
@@ -315,6 +321,9 @@ class PlaybackService : Service() {
         }
     }
 
+    private var pausedTimeoutJob: Job? = null
+    @Volatile private var isForegroundService = false
+
     private fun startForegroundCompat() {
         val notif = buildNotification(currentVideoTitle.value, !playerEngine.state.value.paused)
         try {
@@ -323,8 +332,21 @@ class PlaybackService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notif)
             }
+            isForegroundService = true
         } catch (e: Exception) {
             Log.e("VP", "Failed to startForeground: ${e.message}", e)
+        }
+    }
+
+    private fun detachFromForeground() {
+        if (isForegroundService) {
+            try {
+                stopForeground(STOP_FOREGROUND_DETACH)
+                isForegroundService = false
+                Log.i("VP", "PlaybackService detached from foreground (media notification retained)")
+            } catch (e: Exception) {
+                Log.e("VP", "Failed to stopForeground(STOP_FOREGROUND_DETACH): ${e.message}", e)
+            }
         }
     }
 
@@ -332,21 +354,36 @@ class PlaybackService : Service() {
         Log.i("VP", "PlaybackService onStartCommand (action=${intent?.action})")
         // Every startForegroundService() must be followed by startForeground() or the app is killed;
         // a service that already left the foreground (task removed while still bound) is reused.
-        if (intent?.action != ACTION_STOP) startForegroundCompat()
+        if (intent?.action != ACTION_STOP && intent?.action != ACTION_DISMISS) startForegroundCompat()
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> {
                 resumeOnFocusGain = false
+                pausedTimeoutJob?.cancel()
+                pausedTimeoutJob = null
                 playerEngine.togglePause()
             }
             ACTION_REWIND_10 -> playerEngine.seekRelative(-10.0, exact = true)
             ACTION_FORWARD_10 -> playerEngine.seekRelative(10.0, exact = true)
             ACTION_PREVIOUS -> skipToNeighbour(forward = false)
             ACTION_NEXT -> skipToNeighbour(forward = true)
+            ACTION_DISMISS -> {
+                Log.i("VP", "PlaybackService dismissed via notification deleteIntent -> stopping")
+                resumeOnFocusGain = false
+                pausedTimeoutJob?.cancel()
+                pausedTimeoutJob = null
+                saveCurrentPosition()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                isForegroundService = false
+                stopSelf()
+            }
             ACTION_STOP -> {
                 resumeOnFocusGain = false
+                pausedTimeoutJob?.cancel()
+                pausedTimeoutJob = null
                 playerEngine.pause()
                 saveCurrentPosition()
                 stopForeground(STOP_FOREGROUND_REMOVE)
+                isForegroundService = false
                 stopSelf()
             }
         }
@@ -355,6 +392,8 @@ class PlaybackService : Service() {
 
     override fun onBind(intent: Intent?): IBinder {
         boundClients++
+        pausedTimeoutJob?.cancel()
+        pausedTimeoutJob = null
         Log.i("VP", "PlaybackService onBind, boundClients=$boundClients")
         return binder
     }
@@ -369,6 +408,8 @@ class PlaybackService : Service() {
     override fun onRebind(intent: Intent?) {
         super.onRebind(intent)
         boundClients++
+        pausedTimeoutJob?.cancel()
+        pausedTimeoutJob = null
         Log.i("VP", "PlaybackService onRebind, boundClients=$boundClients")
     }
 
@@ -383,8 +424,11 @@ class PlaybackService : Service() {
         )
         if (!keepPlaying) {
             Log.i("VP", "onTaskRemoved: stopping service and releasing engine")
+            pausedTimeoutJob?.cancel()
+            pausedTimeoutJob = null
             saveCurrentPosition()
             stopForeground(STOP_FOREGROUND_REMOVE)
+            isForegroundService = false
             stopSelf()
         }
     }
@@ -401,18 +445,44 @@ class PlaybackService : Service() {
         }
     }
 
-    fun checkShouldStop() {
+    fun checkShouldStop(isPausedTimeout: Boolean = false) {
         val state = playerEngine.state.value
         val shouldStop = PlaybackLifecyclePolicy.shouldStopService(
             boundClients = boundClients,
             backgroundAudioEnabled = backgroundAudioEnabled,
             isPaused = state.paused,
-            isEof = state.eof
+            isEof = state.eof,
+            pausedTimeoutExpired = isPausedTimeout
         )
         if (shouldStop) {
-            Log.i("VP", "PlaybackService stopping itself: boundClients=$boundClients, bgAudio=$backgroundAudioEnabled, paused=${state.paused}, eof=${state.eof}")
+            Log.i("VP", "PlaybackService stopping itself: boundClients=$boundClients, bgAudio=$backgroundAudioEnabled, paused=${state.paused}, eof=${state.eof}, timeout=$isPausedTimeout")
+            pausedTimeoutJob?.cancel()
+            pausedTimeoutJob = null
             stopForeground(STOP_FOREGROUND_REMOVE)
+            isForegroundService = false
             stopSelf()
+        } else {
+            val shouldBeInFg = PlaybackLifecyclePolicy.shouldBeInForeground(boundClients, state.paused)
+            if (!shouldBeInFg) {
+                detachFromForeground()
+                updateNotification()
+                schedulePausedTimeout()
+            } else {
+                pausedTimeoutJob?.cancel()
+                pausedTimeoutJob = null
+            }
+        }
+    }
+
+    private fun schedulePausedTimeout() {
+        if (pausedTimeoutJob?.isActive == true) return
+        pausedTimeoutJob = serviceScope.launch {
+            Log.i("VP", "Scheduling 10-minute paused timeout")
+            delay(PlaybackLifecyclePolicy.PAUSED_STOP_TIMEOUT_MS)
+            if (playerEngine.state.value.paused && boundClients == 0) {
+                Log.i("VP", "10-minute paused timeout reached -> stopping service")
+                checkShouldStop(isPausedTimeout = true)
+            }
         }
     }
 
@@ -891,12 +961,18 @@ class PlaybackService : Service() {
             Intent(this, PlaybackService::class.java).setAction(ACTION_NEXT),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val dismissIntent = PendingIntent.getService(
+            this, 6,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_DISMISS),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title.ifEmpty { "Vibe Player" })
             .setContentText(if (isPlaying) "Playing" else "Paused")
             .setSmallIcon(R.drawable.ic_pip_play)
             .setContentIntent(contentIntent)
+            .setDeleteIntent(dismissIntent)
             .setOngoing(isPlaying)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -931,6 +1007,8 @@ class PlaybackService : Service() {
         super.onDestroy()
         Log.i("VP", "PlaybackService onDestroy")
         periodicSaveJob?.cancel()
+        stopCheckJob?.cancel()
+        pausedTimeoutJob?.cancel()
         serviceScope.cancel()
         // Detach from the statics first so a service created right after cannot pick up this engine.
         val engine = activeEngine
