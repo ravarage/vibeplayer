@@ -188,7 +188,9 @@ def double_tap(ctx):
 @check("swipe_seek", "Horizontal swipe seeks proportionally (40 ms per pixel)")
 def swipe_seek(ctx):
     _need_clip(ctx, MULTI)
-    ctx.play_clip(MULTI)
+    # fixed start (debug hook): from a random resume point +20 s can hit the end of the 46 s clip,
+    # auto-play the next file from 0 and clamp the backward swipe
+    ctx.play_clip(MULTI, extras="--el start_ms 5000")
     w, h = ctx.size()
     x0 = max(int(w * 0.07), ctx.dpx(48))
     m = ctx.log.mark()
