@@ -645,9 +645,10 @@ class PlayerEngine(
             availableGpuApis = parsedChoices
             cachedGpuApis = parsedChoices
         }
-        if (playbackConfig.formatProfile != null) {
-            currentFormat = playbackConfig.formatProfile?.format
-            currentResolvedConfig = playbackConfig.formatProfile
+        val profile = playbackConfig.formatProfile
+        if (profile != null) {
+            currentFormat = profile.format
+            currentResolvedConfig = profile
         }
         _state.update {
             it.copy(
