@@ -473,6 +473,26 @@ log shows the Vulkan context and device; or the exact failure is recorded. If it
 build becomes the default libraries in `player/src/main/jniLibs` (default variant = with Vulkan), the
 P6 tasks compare Vulkan vs GLES as SPEC.md originally says, and the renderer setting offers both.
 
+**P6-07 Vulkan first, with a fallback chain** — **User decision (2026-10-14), replaces "GLES is the
+default renderer".** Default renderer = Vulkan whenever it can work: the libmpv build has `vulkan` in
+`gpu-api` and the device's Vulkan driver is 1.2+ (decide by trying, never by the 1.1 feature flag). The
+chain on every open, automatic and silent apart from one short message and a log line:
+1. Vulkan (gpu-api=vulkan, gpu-context=androidvk). If the VO fails to start, the device is lost, or no
+   first frame arrives in about 3 s with a surface attached -> 2. Log "VULKAN-FAIL" lines (the user
+   develops the driver) and remember the failure for the session.
+2. OpenGL ES (gpu-api=opengl, gpu-context=android) at the same position. If that fails too -> 3.
+3. Software decoding (hwdec=no) on OpenGL ES at the same position (the B-08 watchdog already does
+   this for a stalled hardware decoder; reuse it, do not duplicate it).
+Applies to both modes: Quality uses gpu-next on Vulkan; Efficient on Vulkan uses vo=gpu with
+mediacodec-copy (zero-copy MediaCodec output is GLES-only), so Efficient may cost more CPU/battery on
+Vulkan: the P6 benchmark measures it, and the settings keep a manual choice (Auto = this chain,
+Vulkan, OpenGL ES). The debug overlay shows the renderer actually in use and why (e.g. "GLES (Vulkan
+failed)"). *Files*: PlaybackMode.kt / RendererResolver, PlayerEngine.kt, PlaybackService.kt,
+AppSettings.kt, SettingsScreen.kt, DebugOverlay.kt. *Accept*: on the phone with the 1.3 driver, a
+fresh install plays H.264, HEVC, VP9 and AV1 on Vulkan (overlay shows vulkan); with Vulkan forced to
+fail (debug extra that breaks the Vulkan context) it lands on GLES at the same position; with both
+forced to fail it plays in software; unit tests for the chain decisions.
+
 **P6-01 Quality mode** — Quality option table; mode setting and in-player toggle using
 `reconfigure()`. *Files*: PlaybackMode.kt, PlayerEngine.kt, ui/settings/*. *Accept*: overlay shows
 `gpu-next` and `mediacodec-copy`; switching mid-file keeps position and tracks.
