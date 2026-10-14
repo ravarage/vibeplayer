@@ -52,11 +52,13 @@ class LogView:
     def __init__(self, fetch, pids, sleep=time.sleep, clock=time.monotonic):
         self.fetch, self.pids_fn, self.sleep, self.clock = fetch, pids, sleep, clock
         self.known = set()
+        self._all_lines = []
+        self._all_raw = []
         self.lines = []
         self.raw_count = 0
 
     def reset(self):
-        self.lines, self.raw_count = [], 0
+        self._all_lines, self._all_raw, self.lines, self.raw_count = [], [], [], 0
 
     def refresh(self):
         try:
@@ -65,13 +67,39 @@ class LogView:
             pass
         text = self.fetch()
         parsed = parse_text(text)
-        self.raw_count = len(text.splitlines())
-        self.lines = filter_pids(parsed, self.known)
+        if not self._all_lines:
+            for i, p in enumerate(parsed):
+                self._all_lines.append(p._replace(seq=i))
+                self._all_raw.append(p.raw)
+        else:
+            overlap_idx = -1
+            for back in range(1, min(len(self._all_raw) + 1, 50)):
+                target = self._all_raw[-back]
+                for j in range(len(parsed) - 1, -1, -1):
+                    if parsed[j].raw == target:
+                        match = True
+                        for k in range(1, min(j + 1, len(self._all_raw) - back + 1, 10)):
+                            if parsed[j - k].raw != self._all_raw[-back - k]:
+                                match = False
+                                break
+                        if match:
+                            overlap_idx = j
+                            break
+                if overlap_idx != -1:
+                    break
+            new_parsed = parsed[overlap_idx + 1:] if overlap_idx != -1 else parsed
+            start_seq = len(self._all_lines)
+            for i, p in enumerate(new_parsed):
+                self._all_lines.append(p._replace(seq=start_seq + i))
+                self._all_raw.append(p.raw)
+
+        self.raw_count = len(self._all_lines)
+        self.lines = filter_pids(self._all_lines, self.known)
         return self.lines
 
     def mark(self):
         self.refresh()
-        return self.raw_count
+        return len(self._all_lines)
 
     def find_all(self, pattern, since=0, tag=None):
         rx = re.compile(pattern)
