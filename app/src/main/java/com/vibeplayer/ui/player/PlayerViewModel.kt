@@ -44,6 +44,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val appSettingsRepository = AppSettingsRepository(application)
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile private var backgroundAudioEnabled = false
+
     @Volatile private var currentKey: String? = null
     @Volatile private var currentVideoPath: String? = null
     @Volatile private var currentFolderPath: String? = null
@@ -57,7 +59,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _neighbours = MutableStateFlow(Neighbours())
     val neighbours: StateFlow<Neighbours> = _neighbours.asStateFlow()
 
+    fun isBackgroundAudioEnabled(): Boolean = backgroundAudioEnabled
+
     init {
+        viewModelScope.launch {
+            appSettingsRepository.appSettingsFlow
+                .map { it.backgroundAudio }
+                .distinctUntilChanged()
+                .collect { backgroundAudioEnabled = it }
+        }
+
         // Periodic save only while actively playing; pause transitions save below.
         periodicSaveJob = viewModelScope.launch(Dispatchers.IO) {
             playerEngine.state.map { it.paused }.distinctUntilChanged().collectLatest { paused ->

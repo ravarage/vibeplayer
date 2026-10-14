@@ -641,7 +641,7 @@ class PlayerActivity : ComponentActivity() {
         Log.i("VP", "PlayerActivity onStart")
         try {
             val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
-            ContextCompat.registerReceiver(this, volumeReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
+            ContextCompat.registerReceiver(this, volumeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         } catch (e: Exception) {
             Log.w("VP", "Failed to register volume receiver: ${e.message}")
         }
@@ -651,7 +651,7 @@ class PlayerActivity : ComponentActivity() {
                 addAction(PipHelper.ACTION_PLAY_PAUSE)
                 addAction(PipHelper.ACTION_FORWARD)
             }
-            ContextCompat.registerReceiver(this, pipReceiver, pipFilter, ContextCompat.RECEIVER_EXPORTED)
+            ContextCompat.registerReceiver(this, pipReceiver, pipFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
         } catch (e: Exception) {
             Log.w("VP", "Failed to register pip receiver: ${e.message}")
         }
@@ -679,10 +679,18 @@ class PlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         Log.i("VP", "PlayerActivity onStop (isInPip=$isInPictureInPictureMode, wasInPip=${_isInPipFlow.value})")
-        if (isInPictureInPictureMode || _isInPipFlow.value) {
+        val inPip = isInPictureInPictureMode || _isInPipFlow.value
+        if (inPip) {
             Log.i("VP", "PiP dismissed/closed onStop -> stopping playback")
             playerEngine.pause()
             _isInPipFlow.value = false
+        } else {
+            if (!viewModel.isBackgroundAudioEnabled()) {
+                Log.i("VP", "PlayerActivity onStop outside PiP -> pausing playback (background audio off)")
+                playerEngine.pause()
+            } else {
+                Log.i("VP", "PlayerActivity onStop outside PiP -> background audio is on, continuing playback")
+            }
         }
         viewModel.saveCurrentPosition()
         try {
