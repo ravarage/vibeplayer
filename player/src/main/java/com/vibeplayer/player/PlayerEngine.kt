@@ -935,10 +935,9 @@ class PlayerEngine(
                 options.add("sid=$subTrackId")
             }
 
-            if (speed != 1.0) {
-                val spd = String.format(java.util.Locale.US, "%.2f", speed)
-                options.add("speed=$spd")
-            }
+            // Always written: setSpeed() changes mpv's global speed, so a file without its own
+            // speed (1.0) would otherwise inherit the previous file's.
+            options.add("speed=" + String.format(java.util.Locale.US, "%.2f", speed))
 
             // P4-13: the delays are per file; a new file must not inherit the previous file's values,
             // so the defaults are written explicitly. The subtitle style is global.
