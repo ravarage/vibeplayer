@@ -373,6 +373,16 @@ clip ends and the next file plays with picture (also inside the mini player and 
 locked controls); the last file in a folder just stops; with the setting off nothing advances;
 next/previous buttons work; folder track memory (P4-10) applies to the auto-played file.
 
+**P4-13 Subtitle and audio sync, subtitle style** — MX Player parity (reviewer addition 2026-10-14,
+the user asked for more work). In the player: subtitle delay and audio delay in 50 ms steps (a small
+sheet with -/+ buttons and reset, mpv `sub-delay` / `audio-delay`), saved per file with the other
+per-file choices (Room migration), subtitle size (`sub-scale`) and vertical position (`sub-pos`)
+as global settings, and "override ASS style" off by default (styled anime subtitles must keep their
+look; when on, `sub-ass-override=force` with the chosen size). *Files*: ui/player/*, PlayerEngine.kt,
+data/db/*, data/prefs/*, ui/settings/*. *Accept*: a delay change visibly moves subtitles on the
+device, is restored after reopen, another file is unaffected; size/position change SRT subtitles;
+Bocchi's styled ASS is unchanged with override off.
+
 **P4-08 History in browser** — Progress bar on thumbnails, "Continue watching" row.
 *Files*: ui/browser/*. *Accept*: partially watched clips show progress; row order = most recent first.
 
