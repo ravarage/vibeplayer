@@ -207,9 +207,8 @@ class ThumbnailCache(
         val generated = generator.generateThumbnail(path, targetWidth = targetWidth, targetHeight = targetHeight)
         if (generated != null) {
             memoryCache.put(key, generated)
+            val tempFile = File(cacheDir, "$fileKey.${System.nanoTime()}.tmp")
             try {
-                val tempFile = File(cacheDir, "$fileKey.webp.tmp")
-                tempFile.delete()
                 FileOutputStream(tempFile).use { out ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         generated.compress(Bitmap.CompressFormat.WEBP_LOSSY, 80, out)
@@ -218,13 +217,16 @@ class ThumbnailCache(
                     }
                 }
                 if (!tempFile.renameTo(diskFile)) {
-                    tempFile.delete()
                     Log.w("VP", "Failed to atomically publish thumbnail cache file: ${diskFile.name}")
                 } else {
                     Log.d("VP", "Saved thumbnail to disk cache: ${diskFile.name}")
                 }
             } catch (e: Exception) {
                 Log.w("VP", "Failed to write thumbnail to disk cache for $path", e)
+            } finally {
+                if (tempFile.exists()) {
+                    tempFile.delete()
+                }
             }
             generated
         } else {
