@@ -30,6 +30,7 @@ import com.vibeplayer.player.FolderTrackChoice
 import com.vibeplayer.player.LanguagePreferences
 import com.vibeplayer.player.PlaybackConfig
 import com.vibeplayer.player.PlaybackMode
+import com.vibeplayer.player.PerfLog
 import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.Renderer
 import com.vibeplayer.player.RendererResolver
@@ -41,6 +42,8 @@ import com.vibeplayer.ui.player.FolderPlaylist
 import com.vibeplayer.ui.player.PlayerActivity
 import com.vibeplayer.ui.player.PlayerViewModel.Neighbours
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -63,6 +66,8 @@ import java.io.File
 class PlaybackService : Service() {
 
     companion object {
+        /** P7-02: deferred start-up work (MediaSession, shader extraction) runs at the latest after this. */
+        private const val DEFERRED_WORK_TIMEOUT_MS = 3000L
         const val CHANNEL_ID = "vibeplayer_playback"
         const val NOTIFICATION_ID = 1001
 
@@ -90,7 +95,7 @@ class PlaybackService : Service() {
 
         fun getOrCreateEngine(): PlayerEngine {
             return activeEngine ?: synchronized(PlaybackService::class.java) {
-                activeEngine ?: PlayerEngine().also { activeEngine = it }
+                activeEngine ?: PlayerEngine(waitForInitialConfig = true).also { activeEngine = it }
             }
         }
     }
@@ -266,7 +271,12 @@ class PlaybackService : Service() {
 
         // Shader presets (P7): the service owns the engine, so it owns the directory and the setting.
         playerEngine.setShaderDirectory(File(filesDir, "shaders").absolutePath)
-        serviceScope.launch(Dispatchers.IO) { ensureShadersExtracted(this@PlaybackService) }
+        // P7-02: extraction is only needed before a load that uses a shader preset (awaited there);
+        // otherwise it starts after the first frame.
+        serviceScope.launch {
+            withTimeoutOrNull(DEFERRED_WORK_TIMEOUT_MS) { playerEngine.firstFrameReady.first { it } }
+            shaderExtraction.start()
+        }
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow
                 .map { it.shaderPreset }
@@ -274,26 +284,16 @@ class PlaybackService : Service() {
                 .collect { playerEngine.setShaderPreset(mapShaderPreset(it)) }
         }
 
-        // Initialize Media3 SimpleBasePlayer adapter and MediaSession
-        val adapter = VibePlayerAdapter(mainLooper, playerEngine, this)
-        playerAdapter = adapter
-
-        val contentIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, PlayerActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        mediaSession = androidx.media3.session.MediaSession.Builder(this, adapter)
-            .setId("vibeplayer_session")
-            .setSessionActivity(contentIntent)
-            .build()
+        // P7-02: the Media3 adapter and MediaSession are built after the first frame (see
+        // createMediaSession); until then the notification simply has no media style.
 
         // Initial foreground notification (type mediaPlayback)
         startForegroundCompat()
+        serviceScope.launch {
+            withTimeoutOrNull(DEFERRED_WORK_TIMEOUT_MS) { playerEngine.firstFrameReady.first { it } }
+            createMediaSession()
+        }
+        PerfLog.mark("service-created")
 
         // Listen for background audio setting changes
         serviceScope.launch {
@@ -319,7 +319,7 @@ class PlaybackService : Service() {
         serviceScope.launch {
             var wasPaused = playerEngine.state.value.paused
             playerEngine.state.collect { state ->
-                adapter.notifyStateChanged()
+                playerAdapter?.notifyStateChanged()
                 if (state.paused && !wasPaused) {
                     saveCurrentPosition()
                     updateNoisyReceiver(false)
@@ -356,14 +356,14 @@ class PlaybackService : Service() {
         serviceScope.launch {
             // Title, file and folder neighbours feed the MediaSession playlist.
             combine(currentPath, currentVideoTitle, neighbours) { _, _, _ -> }.collect {
-                adapter.notifyStateChanged()
+                playerAdapter?.notifyStateChanged()
                 updateNotification()
             }
         }
 
         serviceScope.launch {
             playerEngine.position.collect {
-                adapter.notifyStateChanged()
+                playerAdapter?.notifyStateChanged()
             }
         }
 
@@ -388,6 +388,23 @@ class PlaybackService : Service() {
         ShaderPresetOption.ANIME4K_B -> ShaderPreset.ANIME4K_B
         ShaderPresetOption.ANIME4K_C -> ShaderPreset.ANIME4K_C
         ShaderPresetOption.SNAPDRAGON_GSR -> ShaderPreset.SNAPDRAGON_GSR
+    }
+
+    private fun createMediaSession() {
+        if (activeService !== this || mediaSession != null) return
+        val adapter = VibePlayerAdapter(mainLooper, playerEngine, this)
+        playerAdapter = adapter
+        mediaSession = androidx.media3.session.MediaSession.Builder(this, adapter)
+            .setId("vibeplayer_session")
+            .setSessionActivity(contentPendingIntent)
+            .build()
+        adapter.notifyStateChanged()
+        updateNotification() // now with the media style
+    }
+
+    /** Extracted from assets on first need; started early by the first load that uses a preset. */
+    private val shaderExtraction = serviceScope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+        ensureShadersExtracted(this@PlaybackService)
     }
 
     private fun ensureShadersExtracted(context: Context): File {
@@ -457,7 +474,8 @@ class PlaybackService : Service() {
         Log.i("VP", "PlaybackService onStartCommand (action=${intent?.action})")
         // Every startForegroundService() must be followed by startForeground() or the app is killed;
         // a service that already left the foreground (task removed while still bound) is reused.
-        if (intent?.action != ACTION_STOP && intent?.action != ACTION_DISMISS) startForegroundCompat()
+        // Already foreground since onCreate: the notification is kept current by updateNotification().
+        if (intent?.action != ACTION_STOP && intent?.action != ACTION_DISMISS && !isForegroundService) startForegroundCompat()
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> {
                 if (isDucked) {
@@ -701,8 +719,7 @@ class PlaybackService : Service() {
         }
         _currentVideoTitle.value = resolvedTitle
         _neighbours.value = Neighbours()
-
-        updateNotification()
+        // The title/path/neighbours collector in onCreate refreshes the notification.
 
         serviceScope.launch(Dispatchers.IO) {
             val files = if (path.startsWith("/")) FolderPlaylist.list(path) else emptyList()
@@ -712,17 +729,27 @@ class PlaybackService : Service() {
                 if (currentVideoPath == path) _neighbours.value = updated
             }
         }
-        val key = computeKey(identityKey ?: path, sizeBytes)
-
         loadJob = serviceScope.launch {
             val resolvedFolderKey = folderKey ?: (File(path).parent ?: "")
-            val fileSettings = withContext(Dispatchers.IO) {
-                dao.getByKey(key) ?: dao.getByKey(path)
+            // P7-02: key (File.exists/length), per-file row, folder row and app settings in parallel,
+            // none of it on the main thread; loadfile follows with everything at once.
+            val keyDeferred = async(Dispatchers.IO) { computeKey(identityKey ?: path, sizeBytes) }
+            val fileDeferred = async(Dispatchers.IO) {
+                val k = keyDeferred.await()
+                dao.getByKey(k) ?: dao.getByKey(path)
             }
-            val folderSettings = withContext(Dispatchers.IO) {
+            val folderDeferred = async(Dispatchers.IO) {
                 if (resolvedFolderKey.isNotEmpty()) folderDao.getByPath(resolvedFolderKey) else null
             }
-            val appSettings = appSettingsRepository.appSettingsFlow.first()
+            val settingsDeferred = async(Dispatchers.IO) { appSettingsRepository.appSettingsFlow.first() }
+            val key = keyDeferred.await()
+            val fileSettings = fileDeferred.await()
+            val folderSettings = folderDeferred.await()
+            val appSettings = settingsDeferred.await()
+            if (generation != loadGeneration || currentVideoPath != path) return@launch
+            // The renderer decision below needs the gpu-api list, which the engine reads while
+            // initialising; wait for that instead of creating a second mpv handle on this thread.
+            playerEngine.awaitInitialised()
             if (generation != loadGeneration || currentVideoPath != path) return@launch
 
             val startPositionMs = if (startFromBeginning) {
@@ -815,7 +842,9 @@ class PlaybackService : Service() {
                 playerEngine.reconfigure(targetConfig)
             }
 
-            playerEngine.setShaderPreset(shaderPreset ?: mapShaderPreset(appSettings.shaderPreset))
+            val effectivePreset = shaderPreset ?: mapShaderPreset(appSettings.shaderPreset)
+            if (effectivePreset != ShaderPreset.NONE) shaderExtraction.await()
+            playerEngine.setShaderPreset(effectivePreset)
 
             playerEngine.load(
                 path = path,
@@ -1102,8 +1131,8 @@ class PlaybackService : Service() {
         nm.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(title: String, isPlaying: Boolean): Notification {
-        val contentIntent = PendingIntent.getActivity(
+    private val contentPendingIntent: PendingIntent by lazy {
+        PendingIntent.getActivity(
             this,
             0,
             Intent(this, PlayerActivity::class.java).apply {
@@ -1111,37 +1140,26 @@ class PlaybackService : Service() {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
 
-        val prevIntent = PendingIntent.getService(
-            this, 1,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_PREVIOUS),
+    private fun servicePendingIntent(requestCode: Int, action: String): PendingIntent =
+        PendingIntent.getService(
+            this, requestCode,
+            Intent(this, PlaybackService::class.java).setAction(action),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val rewIntent = PendingIntent.getService(
-            this, 2,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_REWIND_10),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val playPauseIntent = PendingIntent.getService(
-            this, 3,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_PLAY_PAUSE),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val fwdIntent = PendingIntent.getService(
-            this, 4,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_FORWARD_10),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val nextIntent = PendingIntent.getService(
-            this, 5,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_NEXT),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val dismissIntent = PendingIntent.getService(
-            this, 6,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_DISMISS),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+
+    // P7-02: these never change, so they are created once instead of on every notification update
+    // (each is a binder call to the system server, and several updates happen while a file opens).
+    private val prevIntent by lazy { servicePendingIntent(1, ACTION_PREVIOUS) }
+    private val rewIntent by lazy { servicePendingIntent(2, ACTION_REWIND_10) }
+    private val playPauseIntent by lazy { servicePendingIntent(3, ACTION_PLAY_PAUSE) }
+    private val fwdIntent by lazy { servicePendingIntent(4, ACTION_FORWARD_10) }
+    private val nextIntent by lazy { servicePendingIntent(5, ACTION_NEXT) }
+    private val dismissIntent by lazy { servicePendingIntent(6, ACTION_DISMISS) }
+
+    private fun buildNotification(title: String, isPlaying: Boolean): Notification {
+        val contentIntent = contentPendingIntent
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title.ifEmpty { "Vibe Player" })

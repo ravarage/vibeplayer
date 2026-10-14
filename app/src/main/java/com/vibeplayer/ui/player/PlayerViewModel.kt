@@ -12,6 +12,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vibeplayer.data.prefs.AppSettingsRepository
 import com.vibeplayer.playback.PlaybackService
+import com.vibeplayer.player.PerfLog
 import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.PlaybackConfig
 import com.vibeplayer.player.ShaderPreset
@@ -74,6 +75,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val s = (binder as? PlaybackService.LocalBinder)?.service ?: return
             service = s
             Log.i("VP", "PlayerViewModel onServiceConnected")
+            PerfLog.mark("service-connected")
             viewModelScope.launch {
                 s.currentPath.collect { _currentPath.value = it }
             }
@@ -97,6 +99,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
+        // P7-02: open the Room database now (IO) so the first per-file/folder query in the service
+        // does not pay for it after the service has connected.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                com.vibeplayer.data.db.AppDatabase.getInstance(application).openHelper.writableDatabase
+            } catch (e: Exception) {
+                Log.w("VP", "Room warm-up failed: ${e.message}")
+            }
+        }
         viewModelScope.launch {
             appSettingsRepository.appSettingsFlow
                 .map { it.backgroundAudio }

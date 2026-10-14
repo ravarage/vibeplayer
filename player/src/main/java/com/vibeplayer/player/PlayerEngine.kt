@@ -23,7 +23,13 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
 class PlayerEngine(
-    initialConfig: PlaybackConfig = PlaybackConfig()
+    initialConfig: PlaybackConfig = PlaybackConfig(),
+    /**
+     * P7-02: the service-owned engine starts creating the mpv handle immediately but waits (on its own
+     * command thread, at most [INITIAL_CONFIG_WAIT_MS]) for [provideInitialConfig], so the handle is
+     * built once with the right mode/renderer instead of being rebuilt by [reconfigure].
+     */
+    private val waitForInitialConfig: Boolean = false
 ) {
 
     private fun newCommandExecutor(): ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -37,6 +43,42 @@ class PlayerEngine(
     @Volatile private var scope = CoroutineScope(commandDispatcher + SupervisorJob())
     @Volatile private var released = false
     @Volatile private var timePosObserved = true
+
+    private val initialConfigLatch = java.util.concurrent.CountDownLatch(1)
+    private var initialConfigOverride: PlaybackConfig? = null
+    private var initStarted = false
+    private val initialisedSignal = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val _firstFrameReady = MutableStateFlow(false)
+    /** True after the first playback-restart of this engine (first frame is up); never reset. */
+    val firstFrameReady: StateFlow<Boolean> = _firstFrameReady.asStateFlow()
+
+    /** Completes when the mpv handle has been created and initialised (also if that failed). */
+    suspend fun awaitInitialised() = initialisedSignal.await()
+
+    /**
+     * Supplies the config for the first mpv handle. Returns false when the handle was already created
+     * (the caller then falls back to [reconfigure]). Only has an effect on engines created with
+     * waitForInitialConfig.
+     */
+    fun provideInitialConfig(config: PlaybackConfig): Boolean = synchronized(initialConfigLatch) {
+        if (initStarted) return false
+        initialConfigOverride = config
+        initialConfigLatch.countDown()
+        true
+    }
+
+    private fun awaitInitialConfig() {
+        if (waitForInitialConfig) {
+            try {
+                initialConfigLatch.await(INITIAL_CONFIG_WAIT_MS, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+            }
+        }
+        synchronized(initialConfigLatch) {
+            initStarted = true
+            initialConfigOverride?.let { playbackConfig = it }
+        }
+    }
 
     private fun executeCommand(block: () -> Unit) {
         if (released) return
@@ -104,6 +146,7 @@ class PlayerEngine(
 
     companion object {
         private const val DETACH_TIMEOUT_MS = 1500L
+        private const val INITIAL_CONFIG_WAIT_MS = 600L
         @Volatile var sessionVulkanFailed: Boolean = false
         @Volatile var cachedGpuApis: List<String> = emptyList()
 
@@ -257,13 +300,15 @@ class PlayerEngine(
                 MpvEvent.PLAYBACK_RESTART -> {
                     if (ignoreRestartSerial == loadSerial.get()) return
                     restartSeenSerial = loadSerial.get()
-                    Log.i("VP-Perf", "playback-restart at ${System.currentTimeMillis()}")
+                    PerfLog.mark("playback-restart")
+                    _firstFrameReady.value = true
                 }
                 MpvEvent.END_FILE -> {
                     logStats()
                     Log.i("VP", "mpv event end-file")
                 }
                 MpvEvent.FILE_LOADED -> {
+                    PerfLog.mark("file-loaded")
                     Log.i("VP", "mpv event file-loaded")
                     if (!pendingPauseOnLoad) {
                         _state.update { it.copy(paused = false) }
@@ -476,7 +521,13 @@ class PlayerEngine(
 
     init {
         scope.launch {
-            initHandle()
+            awaitInitialConfig()
+            try {
+                initHandle()
+            } finally {
+                initialisedSignal.complete(Unit)
+            }
+            PerfLog.mark("engine-initialised")
         }
     }
 
@@ -566,6 +617,7 @@ class PlayerEngine(
                 val restoreVid = savedVid ?: "auto"
                 MpvNative.setPropertyString(handle, "vid", restoreVid)
                 Log.i("VP", "Surface attached to mpv handle; restored vid=$restoreVid")
+                PerfLog.mark("surface-attached")
                 savedVid = null
                 checkVulkanVoInitialization()
             }
@@ -772,6 +824,7 @@ class PlayerEngine(
                 Log.i("VP", "Loading $path from start without options")
                 arrayOf("loadfile", path, "replace")
             }
+            PerfLog.mark("loadfile-issued")
             val res = MpvNative.command(handle, cmd)
             Log.i("VP", "loadfile res=$res for $path")
             if (paused) {
