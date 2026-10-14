@@ -435,6 +435,16 @@ class PlaybackService : Service() {
         startFromBeginning: Boolean = false,
         playAfterLoad: Boolean = false
     ) {
+        val leavingKey = currentKey
+        val leavingPath = currentVideoPath
+        val leavingPos = playerEngine.position.value
+        val leavingState = playerEngine.state.value
+        if (leavingKey != null && leavingPath != null && leavingPath != path) {
+            saveScope.launch {
+                savePositionSnapshot(leavingKey, leavingPos, leavingState)
+            }
+        }
+
         val generation = ++loadGeneration
         loadJob?.cancel()
         currentVideoPath = path

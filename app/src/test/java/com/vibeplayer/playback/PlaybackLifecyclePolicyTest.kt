@@ -43,5 +43,18 @@ class PlaybackLifecyclePolicyTest {
         assertFalse(PlaybackLifecyclePolicy.shouldKeepPlayingOnTaskRemoved(backgroundAudioEnabled = false, isPaused = false, isEof = false))
         assertFalse(PlaybackLifecyclePolicy.shouldKeepPlayingOnTaskRemoved(backgroundAudioEnabled = true, isPaused = true, isEof = false))
         assertFalse(PlaybackLifecyclePolicy.shouldKeepPlayingOnTaskRemoved(backgroundAudioEnabled = true, isPaused = false, isEof = true))
+        assertFalse(PlaybackLifecyclePolicy.shouldKeepPlayingOnTaskRemoved(backgroundAudioEnabled = true, isPaused = true, isEof = true))
+    }
+
+    @Test
+    fun testMultipleClientsUnbindingEdgeCases() {
+        // As long as boundClients > 0, shouldStopService is always false
+        assertFalse(PlaybackLifecyclePolicy.shouldStopService(boundClients = 3, backgroundAudioEnabled = false, isPaused = true, isEof = true))
+        assertFalse(PlaybackLifecyclePolicy.shouldStopService(boundClients = 2, backgroundAudioEnabled = false, isPaused = true, isEof = true))
+        assertFalse(PlaybackLifecyclePolicy.shouldStopService(boundClients = 1, backgroundAudioEnabled = false, isPaused = true, isEof = true))
+
+        // Once boundClients hits 0:
+        assertTrue(PlaybackLifecyclePolicy.shouldStopService(boundClients = 0, backgroundAudioEnabled = false, isPaused = true, isEof = true))
+        assertTrue(PlaybackLifecyclePolicy.shouldStopService(boundClients = 0, backgroundAudioEnabled = true, isPaused = true, isEof = true))
     }
 }

@@ -423,8 +423,12 @@ class PlayerActivity : ComponentActivity() {
         }
         if (config != playerEngine.playbackConfig) {
             playerEngine.reconfigure(config)
-        } else if (currentVideoPath != oldPath) {
+        }
+        val hasExplicitTarget = !intent.getStringExtra("path").isNullOrEmpty() || intent.data != null
+        if (currentVideoPath != oldPath) {
             openResolvedVideo()
+        } else if (hasExplicitTarget && playerEngine.state.value.paused) {
+            playerEngine.play()
         }
     }
 
