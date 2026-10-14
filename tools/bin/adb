@@ -1,6 +1,17 @@
+list=$("$REAL" devices 2>/dev/null)
+# Prefer Wi-Fi (the user unplugs the cable at any time); USB only when Wi-Fi is unreachable.
+echo "$list" | grep -qE "^$WIFI[[:space:]]+device" || "$REAL" connect "$WIFI" >/dev/null 2>&1
+list=$("$REAL" devices 2>/dev/null)
+if echo "$list" | grep -qE "^$WIFI[[:space:]]+device"; then
+  export ANDROID_SERIAL=$WIFI
+elif echo "$list" | grep -qE "^$USB[[:space:]]+device"; then
+  export ANDROID_SERIAL=$USB
+else
+  export ANDROID_SERIAL=$WIFI
+fi
 #!/bin/bash
 # adb wrapper for agents: the phone is reachable over USB and over Wi-Fi, and the user may unplug
-# the cable at any time. Picks USB when it is attached (fast), otherwise Wi-Fi, so callers can run
+# the cable at any time. Picks Wi-Fi when it is reachable, otherwise USB, so callers can run
 # plain `adb ...`. Put tools/bin first in PATH. Do not set ANDROID_SERIAL yourself.
 REAL=/usr/bin/adb
 USB=2fbe93cc
