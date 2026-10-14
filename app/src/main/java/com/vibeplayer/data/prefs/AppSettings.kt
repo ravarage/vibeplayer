@@ -60,6 +60,15 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_PREFERRED_AUDIO_LANGS = stringPreferencesKey("preferred_audio_langs")
         private val KEY_PREFERRED_SUB_LANGS = stringPreferencesKey("preferred_sub_langs")
         private val KEY_SUBTITLE_MODE = stringPreferencesKey("subtitle_mode")
+        private val KEY_NOTIFICATION_PERMISSION_DENIED = booleanPreferencesKey("notification_permission_denied")
+    }
+
+    val notificationPermissionDeniedFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_NOTIFICATION_PERMISSION_DENIED] ?: false
+    }
+
+    suspend fun setNotificationPermissionDenied(denied: Boolean) {
+        context.settingsDataStore.edit { it[KEY_NOTIFICATION_PERMISSION_DENIED] = denied }
     }
 
     val appSettingsFlow: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->

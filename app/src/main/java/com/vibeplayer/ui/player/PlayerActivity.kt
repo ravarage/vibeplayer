@@ -40,9 +40,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.vibeplayer.data.prefs.AppSettingsRepository
 import com.vibeplayer.playback.PlaybackService
 import com.vibeplayer.player.PlayerEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -179,10 +181,17 @@ class PlayerActivity : ComponentActivity() {
         tryStartPlayback()
     }
 
+    private val appSettingsRepository by lazy { AppSettingsRepository(applicationContext) }
+
     private val requestNotificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         Log.i("VP", "PlayerActivity POST_NOTIFICATIONS result: $isGranted")
+        if (!isGranted) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                appSettingsRepository.setNotificationPermissionDenied(true)
+            }
+        }
     }
 
     private fun checkNotificationPermission() {
@@ -192,7 +201,16 @@ class PlayerActivity : ComponentActivity() {
                     Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
-                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                lifecycleScope.launch {
+                    val denied = withContext(Dispatchers.IO) {
+                        appSettingsRepository.notificationPermissionDeniedFlow.first()
+                    }
+                    if (!denied) {
+                        requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        Log.i("VP", "POST_NOTIFICATIONS previously denied; not asking again")
+                    }
+                }
             }
         }
     }
@@ -459,9 +477,9 @@ class PlayerActivity : ComponentActivity() {
         } else {
             // Launched without a target (notification tap after the player was closed with background
             // audio on): show the file the service is playing, not the built-in default.
-            PlaybackService.currentInstance?.currentPath?.value?.let {
-                currentVideoPath = it
-                if (it.startsWith("/")) currentVideoTitle = File(it).name
+            PlaybackService.currentInstance?.let { s ->
+                s.currentPath.value?.let { currentVideoPath = it }
+                currentVideoTitle = s.currentVideoTitle.value
             }
         }
         Log.i("VP", "Resolved video path: $currentVideoPath (title: $currentVideoTitle)")
@@ -471,7 +489,8 @@ class PlayerActivity : ComponentActivity() {
         viewModel.openVideo(
             path = currentVideoPath,
             identityKey = currentIdentityKey,
-            folderKey = currentFolderKey
+            folderKey = currentFolderKey,
+            title = currentVideoTitle
         )
     }
 

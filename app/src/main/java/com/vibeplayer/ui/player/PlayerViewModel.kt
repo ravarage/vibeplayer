@@ -36,7 +36,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val identityKey: String?,
         val folderKey: String?,
         val startFromBeginning: Boolean,
-        val playAfterLoad: Boolean
+        val playAfterLoad: Boolean,
+        val title: String? = null
     )
     @Volatile private var pendingOpen: PendingOpen? = null
 
@@ -64,7 +65,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 pendingOpen = null
                 s.openVideo(
                     req.path, req.sizeBytes, req.identityKey, req.folderKey,
-                    req.startFromBeginning, req.playAfterLoad
+                    req.startFromBeginning, req.playAfterLoad, req.title
                 )
             }
         }
@@ -106,14 +107,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         identityKey: String? = null,
         folderKey: String? = null,
         startFromBeginning: Boolean = false,
-        playAfterLoad: Boolean = false
+        playAfterLoad: Boolean = false,
+        title: String? = null
     ) {
         _currentPath.value = path
         val active = service ?: PlaybackService.currentInstance
         if (active != null) {
-            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad)
+            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title)
         } else {
-            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad)
+            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title)
         }
     }
 

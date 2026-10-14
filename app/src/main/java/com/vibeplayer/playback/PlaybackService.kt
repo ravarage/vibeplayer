@@ -9,9 +9,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.vibeplayer.R
@@ -563,6 +565,23 @@ class PlaybackService : Service() {
         }
     }
 
+    private fun queryDisplayName(uri: Uri): String {
+        try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx != -1) {
+                        val name = cursor.getString(idx)
+                        if (!name.isNullOrEmpty()) return name
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("VP", "Failed to query displayName in PlaybackService: ${e.message}")
+        }
+        return uri.lastPathSegment ?: "Video"
+    }
+
     fun computeKey(path: String, sizeBytes: Long = 0L): String {
         val size = if (sizeBytes > 0L) {
             sizeBytes
@@ -579,7 +598,8 @@ class PlaybackService : Service() {
         identityKey: String? = null,
         folderKey: String? = null,
         startFromBeginning: Boolean = false,
-        playAfterLoad: Boolean = false
+        playAfterLoad: Boolean = false,
+        title: String? = null
     ) {
         val leavingKey = currentKey
         val leavingPath = currentVideoPath
@@ -596,8 +616,13 @@ class PlaybackService : Service() {
         currentVideoPath = path
         currentFolderPath = folderKey ?: File(path).parent
         _currentPath.value = path
-        val title = if (path.startsWith("/")) File(path).name else (identityKey ?: "Video")
-        _currentVideoTitle.value = title
+        val resolvedTitle = title ?: when {
+            path.startsWith("/") -> File(path).name
+            identityKey?.startsWith("content://") == true -> queryDisplayName(Uri.parse(identityKey))
+            path.startsWith("content://") -> queryDisplayName(Uri.parse(path))
+            else -> identityKey ?: "Video"
+        }
+        _currentVideoTitle.value = resolvedTitle
         _neighbours.value = Neighbours()
 
         updateNotification()
