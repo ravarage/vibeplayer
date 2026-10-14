@@ -160,7 +160,7 @@ class PlaybackService : Service() {
                     this,
                     becomingNoisyReceiver,
                     filter,
-                    androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+                    androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
                 )
                 isNoisyReceiverRegistered = true
             } catch (e: Exception) {
@@ -233,16 +233,7 @@ class PlaybackService : Service() {
             .build()
 
         // Initial foreground notification (type mediaPlayback)
-        val initialNotif = buildNotification(currentVideoTitle.value, !playerEngine.state.value.paused)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, initialNotif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-            } else {
-                startForeground(NOTIFICATION_ID, initialNotif)
-            }
-        } catch (e: Exception) {
-            Log.e("VP", "Failed to startForeground: ${e.message}", e)
-        }
+        startForegroundCompat()
 
         // Listen for background audio setting changes
         serviceScope.launch {
@@ -276,6 +267,9 @@ class PlaybackService : Service() {
                         abandonAudioFocus()
                     }
                 } else if (!state.paused && wasPaused) {
+                    // Playing again (user, notification, auto-advance): a pending transient-loss resume
+                    // must not start playback later after the user paused again.
+                    resumeOnFocusGain = false
                     val granted = requestAudioFocus()
                     if (!granted) {
                         Log.w("VP", "Audio focus denied -> pausing playback")
@@ -286,7 +280,9 @@ class PlaybackService : Service() {
                 }
                 if (state.paused != wasPaused) {
                     updateNotification()
-                    checkShouldStop()
+                    // Not immediate: at the end of a file keep-open pauses and eof-reached arrives in
+                    // the same burst, and auto-advance (onPlaybackEnded) must get its chance first.
+                    if (state.paused) scheduleStopCheck()
                 }
                 wasPaused = state.paused
             }
@@ -310,8 +306,24 @@ class PlaybackService : Service() {
         }
     }
 
+    private fun startForegroundCompat() {
+        val notif = buildNotification(currentVideoTitle.value, !playerEngine.state.value.paused)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIFICATION_ID, notif)
+            }
+        } catch (e: Exception) {
+            Log.e("VP", "Failed to startForeground: ${e.message}", e)
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i("VP", "PlaybackService onStartCommand (action=${intent?.action})")
+        // Every startForegroundService() must be followed by startForeground() or the app is killed;
+        // a service that already left the foreground (task removed while still bound) is reused.
+        if (intent?.action != ACTION_STOP) startForegroundCompat()
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> {
                 resumeOnFocusGain = false
@@ -369,6 +381,16 @@ class PlaybackService : Service() {
     }
 
     fun isBackgroundAudioEnabled(): Boolean = backgroundAudioEnabled
+
+    private var stopCheckJob: Job? = null
+
+    private fun scheduleStopCheck() {
+        stopCheckJob?.cancel()
+        stopCheckJob = serviceScope.launch {
+            delay(1_000L)
+            if (loadJob?.isActive != true) checkShouldStop()
+        }
+    }
 
     fun checkShouldStop() {
         val state = playerEngine.state.value
