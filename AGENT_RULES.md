@@ -42,6 +42,11 @@ The phone is the user's daily phone and its alarm must ring. Only the media stre
 be changed. Never change alarm, ring or notification volume, ringer mode, Do Not Disturb, the clock
 app or its alarms, system settings, or reboot the phone.
 
+## The user may be using the phone
+Before every on-device step run `tools/phone_idle.sh`. Exit 1 means the user is using the phone (screen
+on with another app in front): do not touch it; wait, re-checking every 60 s, and do phone-free work in
+the meantime. Never take the phone away from the user, never close their apps.
+
 ## Hard limits
 - Never change the fixed tech decisions in SPEC.md. If something seems wrong, write it in BLOCKERS.md,
   set the task to `BLOCKED` and stop.
