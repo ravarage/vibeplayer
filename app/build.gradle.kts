@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.room)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -68,6 +69,8 @@ room {
 
 dependencies {
     implementation(project(":player"))
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -89,7 +92,25 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
 
+    implementation(libs.androidx.media3.session)
+    implementation(libs.androidx.media3.common)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation(kotlin("test"))
+    testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+}
+
+// Baseline profile generation and Macrobenchmark runs install the plugin-made nonMinifiedRelease /
+// benchmarkRelease variants. Give those a separate applicationId so a device run can never reinstall
+// over, clear or otherwise touch the real com.vibeplayer (watch history lives there). The profile
+// itself is keyed by class/method names, not applicationId, so it applies to the real release build.
+androidComponents {
+    onVariants { variant ->
+        val bt = variant.buildType
+        if (bt == "nonMinifiedRelease" || bt == "benchmarkRelease") {
+            variant.applicationId.set("com.vibeplayer.benchmark")
+        }
+    }
 }

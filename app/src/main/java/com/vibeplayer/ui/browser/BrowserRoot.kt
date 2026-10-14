@@ -50,6 +50,7 @@ fun BrowserRoot(
     val db = remember { AppDatabase.getInstance(context.applicationContext) }
     val thumbnailGenerator = remember { ThumbnailGenerator() }
     val thumbnailCache = remember { ThumbnailCache(context.applicationContext, thumbnailGenerator) }
+    androidx.compose.runtime.DisposableEffect(thumbnailCache) { onDispose { thumbnailCache.close() } } // P7-07
     val navController = rememberNavController()
 
     BrowserNavGraph(

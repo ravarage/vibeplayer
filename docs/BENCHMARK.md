@@ -91,3 +91,64 @@ the Compose UI did not draw a single frame, i.e. nothing recomposes into a visib
 ticks while idle. Not measured: recomposition counts per control with the controls visible (P7-03
 acceptance), battery power (P7-06 acceptance; the P1-06 baseline has no power figure because the
 phone was charging then), the same runs on the debug build.
+
+## Benchmark Runner (P6-03)
+
+### How to run
+
+Direct adb broadcast:
+```bash
+adb shell am broadcast -a com.vibeplayer.BENCHMARK -n com.vibeplayer/.BenchmarkReceiver \
+  [--es path <video_path>] \
+  [--ei seconds 15] \
+  [--es mode quality|efficient] \
+  [--es renderer vulkan|gles] \
+  [--es vo gpu-next|gpu] \
+  [--es shader none|anime4k_a|anime4k_b|anime4k_c|snapdragon_gsr] \
+  [--ez cold true|false] \
+  [--es profile fast|default] \
+  [--es decoder auto|software] \
+  [--es driver_hash <16-hex>] [--es driver_mtime <mtime>]
+```
+
+Output CSV files are written to app external storage:
+- Summary: `/sdcard/Android/data/com.vibeplayer/files/benchmark.csv`
+- Samples (1 Hz): `/sdcard/Android/data/com.vibeplayer/files/benchmark_samples.csv`
+
+Host matrix runner (`tools/bench/run_matrix.py`):
+```bash
+# Short matrix (P6-04): 5 min each across {Vulkan, GLES} x {gpu-next, gpu} x {ichiban, hevc10_4k, av1_1080p}
+python3 tools/bench/run_matrix.py --matrix short
+
+# AV1 attribution matrix: 60 s each across 4 clips x {gpu, gpu-next, gpu-next+profile=fast} x {Vulkan, GLES}
+python3 tools/bench/run_matrix.py --matrix av1_attribution
+
+# Stability matrix (P6-05): 30 min hevc10_4k.mp4 per renderer
+python3 tools/bench/run_matrix.py --matrix stability
+
+# Shaders matrix (P8-04): 5 min per preset on 1080p clip
+python3 tools/bench/run_matrix.py --matrix shaders
+```
+
+Flags:
+- `--allow-charging`: allow running on AC/USB power (normally refused for power-sensitive matrices)
+- `--dry-run`: display planned execution rows without device interaction
+- Note on device permissions: If `/vendor/lib64/hw/vulkan.adreno.so` is not readable directly by the app on Android 17 due to SELinux, the host script automatically hashes it over adb and passes `--es driver_hash <hash> --es driver_mtime <mtime>`. Per-core CPU load from `/proc/stat` is restricted by SELinux on Android 17, so empty strings are written for that column.
+
+
+## Memory (P7-07)
+
+Measure with `tools/meminfo.py "<label>"` (read-only `adb shell dumpsys meminfo com.vibeplayer`, appends a
+row to docs/meminfo.csv). A/B: debug build, PlayerActivity intent extra `legacy_cache=true` restores mpv's
+old 150 MiB / 50 MiB demuxer limits. New values: forward 32 MiB, back 16 MiB (MemoryBudget.kt).
+
+Before (reviewer, 2026-10-13, 1080p H.264 playing): TOTAL PSS 428 MB, native heap 253 MB, graphics 78 MB,
+Dalvik 6 MB.
+
+| State | TOTAL PSS before | TOTAL PSS after | Native heap | Graphics | Dalvik | Target |
+|---|---|---|---|---|---|---|
+| Browser idle after cold start | not measured | not measured | | | | |
+| 1080p H.264 playing 2 min | 428 MB | not measured | 253 MB before | 78 MB before | 6 MB before | <= 220 MB |
+| 4K AV1 playing 2 min | not measured | not measured | | | | |
+| Mini player (PiP) | not measured | not measured | | | | |
+| Browser after closing the player | not measured | not measured | | | | <= 150 MB |

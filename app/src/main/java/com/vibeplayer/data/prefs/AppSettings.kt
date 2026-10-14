@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -17,14 +18,16 @@ enum class PlaybackModeOption(val displayName: String, val description: String) 
 }
 
 enum class RendererOption(val displayName: String, val description: String) {
-    OPENGL("OpenGL ES", "Standard GLES 3.2 renderer"),
-    VULKAN("Vulkan", "Vulkan API renderer (P6 benchmark)")
+    OPENGL("OpenGL ES", "Standard GLES 3.2 renderer (default)"),
+    VULKAN("Vulkan (Experimental)", "Vulkan API renderer (Quality mode only, experimental driver)")
 }
 
 enum class ShaderPresetOption(val displayName: String, val description: String) {
     NONE("None", "No post-processing shaders"),
-    ANIME4K("Anime4K Light", "Upscaling and line reconstruction for animation"),
-    GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution")
+    ANIME4K_A("Anime4K A (Fast)", "Restore CNN + Upscale CNN x2 for fast perceptual anime upscaling (Quality mode only)"),
+    ANIME4K_B("Anime4K B (Fast)", "Restore CNN Soft + Upscale CNN x2 for softer line reconstruction (Quality mode only)"),
+    ANIME4K_C("Anime4K C (Fast)", "Upscale Denoise + Upscale CNN x2 for sharp high-detail anime (Quality mode only)"),
+    SNAPDRAGON_GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution spatial upscaler (Quality mode only)")
 }
 
 enum class SubtitlePreferenceMode(val displayName: String, val description: String) {
@@ -38,6 +41,7 @@ data class AppSettings(
     val renderer: RendererOption = RendererOption.OPENGL,
     val gesturesEnabled: Boolean = true,
     val skipSeconds: Int = 10,
+    val holdSpeed: Double = 2.0,
     val backgroundAudio: Boolean = false,
     val autoPlayNext: Boolean = true,
     val shaderPreset: ShaderPresetOption = ShaderPresetOption.NONE,
@@ -54,12 +58,22 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_RENDERER = stringPreferencesKey("renderer")
         private val KEY_GESTURES_ENABLED = booleanPreferencesKey("gestures_enabled")
         private val KEY_SKIP_SECONDS = intPreferencesKey("skip_seconds")
+        private val KEY_HOLD_SPEED = doublePreferencesKey("hold_speed")
         private val KEY_BACKGROUND_AUDIO = booleanPreferencesKey("background_audio")
         private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
         private val KEY_SHADER_PRESET = stringPreferencesKey("shader_preset")
         private val KEY_PREFERRED_AUDIO_LANGS = stringPreferencesKey("preferred_audio_langs")
         private val KEY_PREFERRED_SUB_LANGS = stringPreferencesKey("preferred_sub_langs")
         private val KEY_SUBTITLE_MODE = stringPreferencesKey("subtitle_mode")
+        private val KEY_NOTIFICATION_PERMISSION_DENIED = booleanPreferencesKey("notification_permission_denied")
+    }
+
+    val notificationPermissionDeniedFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_NOTIFICATION_PERMISSION_DENIED] ?: false
+    }
+
+    suspend fun setNotificationPermissionDenied(denied: Boolean) {
+        context.settingsDataStore.edit { it[KEY_NOTIFICATION_PERMISSION_DENIED] = denied }
     }
 
     val appSettingsFlow: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -76,7 +90,12 @@ class AppSettingsRepository(private val context: Context) {
         }
 
         val shaderPreset = try {
-            ShaderPresetOption.valueOf(prefs[KEY_SHADER_PRESET] ?: ShaderPresetOption.NONE.name)
+            when (val name = prefs[KEY_SHADER_PRESET]) {
+                "ANIME4K" -> ShaderPresetOption.ANIME4K_A
+                "GSR" -> ShaderPresetOption.SNAPDRAGON_GSR
+                null -> ShaderPresetOption.NONE
+                else -> ShaderPresetOption.valueOf(name)
+            }
         } catch (_: Exception) {
             ShaderPresetOption.NONE
         }
@@ -100,6 +119,7 @@ class AppSettingsRepository(private val context: Context) {
             renderer = renderer,
             gesturesEnabled = prefs[KEY_GESTURES_ENABLED] ?: true,
             skipSeconds = prefs[KEY_SKIP_SECONDS] ?: 10,
+            holdSpeed = com.vibeplayer.ui.player.HoldGesture.normalize(prefs[KEY_HOLD_SPEED] ?: 2.0),
             backgroundAudio = prefs[KEY_BACKGROUND_AUDIO] ?: false,
             autoPlayNext = prefs[KEY_AUTO_PLAY_NEXT] ?: true,
             shaderPreset = shaderPreset,
@@ -151,6 +171,7 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_RENDERER] = settings.renderer.name
             prefs[KEY_GESTURES_ENABLED] = settings.gesturesEnabled
             prefs[KEY_SKIP_SECONDS] = settings.skipSeconds
+            prefs[KEY_HOLD_SPEED] = settings.holdSpeed
             prefs[KEY_BACKGROUND_AUDIO] = settings.backgroundAudio
             prefs[KEY_AUTO_PLAY_NEXT] = settings.autoPlayNext
             prefs[KEY_SHADER_PRESET] = settings.shaderPreset.name

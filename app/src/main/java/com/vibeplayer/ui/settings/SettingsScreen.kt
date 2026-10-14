@@ -55,10 +55,19 @@ fun SettingsScreen(
     var showPlaybackModeDialog by remember { mutableStateOf(false) }
     var showRendererDialog by remember { mutableStateOf(false) }
     var showSkipDialog by remember { mutableStateOf(false) }
+    var showHoldSpeedDialog by remember { mutableStateOf(false) }
     var showShaderDialog by remember { mutableStateOf(false) }
     var showAudioLangDialog by remember { mutableStateOf(false) }
     var showSubLangDialog by remember { mutableStateOf(false) }
     var showSubtitleModeDialog by remember { mutableStateOf(false) }
+
+    val availableGpuApis = remember { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() }
+    val vulkanSupported = remember(availableGpuApis) {
+        availableGpuApis.any { it.equals("vulkan", ignoreCase = true) }
+    }
+    val rendererOptions = remember(vulkanSupported) {
+        RendererOption.entries.filter { it != RendererOption.VULKAN || vulkanSupported }
+    }
 
     Scaffold(
         topBar = {
@@ -153,6 +162,13 @@ fun SettingsScreen(
                 onClick = { showSkipDialog = true }
             )
 
+            SettingsClickableRow(
+                title = "Hold Speed",
+                subtitle = com.vibeplayer.ui.player.HoldGesture.label(settings.holdSpeed),
+                description = "Speed while pressing and holding the right half of the video",
+                onClick = { showHoldSpeedDialog = true }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -193,7 +209,7 @@ fun SettingsScreen(
             SettingsClickableRow(
                 title = "Shader Preset",
                 subtitle = settings.shaderPreset.displayName,
-                description = settings.shaderPreset.description,
+                description = "${settings.shaderPreset.description}\nNote: Shaders apply in Quality mode only (inactive in Efficient mode; will take effect once Quality mode is selected)",
                 onClick = { showShaderDialog = true }
             )
 
@@ -275,7 +291,7 @@ fun SettingsScreen(
             title = { Text("Select Video Renderer") },
             text = {
                 Column {
-                    RendererOption.entries.forEach { option ->
+                    rendererOptions.forEach { option ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -310,6 +326,42 @@ fun SettingsScreen(
                 TextButton(onClick = { showRendererDialog = false }) {
                     Text("Close")
                 }
+            }
+        )
+    }
+
+    if (showHoldSpeedDialog) {
+        AlertDialog(
+            onDismissRequest = { showHoldSpeedDialog = false },
+            title = { Text("Hold Speed") },
+            text = {
+                Column {
+                    com.vibeplayer.ui.player.HoldGesture.SPEEDS.forEach { speed ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onUpdateSettings(settings.copy(holdSpeed = speed))
+                                    showHoldSpeedDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = (speed == settings.holdSpeed),
+                                onClick = {
+                                    onUpdateSettings(settings.copy(holdSpeed = speed))
+                                    showHoldSpeedDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = com.vibeplayer.ui.player.HoldGesture.label(speed), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHoldSpeedDialog = false }) { Text("Close") }
             }
         )
     }
@@ -358,7 +410,17 @@ fun SettingsScreen(
     if (showShaderDialog) {
         AlertDialog(
             onDismissRequest = { showShaderDialog = false },
-            title = { Text("Shader Preset") },
+            title = {
+                Column {
+                    Text("Shader Preset")
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Shaders apply in Quality mode only (inactive in Efficient mode).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
             text = {
                 Column {
                     ShaderPresetOption.entries.forEach { option ->

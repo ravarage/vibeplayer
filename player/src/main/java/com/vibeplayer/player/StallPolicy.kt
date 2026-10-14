@@ -31,13 +31,16 @@ object StallPolicy {
          * stall before mpv reports `hwdec-current`, so that property cannot be the condition.
          */
         val alreadyRecovered: Boolean,
-        val elapsedSinceFileLoadedMs: Long
+        val elapsedSinceFileLoadedMs: Long,
+        /** Value of mpv's `vid` property (e.g. "1", "auto", "no"), or null if unspecified. */
+        val vid: String? = null
     )
 
     /** Whether the engine should be probed for a stuck core now. */
     fun onTimer(facts: Facts): Action = when {
         facts.released || !facts.sameLoad || facts.playbackRestartSeen -> Action.NONE
         !facts.surfaceAttached -> Action.NONE
+        facts.vid == "no" -> Action.NONE
         // One software reload per file. A slow but healthy load is told apart by the probe.
         facts.alreadyRecovered -> Action.NONE
         facts.elapsedSinceFileLoadedMs < FIRST_CHECK_MS -> Action.NONE
