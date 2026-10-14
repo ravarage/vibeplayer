@@ -198,6 +198,31 @@ fun SettingsScreen(
                 onClick = { showSubtitleModeDialog = true }
             )
 
+            SettingsSliderRow(
+                title = "Subtitle size",
+                valueLabel = String.format(java.util.Locale.US, "%.2fx", settings.subtitleScale),
+                value = settings.subtitleScale.toFloat(),
+                valueRange = com.vibeplayer.player.SubtitleStyle.MIN_SCALE.toFloat()..com.vibeplayer.player.SubtitleStyle.MAX_SCALE.toFloat(),
+                steps = 13,
+                onCommit = { onUpdateSettings(settings.copy(subtitleScale = com.vibeplayer.player.SubtitleStyle.normalizeScale(it.toDouble()))) }
+            )
+
+            SettingsSliderRow(
+                title = "Subtitle position",
+                valueLabel = "${settings.subtitlePos} (0 top, 100 bottom)",
+                value = settings.subtitlePos.toFloat(),
+                valueRange = 0f..100f,
+                steps = 0,
+                onCommit = { onUpdateSettings(settings.copy(subtitlePos = it.toInt())) }
+            )
+
+            SettingsSwitchRow(
+                title = "Override ASS style",
+                description = "Off keeps styled (ASS) subtitles exactly as authored. On applies the size and position above to them too.",
+                checked = settings.subtitleAssOverride,
+                onCheckedChange = { onUpdateSettings(settings.copy(subtitleAssOverride = it)) }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -680,6 +705,36 @@ fun SettingsSwitchRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+fun SettingsSliderRow(
+    title: String,
+    valueLabel: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onCommit: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var dragging by remember(value) { mutableStateOf(value) }
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = if (dragging == value) valueLabel else String.format(java.util.Locale.US, "%.2f", dragging),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        androidx.compose.material3.Slider(
+            value = dragging,
+            onValueChange = { dragging = it },
+            onValueChangeFinished = { onCommit(dragging) },
+            valueRange = valueRange,
+            steps = steps
         )
     }
 }

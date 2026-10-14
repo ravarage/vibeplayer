@@ -12,6 +12,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vibeplayer.data.prefs.AppSettingsRepository
 import com.vibeplayer.playback.PlaybackService
+import com.vibeplayer.player.PerfLog
 import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.PlaybackConfig
 import com.vibeplayer.player.ShaderPreset
@@ -56,7 +57,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val playAfterLoad: Boolean,
         val title: String? = null,
         val playbackConfig: PlaybackConfig? = null,
-        val shaderPreset: ShaderPreset? = null
+        val shaderPreset: ShaderPreset? = null,
+        val startPositionOverride: Long? = null
     )
     @Volatile private var pendingOpen: PendingOpen? = null
 
@@ -74,6 +76,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val s = (binder as? PlaybackService.LocalBinder)?.service ?: return
             service = s
             Log.i("VP", "PlayerViewModel onServiceConnected")
+            PerfLog.mark("service-connected")
             viewModelScope.launch {
                 s.currentPath.collect { _currentPath.value = it }
             }
@@ -85,7 +88,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 s.openVideo(
                     req.path, req.sizeBytes, req.identityKey, req.folderKey,
                     req.startFromBeginning, req.playAfterLoad, req.title,
-                    req.playbackConfig, req.shaderPreset
+                    req.playbackConfig, req.shaderPreset, req.startPositionOverride
                 )
             }
         }
@@ -97,6 +100,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
+        // P7-02: open the Room database now (IO) so the first per-file/folder query in the service
+        // does not pay for it after the service has connected.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                com.vibeplayer.data.db.AppDatabase.getInstance(application).openHelper.writableDatabase
+            } catch (e: Exception) {
+                Log.w("VP", "Room warm-up failed: ${e.message}")
+            }
+        }
         viewModelScope.launch {
             appSettingsRepository.appSettingsFlow
                 .map { it.backgroundAudio }
@@ -133,14 +145,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         playAfterLoad: Boolean = false,
         title: String? = null,
         playbackConfig: PlaybackConfig? = null,
-        shaderPreset: ShaderPreset? = null
+        shaderPreset: ShaderPreset? = null,
+        startPositionOverride: Long? = null
     ) {
         _currentPath.value = path
         val active = service ?: PlaybackService.currentInstance
         if (active != null) {
-            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset)
+            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride)
         } else {
-            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset)
+            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride)
         }
     }
 
@@ -167,6 +180,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun persistSpeed(speed: Double) {
         (service ?: PlaybackService.currentInstance)?.persistSpeed(speed)
+    }
+
+    fun setSubDelay(ms: Int) {
+        (service ?: PlaybackService.currentInstance)?.setSubDelay(ms)
+    }
+
+    fun setAudioDelay(ms: Int) {
+        (service ?: PlaybackService.currentInstance)?.setAudioDelay(ms)
     }
 
     fun setAspect(aspect: String?) {

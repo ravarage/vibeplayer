@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import com.vibeplayer.player.Track
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +62,10 @@ fun AudioTrackSheet(
                         onClick = {
                             onSelectTrack(null)
                             onDismiss()
+                        },
+                        modifier = Modifier.semantics {
+                            contentDescription = "audio_track_off"
+                            testTag = "audio_track_off"
                         }
                     )
                 }
@@ -85,6 +92,10 @@ fun AudioTrackSheet(
                         onClick = {
                             onSelectTrack(track.id)
                             onDismiss()
+                        },
+                        modifier = Modifier.semantics {
+                            contentDescription = "audio_track_${track.id}"
+                            testTag = "audio_track_${track.id}"
                         }
                     )
                 }
@@ -101,7 +112,8 @@ fun SubtitleTrackSheet(
     tracks: List<Track>,
     selectedTrackId: Int?,
     onSelectTrack: (Int?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenSync: (() -> Unit)? = null
 ) {
     val subTracks = remember(tracks) { tracks.filter { it.type == "sub" } }
 
@@ -128,6 +140,16 @@ fun SubtitleTrackSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (onOpenSync != null) {
+                    item {
+                        TrackRow(
+                            title = "Sync & delay",
+                            subtitle = "Subtitle and audio delay",
+                            isSelected = false,
+                            onClick = onOpenSync
+                        )
+                    }
+                }
                 item {
                     val isOff = (selectedTrackId == null)
                     TrackRow(
@@ -137,6 +159,10 @@ fun SubtitleTrackSheet(
                         onClick = {
                             onSelectTrack(null)
                             onDismiss()
+                        },
+                        modifier = Modifier.semantics {
+                            contentDescription = "sub_track_off"
+                            testTag = "sub_track_off"
                         }
                     )
                 }
@@ -165,6 +191,10 @@ fun SubtitleTrackSheet(
                         onClick = {
                             onSelectTrack(track.id)
                             onDismiss()
+                        },
+                        modifier = Modifier.semantics {
+                            contentDescription = "sub_track_${track.id}"
+                            testTag = "sub_track_${track.id}"
                         }
                     )
                 }
@@ -180,10 +210,11 @@ fun TrackRow(
     title: String,
     subtitle: String,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(
                 color = if (isSelected) Color(0x33BB86FC) else Color(0x11FFFFFF),

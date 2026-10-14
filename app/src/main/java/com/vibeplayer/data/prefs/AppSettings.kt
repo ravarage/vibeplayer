@@ -18,8 +18,9 @@ enum class PlaybackModeOption(val displayName: String, val description: String) 
 }
 
 enum class RendererOption(val displayName: String, val description: String) {
-    OPENGL("OpenGL ES", "Standard GLES 3.2 renderer (default)"),
-    VULKAN("Vulkan (Experimental)", "Vulkan API renderer (Quality mode only, experimental driver)")
+    AUTO("Auto (Recommended)", "Best configuration per format, chosen before opening"),
+    VULKAN("Vulkan (Experimental)", "Vulkan API renderer (experimental driver)"),
+    OPENGL("OpenGL ES", "Standard GLES 3.2 renderer")
 }
 
 enum class ShaderPresetOption(val displayName: String, val description: String) {
@@ -38,7 +39,7 @@ enum class SubtitlePreferenceMode(val displayName: String, val description: Stri
 
 data class AppSettings(
     val playbackMode: PlaybackModeOption = PlaybackModeOption.EFFICIENT,
-    val renderer: RendererOption = RendererOption.OPENGL,
+    val renderer: RendererOption = RendererOption.AUTO,
     val gesturesEnabled: Boolean = true,
     val skipSeconds: Int = 10,
     val holdSpeed: Double = 2.0,
@@ -47,8 +48,44 @@ data class AppSettings(
     val shaderPreset: ShaderPresetOption = ShaderPresetOption.NONE,
     val preferredAudioLanguages: List<String> = listOf("en"),
     val preferredSubtitleLanguages: List<String> = listOf("en"),
-    val subtitleMode: SubtitlePreferenceMode = SubtitlePreferenceMode.FORCED_ONLY
-)
+    val subtitleMode: SubtitlePreferenceMode = SubtitlePreferenceMode.FORCED_ONLY,
+    val subtitleScale: Double = 1.0,
+    val subtitlePos: Int = 100,
+    val subtitleAssOverride: Boolean = false
+) {
+    fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
+}
+
+object SettingsMigrationPolicy {
+    fun resolveMigratedRenderer(rawRenderer: String?, isMigrated: Boolean): RendererOption {
+        return when {
+            !isMigrated -> {
+                if (rawRenderer == null || rawRenderer == "OPENGL") {
+                    RendererOption.AUTO
+                } else {
+                    try {
+                        RendererOption.valueOf(rawRenderer)
+                    } catch (_: Exception) {
+                        RendererOption.AUTO
+                    }
+                }
+            }
+            rawRenderer == null -> RendererOption.AUTO
+            else -> {
+                try {
+                    RendererOption.valueOf(rawRenderer)
+                } catch (_: Exception) {
+                    RendererOption.AUTO
+                }
+            }
+        }
+    }
+
+    fun shouldUpdateRawRendererOnMigration(rawRenderer: String?, isMigrated: Boolean): Boolean {
+        if (isMigrated) return false
+        return rawRenderer == null || rawRenderer == "OPENGL"
+    }
+}
 
 val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
 
@@ -56,6 +93,7 @@ class AppSettingsRepository(private val context: Context) {
     companion object {
         private val KEY_PLAYBACK_MODE = stringPreferencesKey("playback_mode")
         private val KEY_RENDERER = stringPreferencesKey("renderer")
+        private val KEY_RENDERER_MIGRATED_TO_AUTO = booleanPreferencesKey("renderer_migrated_to_auto_v1")
         private val KEY_GESTURES_ENABLED = booleanPreferencesKey("gestures_enabled")
         private val KEY_SKIP_SECONDS = intPreferencesKey("skip_seconds")
         private val KEY_HOLD_SPEED = doublePreferencesKey("hold_speed")
@@ -65,6 +103,9 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_PREFERRED_AUDIO_LANGS = stringPreferencesKey("preferred_audio_langs")
         private val KEY_PREFERRED_SUB_LANGS = stringPreferencesKey("preferred_sub_langs")
         private val KEY_SUBTITLE_MODE = stringPreferencesKey("subtitle_mode")
+        private val KEY_SUB_SCALE = doublePreferencesKey("sub_scale")
+        private val KEY_SUB_POS = intPreferencesKey("sub_pos")
+        private val KEY_SUB_ASS_OVERRIDE = booleanPreferencesKey("sub_ass_override")
         private val KEY_NOTIFICATION_PERMISSION_DENIED = booleanPreferencesKey("notification_permission_denied")
     }
 
@@ -76,6 +117,19 @@ class AppSettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { it[KEY_NOTIFICATION_PERMISSION_DENIED] = denied }
     }
 
+    suspend fun migrateRendererDefaultIfNeeded() {
+        context.settingsDataStore.edit { prefs ->
+            val isMigrated = prefs[KEY_RENDERER_MIGRATED_TO_AUTO] ?: false
+            if (!isMigrated) {
+                val raw = prefs[KEY_RENDERER]
+                if (SettingsMigrationPolicy.shouldUpdateRawRendererOnMigration(raw, isMigrated)) {
+                    prefs[KEY_RENDERER] = RendererOption.AUTO.name
+                }
+                prefs[KEY_RENDERER_MIGRATED_TO_AUTO] = true
+            }
+        }
+    }
+
     val appSettingsFlow: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
         val playbackMode = try {
             PlaybackModeOption.valueOf(prefs[KEY_PLAYBACK_MODE] ?: PlaybackModeOption.EFFICIENT.name)
@@ -83,11 +137,9 @@ class AppSettingsRepository(private val context: Context) {
             PlaybackModeOption.EFFICIENT
         }
 
-        val renderer = try {
-            RendererOption.valueOf(prefs[KEY_RENDERER] ?: RendererOption.OPENGL.name)
-        } catch (_: Exception) {
-            RendererOption.OPENGL
-        }
+        val isMigrated = prefs[KEY_RENDERER_MIGRATED_TO_AUTO] ?: false
+        val rawRenderer = prefs[KEY_RENDERER]
+        val renderer = SettingsMigrationPolicy.resolveMigratedRenderer(rawRenderer, isMigrated)
 
         val shaderPreset = try {
             when (val name = prefs[KEY_SHADER_PRESET]) {
@@ -125,7 +177,10 @@ class AppSettingsRepository(private val context: Context) {
             shaderPreset = shaderPreset,
             preferredAudioLanguages = preferredAudioLanguages,
             preferredSubtitleLanguages = preferredSubtitleLanguages,
-            subtitleMode = subtitleMode
+            subtitleMode = subtitleMode,
+            subtitleScale = com.vibeplayer.player.SubtitleStyle.normalizeScale(prefs[KEY_SUB_SCALE] ?: 1.0),
+            subtitlePos = com.vibeplayer.player.SubtitleStyle.normalizePos(prefs[KEY_SUB_POS] ?: 100),
+            subtitleAssOverride = prefs[KEY_SUB_ASS_OVERRIDE] ?: false
         )
     }
 
@@ -134,7 +189,10 @@ class AppSettingsRepository(private val context: Context) {
     }
 
     suspend fun setRenderer(renderer: RendererOption) {
-        context.settingsDataStore.edit { it[KEY_RENDERER] = renderer.name }
+        context.settingsDataStore.edit {
+            it[KEY_RENDERER] = renderer.name
+            it[KEY_RENDERER_MIGRATED_TO_AUTO] = true
+        }
     }
 
     suspend fun setGesturesEnabled(enabled: Boolean) {
@@ -165,10 +223,23 @@ class AppSettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { it[KEY_SUBTITLE_MODE] = mode.name }
     }
 
+    suspend fun setSubtitleScale(v: Double) {
+        context.settingsDataStore.edit { it[KEY_SUB_SCALE] = com.vibeplayer.player.SubtitleStyle.normalizeScale(v) }
+    }
+
+    suspend fun setSubtitlePos(v: Int) {
+        context.settingsDataStore.edit { it[KEY_SUB_POS] = com.vibeplayer.player.SubtitleStyle.normalizePos(v) }
+    }
+
+    suspend fun setSubtitleAssOverride(on: Boolean) {
+        context.settingsDataStore.edit { it[KEY_SUB_ASS_OVERRIDE] = on }
+    }
+
     suspend fun updateSettings(settings: AppSettings) {
         context.settingsDataStore.edit { prefs ->
             prefs[KEY_PLAYBACK_MODE] = settings.playbackMode.name
             prefs[KEY_RENDERER] = settings.renderer.name
+            prefs[KEY_RENDERER_MIGRATED_TO_AUTO] = true
             prefs[KEY_GESTURES_ENABLED] = settings.gesturesEnabled
             prefs[KEY_SKIP_SECONDS] = settings.skipSeconds
             prefs[KEY_HOLD_SPEED] = settings.holdSpeed
@@ -178,6 +249,9 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_PREFERRED_AUDIO_LANGS] = settings.preferredAudioLanguages.joinToString(",")
             prefs[KEY_PREFERRED_SUB_LANGS] = settings.preferredSubtitleLanguages.joinToString(",")
             prefs[KEY_SUBTITLE_MODE] = settings.subtitleMode.name
+            prefs[KEY_SUB_SCALE] = settings.subtitleScale
+            prefs[KEY_SUB_POS] = settings.subtitlePos
+            prefs[KEY_SUB_ASS_OVERRIDE] = settings.subtitleAssOverride
         }
     }
 }

@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -167,6 +168,16 @@ internal fun thumbnailDetail(bitmap: Bitmap): Int {
 internal fun isUsableThumbnail(bitmap: Bitmap): Boolean = thumbnailDetail(bitmap) >= USABLE_DETAIL
 
 /**
+ * P7-02: while the player is opening a file, thumbnail extraction waits so it does not compete with
+ * mpv start-up for CPU, IO and the media codecs. Extractions already running are not interrupted.
+ */
+object ThumbnailPause {
+    private val paused = kotlinx.coroutines.flow.MutableStateFlow(false)
+    fun setPaused(value: Boolean) { paused.value = value }
+    suspend fun awaitResumed() { if (paused.value) paused.first { !it } }
+}
+
+/**
  * Thumbnail generator with max 2 parallel extractions and cancellation support.
  */
 class ThumbnailGenerator(
@@ -183,6 +194,7 @@ class ThumbnailGenerator(
         targetHeight: Int = 180
     ): Bitmap? {
         return try {
+            ThumbnailPause.awaitResumed()
             semaphore.withPermit {
                 // Platform retriever first. It returns black for some files it cannot really
                 // decode (10-bit), so a near-black result still goes through the mpv extractor.

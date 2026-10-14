@@ -9,12 +9,15 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -23,7 +26,13 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
 class PlayerEngine(
-    initialConfig: PlaybackConfig = PlaybackConfig()
+    initialConfig: PlaybackConfig = PlaybackConfig(),
+    /**
+     * P7-02: the service-owned engine starts creating the mpv handle immediately but waits (on its own
+     * command thread, at most [INITIAL_CONFIG_WAIT_MS]) for [provideInitialConfig], so the handle is
+     * built once with the right mode/renderer instead of being rebuilt by [reconfigure].
+     */
+    private val waitForInitialConfig: Boolean = false
 ) {
 
     private fun newCommandExecutor(): ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -37,6 +46,42 @@ class PlayerEngine(
     @Volatile private var scope = CoroutineScope(commandDispatcher + SupervisorJob())
     @Volatile private var released = false
     @Volatile private var timePosObserved = true
+
+    private val initialConfigLatch = java.util.concurrent.CountDownLatch(1)
+    private var initialConfigOverride: PlaybackConfig? = null
+    private var initStarted = false
+    private val initialisedSignal = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val _firstFrameReady = MutableStateFlow(false)
+    /** True after the first playback-restart of this engine (first frame is up); never reset. */
+    val firstFrameReady: StateFlow<Boolean> = _firstFrameReady.asStateFlow()
+
+    /** Completes when the mpv handle has been created and initialised (also if that failed). */
+    suspend fun awaitInitialised() = initialisedSignal.await()
+
+    /**
+     * Supplies the config for the first mpv handle. Returns false when the handle was already created
+     * (the caller then falls back to [reconfigure]). Only has an effect on engines created with
+     * waitForInitialConfig.
+     */
+    fun provideInitialConfig(config: PlaybackConfig): Boolean = synchronized(initialConfigLatch) {
+        if (initStarted) return false
+        initialConfigOverride = config
+        initialConfigLatch.countDown()
+        true
+    }
+
+    private fun awaitInitialConfig() {
+        if (waitForInitialConfig) {
+            try {
+                initialConfigLatch.await(INITIAL_CONFIG_WAIT_MS, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+            }
+        }
+        synchronized(initialConfigLatch) {
+            initStarted = true
+            initialConfigOverride?.let { playbackConfig = it }
+        }
+    }
 
     private fun executeCommand(block: () -> Unit) {
         if (released) return
@@ -57,6 +102,8 @@ class PlayerEngine(
     @Volatile private var shaderDirectory: String = ""
     @Volatile private var currentShaderPreset: ShaderPreset = ShaderPreset.NONE
     @Volatile private var savedVid: String? = null
+    /** P4-13 global subtitle appearance; applied to every loadfile and live when changed. */
+    @Volatile private var subtitleStyle = SubtitleStyle()
 
     // ---- B-08 safety net state ----
     private data class LoadRequest(
@@ -67,7 +114,9 @@ class PlayerEngine(
         val subTrackId: Int?,
         val subEnabled: Boolean,
         val speed: Double,
-        val aspect: String?
+        val aspect: String?,
+        val subDelayMs: Int = 0,
+        val audioDelayMs: Int = 0
     )
     @Volatile private var lastLoad: LoadRequest? = null
     private val loadSerial = AtomicInteger(0)
@@ -98,14 +147,74 @@ class PlayerEngine(
     private val _onScreenMessage = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
     val onScreenMessage: kotlinx.coroutines.flow.SharedFlow<String> = _onScreenMessage
 
+    private val _isInPip = MutableStateFlow(false)
+    val isInPip: StateFlow<Boolean> = _isInPip.asStateFlow()
+
+    fun setIsInPip(inPip: Boolean) {
+        if (_isInPip.value != inPip) {
+            _isInPip.value = inPip
+            if (firstFrameReady.value) {
+                emitCheckLog(force = true)
+            }
+        }
+    }
+
+    private val checkScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    @Volatile private var lastCheckSnapshot: String = ""
+    @Volatile private var lastCheckLogTimeMs: Long = 0L
+
+    fun emitCheckLog(force: Boolean = false) {
+        val s = _state.value
+        val pos = _position.value
+        val dur = s.durationMs
+        val stateStr = when {
+            s.eof -> "ended"
+            s.paused -> "paused"
+            dur > 0L || pos > 0L -> "playing"
+            else -> "idle"
+        }
+        val hwdec = s.hwdecCurrent
+        val vo = _stats.value.vo.ifEmpty {
+            if (playbackConfig.mode == PlaybackMode.QUALITY) "gpu-next"
+            else if (playbackConfig.efficientPath == EfficientPath.PATH_A) "mediacodec_embed"
+            else "gpu"
+        }
+        val speed = s.speed
+        val aspect = s.aspect ?: "fit"
+        val aid = s.selectedAudioTrackId?.toString() ?: "no"
+        val sid = s.selectedSubTrackId?.toString() ?: "no"
+        val path = currentFilePath
+        val pip = _isInPip.value
+        val renderer = playbackConfig.renderer.name.lowercase()
+
+        val stateSnapshot = "$stateStr|$dur|$hwdec|$vo|$speed|$aspect|$aid|$sid|$path|$pip|$renderer"
+        val now = System.currentTimeMillis()
+        val stateChanged = stateSnapshot != lastCheckSnapshot
+        val timeDue = (now - lastCheckLogTimeMs) >= 2000L
+
+        if (force || stateChanged || (stateStr == "playing" && timeDue)) {
+            lastCheckSnapshot = stateSnapshot
+            lastCheckLogTimeMs = now
+            Log.i("VP-Check", "state=$stateStr pos_ms=$pos dur_ms=$dur hwdec=$hwdec vo=$vo speed=$speed aspect=$aspect aid=$aid sid=$sid path=$path pip=$pip renderer=$renderer")
+        }
+    }
+
     @Volatile private var pendingPauseOnLoad: Boolean = false
     @Volatile var lastVulkanErrorText: String? = null
     @Volatile var availableGpuApis: List<String> = emptyList()
     @Volatile private var lastPlaybackRestartMs: Long = 0L
     private var fallbackCheckJob: Job? = null
+    @Volatile var currentFormat: VideoFormat = VideoFormat.OTHER
+    @Volatile var currentResolvedConfig: ResolvedConfiguration? = null
+    @Volatile var onVulkanFailureListener: ((format: VideoFormat?, errorReason: String) -> Unit)? = null
+    /** Debug builds: simulate one forced Vulkan failure. */
+    @Volatile var debugForceVulkanFailureOnce = false
+    /** Debug builds: simulate one forced OpenGL ES failure. */
+    @Volatile var debugForceGlesFailureOnce = false
 
     companion object {
         private const val DETACH_TIMEOUT_MS = 1500L
+        private const val INITIAL_CONFIG_WAIT_MS = 600L
         const val FALLBACK_GRACE_PERIOD_MS = 1000L
         @Volatile var sessionVulkanFailed: Boolean = false
         @Volatile var cachedGpuApis: List<String> = emptyList()
@@ -295,7 +404,8 @@ class PlayerEngine(
                     if (ignoreRestartSerial == loadSerial.get()) return
                     restartSeenSerial = loadSerial.get()
                     lastPlaybackRestartMs = System.currentTimeMillis()
-                    Log.i("VP-Perf", "playback-restart at $lastPlaybackRestartMs")
+                    PerfLog.mark("playback-restart")
+                    _firstFrameReady.value = true
                     scheduleFallbackCheck()
                 }
                 MpvEvent.END_FILE -> {
@@ -303,6 +413,7 @@ class PlayerEngine(
                     Log.i("VP", "mpv event end-file")
                 }
                 MpvEvent.FILE_LOADED -> {
+                    PerfLog.mark("file-loaded")
                     Log.i("VP", "mpv event file-loaded")
                     if (!pendingPauseOnLoad) {
                         _state.update { it.copy(paused = false) }
@@ -315,6 +426,7 @@ class PlayerEngine(
                     }
                     updateTracks(allowPendingSelection = true)
                     checkVulkanVoInitialization()
+                    checkGlesInitialization()
                 }
                 MpvEvent.TRACKS_CHANGED -> {
                     Log.i("VP", "mpv event tracks-changed")
@@ -420,7 +532,8 @@ class PlayerEngine(
             _surfaceEpoch.update { it + 1 }
             load(
                 request.path, request.startPositionMs, request.audioTrackId, request.audioEnabled,
-                request.subTrackId, request.subEnabled, request.speed, request.aspect
+                request.subTrackId, request.subEnabled, request.speed, request.aspect,
+                request.subDelayMs, request.audioDelayMs
             )
         }
     }
@@ -520,7 +633,7 @@ class PlayerEngine(
                 val gpuContext = MpvNative.getPropertyString(handle, "gpu-context")
                     ?: (playbackConfig.getOptionTable()["gpu-context"] ?: "none")
                 val modeStr = "${playbackConfig.mode} (${if (playbackConfig.mode == PlaybackMode.EFFICIENT) playbackConfig.efficientPath else playbackConfig.renderer})"
-                val rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES"
+                val rendererInUse = playbackConfig.renderer.name
                 _stats.value = PlayerStats(
                     vo = vo,
                     hwdecCurrent = hwdec,
@@ -533,7 +646,10 @@ class PlayerEngine(
                     videoH = _state.value.videoHeight,
                     fps = fps,
                     frameDropCount = drops,
-                    decoderFrameDropCount = decDrops
+                    decoderFrameDropCount = decDrops,
+                    formatProfileRow = currentResolvedConfig?.chosenRowDescription ?: _state.value.formatProfileRow,
+                    formatProfileReason = currentResolvedConfig?.reason ?: _state.value.formatProfileReason,
+                    detectedFormat = currentFormat
                 )
                 Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec mode=$modeStr gpuApi=$gpuApi gpuContext=$gpuContext drops=$drops decDrops=$decDrops fps=$fps")
             }
@@ -542,7 +658,21 @@ class PlayerEngine(
 
     init {
         scope.launch {
-            initHandle()
+            awaitInitialConfig()
+            try {
+                initHandle()
+            } finally {
+                initialisedSignal.complete(Unit)
+            }
+            PerfLog.mark("engine-initialised")
+        }
+        checkScope.launch {
+            firstFrameReady.first { it }
+            emitCheckLog(force = true)
+            while (isActive) {
+                delay(500)
+                emitCheckLog()
+            }
         }
     }
 
@@ -581,10 +711,18 @@ class PlayerEngine(
             availableGpuApis = parsedChoices
             cachedGpuApis = parsedChoices
         }
+        val profile = playbackConfig.formatProfile
+        if (profile != null) {
+            currentFormat = profile.format
+            currentResolvedConfig = profile
+        }
         _state.update {
             it.copy(
-                rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES",
-                lastVulkanError = lastVulkanErrorText
+                rendererInUse = playbackConfig.renderer.name,
+                lastVulkanError = lastVulkanErrorText,
+                formatProfileRow = currentResolvedConfig?.chosenRowDescription ?: it.formatProfileRow,
+                formatProfileReason = currentResolvedConfig?.reason ?: it.formatProfileReason,
+                detectedFormat = currentFormat
             )
         }
 
@@ -632,8 +770,10 @@ class PlayerEngine(
                 val restoreVid = savedVid ?: "auto"
                 MpvNative.setPropertyString(handle, "vid", restoreVid)
                 Log.i("VP", "Surface attached to mpv handle; restored vid=$restoreVid")
+                PerfLog.mark("surface-attached")
                 savedVid = null
                 checkVulkanVoInitialization()
+                checkGlesInitialization()
             }
         }
     }
@@ -691,13 +831,15 @@ class PlayerEngine(
         subTrackId: Int? = null,
         subEnabled: Boolean = true,
         speed: Double = 1.0,
-        aspect: String? = null
+        aspect: String? = null,
+        subDelayMs: Int = 0,
+        audioDelayMs: Int = 0
     ) {
         val hadOverride = speedOverride != null
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
-        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null) }
-        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect)
+        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
+        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs)
         loadSerial.incrementAndGet()
         scope.launch {
             val recovered = softwareRecoveryPath
@@ -717,6 +859,8 @@ class PlayerEngine(
                 subEnabled = subEnabled,
                 speed = speed,
                 aspect = aspect,
+                subDelayMs = subDelayMs,
+                audioDelayMs = audioDelayMs,
                 paused = false
             )
         }
@@ -731,6 +875,8 @@ class PlayerEngine(
         subEnabled: Boolean = true,
         speed: Double = 1.0,
         aspect: String? = null,
+        subDelayMs: Int = 0,
+        audioDelayMs: Int = 0,
         paused: Boolean = false
     ) {
         assertCommandThread()
@@ -779,6 +925,12 @@ class PlayerEngine(
                 val spd = String.format(java.util.Locale.US, "%.2f", speed)
                 options.add("speed=$spd")
             }
+
+            // P4-13: the delays are per file; a new file must not inherit the previous file's values,
+            // so the defaults are written explicitly. The subtitle style is global.
+            options.add("sub-delay=${SyncDelay.toSeconds(subDelayMs)}")
+            options.add("audio-delay=${SyncDelay.toSeconds(audioDelayMs)}")
+            subtitleStyle.mpvOptions().forEach { (k, v) -> options.add("$k=$v") }
 
             if (paused) {
                 options.add("pause=yes")
@@ -841,6 +993,7 @@ class PlayerEngine(
                 Log.i("VP", "Loading $path from start without options")
                 arrayOf("loadfile", path, "replace")
             }
+            PerfLog.mark("loadfile-issued")
             val res = MpvNative.command(handle, cmd)
             Log.i("VP", "loadfile res=$res for $path")
             if (paused) {
@@ -900,6 +1053,8 @@ class PlayerEngine(
             val curSubEnabled = curSid != null
             val curSpeed = _state.value.speed
             val curAspect = _state.value.aspect
+            val curSubDelay = _state.value.subDelayMs
+            val curAudioDelay = _state.value.audioDelayMs
             val surface = attachedSurface
 
             if (handle != 0L) {
@@ -933,6 +1088,8 @@ class PlayerEngine(
                     subEnabled = curSubEnabled,
                     speed = curSpeed,
                     aspect = curAspect,
+                    subDelayMs = curSubDelay,
+                    audioDelayMs = curAudioDelay,
                     paused = wasPaused
                 )
             }
@@ -942,11 +1099,16 @@ class PlayerEngine(
     private var vulkanCheckJob: Job? = null
 
     private fun checkVulkanVoInitialization() {
-        if (playbackConfig.mode != PlaybackMode.QUALITY || playbackConfig.renderer != Renderer.VULKAN) {
+        if (playbackConfig.renderer != Renderer.VULKAN) {
             return
         }
         vulkanCheckJob?.cancel()
         vulkanCheckJob = scope.launch {
+            if (BuildConfig.DEBUG && debugForceVulkanFailureOnce) {
+                debugForceVulkanFailureOnce = false
+                handleVulkanFailure("Debug forced Vulkan failure")
+                return@launch
+            }
             val startTime = System.currentTimeMillis()
             var voConfigured = false
             while (isActive && System.currentTimeMillis() - startTime < 3200L) {
@@ -969,7 +1131,23 @@ class PlayerEngine(
         }
     }
 
-    private fun handleVulkanFailure(reason: String) {
+    private var glesCheckJob: Job? = null
+
+    private fun checkGlesInitialization() {
+        if (playbackConfig.renderer != Renderer.GLES) {
+            return
+        }
+        glesCheckJob?.cancel()
+        glesCheckJob = scope.launch {
+            if (BuildConfig.DEBUG && debugForceGlesFailureOnce) {
+                debugForceGlesFailureOnce = false
+                handleGlesFailure("Debug forced OpenGL ES failure")
+                return@launch
+            }
+        }
+    }
+
+    fun handleVulkanFailure(reason: String) {
         sessionVulkanFailed = true
         val errorLines = dumpMpvErrorLines()
         Log.e("VP", "VULKAN-FAIL: $reason")
@@ -981,7 +1159,38 @@ class PlayerEngine(
         _state.update { it.copy(lastVulkanError = errSummary) }
         _onScreenMessage.tryEmit("Vulkan failed, using OpenGL ES")
         Log.w("VP", "Vulkan failed, falling back to OpenGL ES")
+        try {
+            onVulkanFailureListener?.invoke(currentFormat, reason)
+        } catch (t: Throwable) {
+            Log.w("VP", "Error notifying onVulkanFailureListener: ${t.message}")
+        }
         reconfigure(playbackConfig.copy(renderer = Renderer.GLES))
+    }
+
+    fun handleGlesFailure(reason: String) {
+        Log.e("VP", "GLES-FAIL: $reason")
+        _onScreenMessage.tryEmit("OpenGL ES failed, using software decoding")
+        Log.w("VP", "OpenGL ES failed, falling back to software decoding")
+        reconfigure(playbackConfig.copy(hwdecOverride = "no"))
+    }
+
+    fun setCurrentFormatProfile(config: ResolvedConfiguration) {
+        currentFormat = config.format
+        currentResolvedConfig = config
+        _state.update {
+            it.copy(
+                formatProfileRow = config.chosenRowDescription,
+                formatProfileReason = config.reason,
+                detectedFormat = config.format
+            )
+        }
+        _stats.update {
+            it.copy(
+                formatProfileRow = config.chosenRowDescription,
+                formatProfileReason = config.reason,
+                detectedFormat = config.format
+            )
+        }
     }
 
     private fun dumpMpvErrorLines(): List<String> {
@@ -1001,18 +1210,25 @@ class PlayerEngine(
         return lines.takeLast(10)
     }
 
-    fun togglePlaybackMode() {
+    fun togglePlaybackMode(userRendererSetting: RendererSetting = RendererSetting.AUTO) {
         executeCommand {
             assertCommandThread()
             val current = playbackConfig
             val newMode = if (current.mode == PlaybackMode.QUALITY) PlaybackMode.EFFICIENT else PlaybackMode.QUALITY
-            val resolvedRenderer = RendererResolver.resolveRenderer(
-                requestedRenderer = current.renderer,
+            val isVulkanAvailable = availableGpuApis.any { it.equals("vulkan", ignoreCase = true) } && !sessionVulkanFailed
+            val resolved = FormatProfileTable.resolve(
+                format = currentFormat,
                 mode = newMode,
-                gpuApiChoices = availableGpuApis.ifEmpty { listOf("opengl", "vulkan") },
-                sessionVulkanFailed = sessionVulkanFailed
+                rendererSetting = userRendererSetting,
+                isVulkanAvailableForFormat = isVulkanAvailable
             )
-            val newConfig = current.copy(mode = newMode, renderer = resolvedRenderer)
+            setCurrentFormatProfile(resolved)
+            val newConfig = current.copy(
+                mode = newMode,
+                renderer = resolved.renderer,
+                voOverride = resolved.vo,
+                hwdecOverride = resolved.decodeMode.hwdec
+            )
             reconfigure(newConfig)
         }
     }
@@ -1210,6 +1426,36 @@ class PlayerEngine(
         }
     }
 
+    /** P4-13: live subtitle delay in ms (clamped); returns the applied value through [PlayerState.subDelayMs]. */
+    fun setSubDelay(ms: Int) {
+        val v = SyncDelay.clamp(ms)
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) MpvNative.setPropertyString(handle, "sub-delay", SyncDelay.toSeconds(v))
+            _state.update { it.copy(subDelayMs = v) }
+        }
+    }
+
+    fun setAudioDelay(ms: Int) {
+        val v = SyncDelay.clamp(ms)
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) MpvNative.setPropertyString(handle, "audio-delay", SyncDelay.toSeconds(v))
+            _state.update { it.copy(audioDelayMs = v) }
+        }
+    }
+
+    /** P4-13: global subtitle style; applies to the current file now and to every later load. */
+    fun setSubtitleStyle(style: SubtitleStyle) {
+        val s = style.normalized()
+        if (s == subtitleStyle) return // P7-02: no extra mpv work when loadfile already applied it
+        subtitleStyle = s
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) s.mpvOptions().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
+        }
+    }
+
     fun setAspect(aspect: String?) {
         executeCommand {
             assertCommandThread()
@@ -1400,6 +1646,7 @@ class PlayerEngine(
         fallbackCheckJob = null
         statsJob?.cancel()
         statsJob = null
+        checkScope.cancel()
         val task = Runnable {
             assertCommandThread()
             if (handle != 0L) {
