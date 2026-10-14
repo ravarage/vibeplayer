@@ -87,4 +87,43 @@ class StallPolicyTest {
         assertFalse(StallPolicy.softwareAfterStall(null, uri))
         assertFalse(StallPolicy.softwareAfterStall(uri, null))
     }
+
+    private fun pending(
+        released: Boolean = false,
+        sameLoad: Boolean = true,
+        issued: Boolean = false,
+        abandoned: Boolean = false,
+        busy: Long = 0L,
+        waited: Long = StallPolicy.LOAD_START_CHECK_MS
+    ) = StallPolicy.PendingLoad(released, sameLoad, issued, abandoned, busy, waited)
+
+    @Test
+    fun pendingLoadBehindAStuckCommandThreadAbandonsTheHandle() {
+        assertEquals(StallPolicy.PendingLoadAction.ABANDON, StallPolicy.onPendingLoad(pending(busy = StallPolicy.STUCK_COMMAND_MS)))
+        assertEquals(StallPolicy.PendingLoadAction.ABANDON, StallPolicy.onPendingLoad(pending(busy = 60_000L, waited = 60_000L)))
+    }
+
+    @Test
+    fun pendingLoadBehindABusyButHealthyThreadWaits() {
+        // a reconfigure (destroy + create a handle) or the 600 ms initial-config wait
+        assertEquals(StallPolicy.PendingLoadAction.RECHECK, StallPolicy.onPendingLoad(pending(busy = 1_200L)))
+        assertEquals(StallPolicy.PendingLoadAction.RECHECK, StallPolicy.onPendingLoad(pending(busy = 0L)))
+    }
+
+    @Test
+    fun pendingLoadCheckStopsWhenDoneOrSuperseded() {
+        val busy = StallPolicy.STUCK_COMMAND_MS * 2
+        assertEquals(StallPolicy.PendingLoadAction.NONE, StallPolicy.onPendingLoad(pending(issued = true, busy = busy)))
+        assertEquals(StallPolicy.PendingLoadAction.NONE, StallPolicy.onPendingLoad(pending(sameLoad = false, busy = busy)))
+        assertEquals(StallPolicy.PendingLoadAction.NONE, StallPolicy.onPendingLoad(pending(released = true, busy = busy)))
+        assertEquals(StallPolicy.PendingLoadAction.NONE, StallPolicy.onPendingLoad(pending(abandoned = true, busy = busy)))
+        assertEquals(StallPolicy.PendingLoadAction.NONE, StallPolicy.onPendingLoad(pending(waited = StallPolicy.GIVE_UP_MS + 1)))
+    }
+
+    @Test
+    fun fallbackPositionKeepsTheResumePointOfALoadThatNeverStarted() {
+        assertEquals(754_000L, StallPolicy.fallbackPositionMs(playbackStarted = false, knownMs = 0L, loadStartMs = 754_000L))
+        assertEquals(12_000L, StallPolicy.fallbackPositionMs(playbackStarted = true, knownMs = 12_000L, loadStartMs = 754_000L))
+        assertEquals(5_000L, StallPolicy.fallbackPositionMs(playbackStarted = false, knownMs = 5_000L, loadStartMs = null))
+    }
 }
