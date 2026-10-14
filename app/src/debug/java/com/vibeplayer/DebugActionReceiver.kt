@@ -17,8 +17,21 @@ class DebugActionReceiver : BroadcastReceiver() {
             ?: return
 
         Log.i("VP", "DebugActionReceiver onReceive: action='$action'")
+        if (action == "clear_vulkan_cache") {
+            // P6-07 tests: a forced Vulkan failure is remembered per format on this driver
+            // build; this undoes it so the table row applies again. Needs no playback session.
+            com.vibeplayer.playback.VulkanDriverCache.clearCache(context)
+            Log.i("VP", "DebugActionReceiver: cleared Vulkan driver cache (remembered failures)")
+            return
+        }
+        // Only act on a running session: creating an engine here would leave one behind that no
+        // service owns and nothing ever releases.
         val service = PlaybackService.currentInstance
-        val engine = service?.playerEngine ?: PlaybackService.getOrCreateEngine()
+        if (service == null) {
+            Log.w("VP", "DebugActionReceiver: no active playback session, ignoring '$action'")
+            return
+        }
+        val engine = service.playerEngine
 
         when {
             action == "pause" -> {
@@ -34,11 +47,11 @@ class DebugActionReceiver : BroadcastReceiver() {
                 Log.i("VP", "DebugActionReceiver: toggled pause")
             }
             action == "next" -> {
-                service?.skipToNeighbour(true)
+                service.skipToNeighbour(true)
                 Log.i("VP", "DebugActionReceiver: next")
             }
             action == "prev" -> {
-                service?.skipToNeighbour(false)
+                service.skipToNeighbour(false)
                 Log.i("VP", "DebugActionReceiver: prev")
             }
             action.startsWith("seek:") || action == "seek" -> {
@@ -68,14 +81,14 @@ class DebugActionReceiver : BroadcastReceiver() {
                     intent.getStringExtra("mode") ?: intent.getStringExtra("aspect")
                 }
                 if (!mode.isNullOrEmpty()) {
-                    service?.setAspect(mode) ?: engine.setAspect(mode)
+                    service.setAspect(mode)
                     Log.i("VP", "DebugActionReceiver: setAspect $mode")
                 } else {
                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                     val current = engine.state.value.aspect ?: "fit"
                     val idx = modes.indexOf(current).let { if (it >= 0) it else 0 }
                     val nextMode = modes[(idx + 1) % modes.size]
-                    service?.setAspect(nextMode) ?: engine.setAspect(nextMode)
+                    service.setAspect(nextMode)
                     Log.i("VP", "DebugActionReceiver: cycled aspect to $nextMode")
                 }
             }
@@ -87,8 +100,8 @@ class DebugActionReceiver : BroadcastReceiver() {
                         ?: intent.getStringExtra("speed")?.toDoubleOrNull()
                 }
                 if (sp != null && sp > 0) {
-                    service?.setSpeed(sp) ?: engine.setSpeed(sp)
-                    service?.persistSpeed(sp)
+                    service.setSpeed(sp)
+                    service.persistSpeed(sp)
                     Log.i("VP", "DebugActionReceiver: setSpeed $sp")
                 }
             }
@@ -97,12 +110,6 @@ class DebugActionReceiver : BroadcastReceiver() {
                 val sec = if (side == "left") -10.0 else 10.0
                 engine.seekRelative(sec, exact = true)
                 Log.i("VP", "DebugActionReceiver: double_tap side=$side, seekRelative $sec s")
-            }
-            action == "clear_vulkan_cache" -> {
-                // P6-07 tests: a forced Vulkan failure is remembered per format on this driver
-                // build; this undoes it so the table row applies again.
-                com.vibeplayer.playback.VulkanDriverCache.clearCache(context)
-                Log.i("VP", "DebugActionReceiver: cleared Vulkan driver cache (remembered failures)")
             }
             else -> {
                 Log.w("VP", "DebugActionReceiver: unknown action '$action'")

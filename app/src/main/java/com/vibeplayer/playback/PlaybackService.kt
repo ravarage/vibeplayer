@@ -276,12 +276,18 @@ class PlaybackService : Service() {
         // Ensure engine is instantiated
         getOrCreateEngine()
 
-        playerEngine.onVulkanFailureListener = { format, reason ->
-            val isGlobal = reason.contains("suitable GPU context", ignoreCase = true) ||
-                reason.contains("pl_vulkan", ignoreCase = true) ||
-                reason.contains("Found no suitable device", ignoreCase = true)
-            VulkanDriverCache.recordVulkanFailure(applicationContext, format, isGlobal)
+        // The engine classifies the failure from the failing handle's mpv log: no Vulkan instance or
+        // device is remembered for the whole driver build, a VO/swapchain problem only for the format.
+        playerEngine.onVulkanFailureListener = { format, failure ->
+            VulkanDriverCache.recordVulkanFailure(
+                applicationContext, format,
+                isGlobalDriverFailure = failure.scope == com.vibeplayer.player.VulkanFailureScope.DRIVER
+            )
         }
+        // A content:// file plays from a descriptor (fdclose://N) that mpv closes with its handle; a
+        // reconfigure (quality toggle, Vulkan/GLES fallback) or a B-08 reload asks for a fresh one
+        // from the file's identity, the original content URI. The engine calls this on IO.
+        playerEngine.pathReopener = { identity -> reopenContentUri(identity) }
         serviceScope.launch(Dispatchers.IO) {
             appSettingsRepository.migrateRendererDefaultIfNeeded()
         }
@@ -690,7 +696,21 @@ class PlaybackService : Service() {
                 if (forward) FolderPlaylist.next(from) else FolderPlaylist.previous(from)
             } ?: return@launch
             if (currentVideoPath != from) return@launch
-            openVideo(target, playAfterLoad = true)
+            openVideo(target, playAfterLoad = true, leavingPositionSaved = true)
+        }
+    }
+
+    /** IO only. A fresh `fdclose://N` for a content:// [identity], or null (grant gone, file deleted). */
+    private fun reopenContentUri(identity: String): String? {
+        if (!identity.startsWith("content://")) return null
+        return try {
+            contentResolver.openFileDescriptor(Uri.parse(identity), "r")?.let { pfd ->
+                "fdclose://${pfd.detachFd()}"
+            }
+        } catch (e: Exception) {
+            // SecurityException when the URI grant ended with the activity, FileNotFoundException.
+            Log.w("VP", "Reopening $identity failed: ${e.message}")
+            null
         }
     }
 
@@ -731,13 +751,15 @@ class PlaybackService : Service() {
         title: String? = null,
         playbackConfig: PlaybackConfig? = null,
         shaderPreset: ShaderPreset? = null,
-        startPositionOverride: Long? = null
+        startPositionOverride: Long? = null,
+        /** skipToNeighbour already saved the leaving file with a fresh (bounded) read. */
+        leavingPositionSaved: Boolean = false
     ) {
         val leavingKey = currentKey
         val leavingPath = currentVideoPath
-        val leavingPos = playerEngine.position.value
+        val leavingPos = playerEngine.lastKnownPositionMs()
         val leavingState = playerEngine.state.value
-        if (!benchmarkRun && leavingKey != null && leavingPath != null && leavingPath != path) {
+        if (!benchmarkRun && !leavingPositionSaved && leavingKey != null && leavingPath != null && leavingPath != path) {
             saveScope.launch {
                 savePositionSnapshot(leavingKey, leavingPos, leavingState)
             }
@@ -939,7 +961,8 @@ class PlaybackService : Service() {
                 speed = speed,
                 aspect = aspect,
                 subDelayMs = subDelayMs,
-                audioDelayMs = audioDelayMs
+                audioDelayMs = audioDelayMs,
+                identity = identityKey ?: path
             )
             currentKey = key
             if (playAfterLoad) playerEngine.play()
@@ -1116,12 +1139,13 @@ class PlaybackService : Service() {
         if (benchmarkRun) { releaseWhenDone?.release(); return }
         val generation = loadGeneration
         val key = currentKey ?: run { releaseWhenDone?.release(); return }
-        val knownPos = engine.position.value
+        val knownPos = engine.lastKnownPositionMs()
         val state = engine.state.value
         if (generation != loadGeneration || key != currentKey) { releaseWhenDone?.release(); return }
         saveScope.launch {
+            // Bounded inside the engine (falls back to the last known position during a stall).
             val fresh = try {
-                withTimeoutOrNull(1_000L) { engine.currentPositionMs() }
+                engine.currentPositionMs()
             } catch (_: Exception) {
                 null
             }

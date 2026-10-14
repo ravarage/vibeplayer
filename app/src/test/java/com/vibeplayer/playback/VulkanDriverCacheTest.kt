@@ -68,4 +68,42 @@ class VulkanDriverCacheTest {
         )
         assertTrue(available)
     }
+
+    private val stored = VulkanDriverPolicy.Stored("old_1", driverFailed = true, formatFailures = setOf("h264_8bit"))
+
+    @Test
+    fun `global failure disables every format for the driver build`() {
+        val after = VulkanDriverPolicy.afterFailure(
+            VulkanDriverPolicy.Stored("k_1", false, emptySet()), "k_1", VideoFormat.AV1.formatKey, isGlobalDriverFailure = true
+        )
+        assertTrue(after.driverFailed)
+        VideoFormat.values().forEach {
+            assertFalse(VulkanDriverPolicy.shouldOfferVulkan(true, after.driverFailed, it, after.formatFailures))
+        }
+    }
+
+    @Test
+    fun `per format failure keeps other formats`() {
+        val after = VulkanDriverPolicy.afterFailure(
+            VulkanDriverPolicy.Stored("k_1", false, emptySet()), "k_1", VideoFormat.AV1.formatKey, isGlobalDriverFailure = false
+        )
+        assertFalse(after.driverFailed)
+        assertFalse(VulkanDriverPolicy.shouldOfferVulkan(true, after.driverFailed, VideoFormat.AV1, after.formatFailures))
+        assertTrue(VulkanDriverPolicy.shouldOfferVulkan(true, after.driverFailed, VideoFormat.HEVC, after.formatFailures))
+    }
+
+    @Test
+    fun `failures of an older driver build do not carry over to the new one`() {
+        val after = VulkanDriverPolicy.afterFailure(stored, "new_2", VideoFormat.AV1.formatKey, isGlobalDriverFailure = false)
+        assertEquals("new_2", after.driverKey)
+        assertFalse(after.driverFailed)
+        assertEquals(setOf(VideoFormat.AV1.formatKey), after.formatFailures)
+    }
+
+    @Test
+    fun `failures on the same build accumulate`() {
+        val after = VulkanDriverPolicy.afterFailure(stored, "old_1", VideoFormat.AV1.formatKey, isGlobalDriverFailure = false)
+        assertTrue(after.driverFailed)
+        assertEquals(setOf("h264_8bit", VideoFormat.AV1.formatKey), after.formatFailures)
+    }
 }

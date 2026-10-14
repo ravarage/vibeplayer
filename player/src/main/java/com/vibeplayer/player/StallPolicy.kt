@@ -48,6 +48,67 @@ object StallPolicy {
         else -> Action.PROBE
     }
 
+    /** Whether the file [identity] is to be decoded in software because it stalled before. */
+    fun softwareAfterStall(recoveryIdentity: String?, identity: String?): Boolean =
+        recoveryIdentity != null && recoveryIdentity == identity
+
+    /**
+     * The software-after-stall flag once [loadIdentity] loads: kept for the same file (any reload,
+     * reconfigure or fallback of it), dropped for another file, which gets hardware decoding and a
+     * fresh one-reload budget.
+     */
+    fun recoveryAfterLoad(recoveryIdentity: String?, loadIdentity: String): String? =
+        recoveryIdentity?.takeIf { it == loadIdentity }
+
+    /** First look at a load that has not reached loadfile yet (queued behind the command thread). */
+    const val LOAD_START_CHECK_MS = 1_500L
+
+    /** How often a pending load is looked at again. */
+    const val LOAD_RECHECK_MS = 500L
+
+    /**
+     * A single command-thread task running this long is stuck in a blocked mpv call: no healthy
+     * task takes that long (the slowest is a reconfigure, which destroys and creates a handle).
+     */
+    const val STUCK_COMMAND_MS = 3_000L
+
+    enum class PendingLoadAction { NONE, RECHECK, ABANDON }
+
+    data class PendingLoad(
+        val released: Boolean,
+        /** The load being watched is still the newest one. */
+        val sameLoad: Boolean,
+        /** Its loadfile command has been issued. */
+        val issued: Boolean,
+        /** The stuck handle was already abandoned for this load. */
+        val alreadyAbandoned: Boolean,
+        /** How long the task running on the command thread has been running (0 when idle). */
+        val commandBusyMs: Long,
+        /** Time since the load was queued. */
+        val waitedMs: Long
+    )
+
+    /**
+     * A new open (next/previous, auto-advance, a picked file) during a decoder stall queues behind
+     * the blocked command thread and never reaches file-loaded, so the file-loaded watchdog cannot
+     * help: abandon the stuck handle the same way and load the new file on a fresh one.
+     */
+    fun onPendingLoad(p: PendingLoad): PendingLoadAction = when {
+        p.released || !p.sameLoad || p.issued || p.alreadyAbandoned -> PendingLoadAction.NONE
+        p.commandBusyMs >= STUCK_COMMAND_MS -> PendingLoadAction.ABANDON
+        p.waitedMs > GIVE_UP_MS -> PendingLoadAction.NONE
+        else -> PendingLoadAction.RECHECK
+    }
+
+    /**
+     * Position to save or carry over when mpv cannot be asked (bounded read timed out). Before the
+     * current load has started playing, the last known position is the previous file's or 0 (load
+     * resets it), so the position the load started at is the right one: saving 0 would overwrite
+     * the resume point of a file that stalled while opening.
+     */
+    fun fallbackPositionMs(playbackStarted: Boolean, knownMs: Long, loadStartMs: Long?): Long =
+        if (!playbackStarted && loadStartMs != null) loadStartMs else knownMs
+
     /** After a probe: recover only when the core did not answer in time. */
     fun shouldRecover(probeAnswered: Boolean): Boolean = !probeAnswered
 }
