@@ -408,10 +408,11 @@ class PlayerActivity : ComponentActivity() {
 
         checkPermissionAndProceed()
 
-        if (intent.getStringExtra("test") == "p1_02") {
+        // Test hooks: debug builds only (the activity is exported).
+        if (com.vibeplayer.BuildConfig.DEBUG && intent.getStringExtra("test") == "p1_02") {
             runP102Test()
         }
-        if (intent.getStringExtra("test") == "p3_06") {
+        if (com.vibeplayer.BuildConfig.DEBUG && intent.getStringExtra("test") == "p3_06") {
             runP306Test()
         }
 
