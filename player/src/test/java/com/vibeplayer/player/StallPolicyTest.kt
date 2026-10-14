@@ -62,4 +62,29 @@ class StallPolicyTest {
         assertTrue(StallPolicy.shouldRecover(probeAnswered = false))
         assertFalse(StallPolicy.shouldRecover(probeAnswered = true))
     }
+
+    private val uri = "content://media/external/video/media/42"
+
+    @Test
+    fun softwareFlagSurvivesReloadsOfTheSameFile() {
+        // reconfigure / Vulkan fallback reload the same identity (a content file even with a new fd path)
+        assertEquals(uri, StallPolicy.recoveryAfterLoad(uri, uri))
+        assertTrue(StallPolicy.softwareAfterStall(StallPolicy.recoveryAfterLoad(uri, uri), uri))
+    }
+
+    @Test
+    fun anotherFileGetsHardwareAndAFreshBudget() {
+        val after = StallPolicy.recoveryAfterLoad(uri, "/sdcard/Movies/b.mkv")
+        assertEquals(null, after)
+        assertFalse(StallPolicy.softwareAfterStall(after, "/sdcard/Movies/b.mkv"))
+        // coming back to the stalled file later tries hardware again (budget reset)
+        assertFalse(StallPolicy.softwareAfterStall(StallPolicy.recoveryAfterLoad(after, uri), uri))
+    }
+
+    @Test
+    fun noRecoveryMeansHardware() {
+        assertEquals(null, StallPolicy.recoveryAfterLoad(null, uri))
+        assertFalse(StallPolicy.softwareAfterStall(null, uri))
+        assertFalse(StallPolicy.softwareAfterStall(uri, null))
+    }
 }

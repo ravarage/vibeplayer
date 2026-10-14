@@ -134,8 +134,14 @@ class PlayerEngine(
     @Volatile private var restartSeenSerial = -1
     /** Events from an abandoned handle carry an old token and are dropped. */
     @Volatile private var handleToken = 0
-    /** Path that was reloaded with software decoding after a stall; hardware decoding returns with the next file. */
-    @Volatile private var softwareRecoveryPath: String? = null
+    /**
+     * Identity of the file that was reloaded with software decoding after a stall. Survives
+     * reconfigures of that file (quality toggle, Vulkan/GLES fallback, a fresh fdclose:// descriptor);
+     * hardware decoding returns, and the one-reload budget resets, when another file loads.
+     */
+    @Volatile private var softwareRecoveryIdentity: String? = null
+    /** hwdec=no was set on the current handle for [softwareRecoveryIdentity] (a new handle starts without). */
+    @Volatile private var hwdecForcedSoftware = false
     private val watchdog: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "VP-Watchdog").apply { isDaemon = true }
     }
@@ -512,7 +518,7 @@ class PlayerEngine(
             sameLoad = serial == loadSerial.get(),
             playbackRestartSeen = restartSeenSerial == serial,
             surfaceAttached = attachedSurface != null,
-            alreadyRecovered = softwareRecoveryPath != null && softwareRecoveryPath == lastLoad?.path,
+            alreadyRecovered = StallPolicy.softwareAfterStall(softwareRecoveryIdentity, lastLoad?.identity),
             elapsedSinceFileLoadedMs = android.os.SystemClock.elapsedRealtime() - armedAt,
             vid = if (savedVid != null || attachedSurface == null) "no" else null
         )
@@ -558,11 +564,11 @@ class PlayerEngine(
             if (released) return@execute
             handle = 0L
             attachedSurface = null
-            softwareRecoveryPath = request.path
+            softwareRecoveryIdentity = request.identity
             initHandle()
             if (handle != 0L) {
-                MpvNative.setPropertyString(handle, "hwdec", "no")
-                Log.w("VP", "B-08 recovery: new mpv handle with hwdec=no; asking the UI for a fresh surface")
+                // loadInternal sets hwdec=no for this file (and again after any later reconfigure).
+                Log.w("VP", "B-08 recovery: new mpv handle, ${request.identity} is decoded in software from now on; asking the UI for a fresh surface")
             }
             // The old Surface still belongs to the abandoned handle's video output.
             _surfaceEpoch.update { it + 1 }
@@ -723,6 +729,7 @@ class PlayerEngine(
     private fun initHandle() {
         assertCommandThread()
         handleCreatedAtMs = System.currentTimeMillis()
+        hwdecForcedSoftware = false
         handle = MpvNative.create(BuildConfig.DEBUG)
         if (handle == 0L) {
             Log.e("VP", "Failed to create mpv handle")
@@ -880,13 +887,6 @@ class PlayerEngine(
         lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity)
         loadSerial.incrementAndGet()
         scope.launch {
-            val recovered = softwareRecoveryPath
-            if (recovered != null && recovered != path && handle != 0L) {
-                // The software reload was for one stalled file only.
-                softwareRecoveryPath = null
-                playbackConfig.getOptionTable()["hwdec"]?.let { MpvNative.setPropertyString(handle, "hwdec", it) }
-                Log.i("VP", "B-08 recovery over: hardware decoding restored for the next file")
-            }
             if (hadOverride && handle != 0L) MpvNative.setPropertyDouble(handle, "speed", 1.0)
             loadInternal(
                 path = path,
@@ -922,6 +922,12 @@ class PlayerEngine(
         assertCommandThread()
         currentFilePath = path
         currentFileIdentity = identity
+        // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
+        val wasRecovering = softwareRecoveryIdentity
+        softwareRecoveryIdentity = StallPolicy.recoveryAfterLoad(softwareRecoveryIdentity, identity)
+        if (wasRecovering != null && softwareRecoveryIdentity == null) {
+            Log.i("VP", "B-08 recovery over: $identity is another file, hardware decoding allowed again")
+        }
         fileLoaded = false
         lastPlaybackRestartMs = 0L
         fallbackCheckJob?.cancel()
@@ -1028,6 +1034,16 @@ class PlayerEngine(
             }
 
             applyShaderPresetInternal()
+
+            val software = StallPolicy.softwareAfterStall(softwareRecoveryIdentity, identity)
+            if (software && !hwdecForcedSoftware) {
+                MpvNative.setPropertyString(handle, "hwdec", "no")
+                hwdecForcedSoftware = true
+                Log.w("VP", "B-08: $identity stalled with hardware decoding earlier; loading it with hwdec=no")
+            } else if (!software && hwdecForcedSoftware) {
+                playbackConfig.getOptionTable()["hwdec"]?.let { MpvNative.setPropertyString(handle, "hwdec", it) }
+                hwdecForcedSoftware = false
+            }
 
             val cmd = if (options.isNotEmpty()) {
                 val optStr = options.joinToString(",")

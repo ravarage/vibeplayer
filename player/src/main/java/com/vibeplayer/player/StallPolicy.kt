@@ -48,6 +48,18 @@ object StallPolicy {
         else -> Action.PROBE
     }
 
+    /** Whether the file [identity] is to be decoded in software because it stalled before. */
+    fun softwareAfterStall(recoveryIdentity: String?, identity: String?): Boolean =
+        recoveryIdentity != null && recoveryIdentity == identity
+
+    /**
+     * The software-after-stall flag once [loadIdentity] loads: kept for the same file (any reload,
+     * reconfigure or fallback of it), dropped for another file, which gets hardware decoding and a
+     * fresh one-reload budget.
+     */
+    fun recoveryAfterLoad(recoveryIdentity: String?, loadIdentity: String): String? =
+        recoveryIdentity?.takeIf { it == loadIdentity }
+
     /** After a probe: recover only when the core did not answer in time. */
     fun shouldRecover(probeAnswered: Boolean): Boolean = !probeAnswered
 }
