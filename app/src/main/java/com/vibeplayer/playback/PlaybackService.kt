@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -85,6 +86,92 @@ class PlaybackService : Service() {
     private var playerAdapter: VibePlayerAdapter? = null
     private var mediaSession: androidx.media3.session.MediaSession? = null
 
+    private lateinit var audioManager: AudioManager
+    private var audioFocusRequest: android.media.AudioFocusRequest? = null
+    private var resumeOnFocusGain = false
+    private var hasAudioFocus = false
+    private var isNoisyReceiverRegistered = false
+
+    private val audioFocusListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
+        Log.i("VP", "onAudioFocusChange: focusChange=$focusChange")
+        val isPlaying = !playerEngine.state.value.paused
+        when (AudioFocusPolicy.handleFocusChange(focusChange, isPlaying, resumeOnFocusGain)) {
+            FocusAction.PAUSE_PERMANENT -> {
+                resumeOnFocusGain = false
+                playerEngine.pause()
+            }
+            FocusAction.PAUSE_TRANSIENT -> {
+                resumeOnFocusGain = true
+                playerEngine.pause()
+            }
+            FocusAction.RESUME -> {
+                resumeOnFocusGain = false
+                playerEngine.play()
+            }
+            FocusAction.NONE -> {}
+        }
+    }
+
+    private val becomingNoisyReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                Log.i("VP", "ACTION_AUDIO_BECOMING_NOISY -> pausing playback")
+                resumeOnFocusGain = false
+                playerEngine.pause()
+            }
+        }
+    }
+
+    private fun requestAudioFocus(): Boolean {
+        if (hasAudioFocus) return true
+        val attrs = android.media.AudioAttributes.Builder()
+            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE)
+            .build()
+        val request = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(attrs)
+            .setOnAudioFocusChangeListener(audioFocusListener)
+            .build()
+        audioFocusRequest = request
+        val result = audioManager.requestAudioFocus(request)
+        hasAudioFocus = (result == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+        Log.i("VP", "requestAudioFocus: granted=$hasAudioFocus")
+        return hasAudioFocus
+    }
+
+    private fun abandonAudioFocus() {
+        if (!hasAudioFocus) return
+        val req = audioFocusRequest
+        if (req != null) {
+            audioManager.abandonAudioFocusRequest(req)
+        }
+        hasAudioFocus = false
+        resumeOnFocusGain = false
+        Log.i("VP", "abandonAudioFocus")
+    }
+
+    private fun updateNoisyReceiver(isPlaying: Boolean) {
+        if (isPlaying && !isNoisyReceiverRegistered) {
+            try {
+                val filter = android.content.IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+                androidx.core.content.ContextCompat.registerReceiver(
+                    this,
+                    becomingNoisyReceiver,
+                    filter,
+                    androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+                )
+                isNoisyReceiverRegistered = true
+            } catch (e: Exception) {
+                Log.w("VP", "Failed to register becomingNoisyReceiver: ${e.message}")
+            }
+        } else if (!isPlaying && isNoisyReceiverRegistered) {
+            try {
+                unregisterReceiver(becomingNoisyReceiver)
+            } catch (_: Exception) {}
+            isNoisyReceiverRegistered = false
+        }
+    }
+
     private lateinit var db: AppDatabase
     private val dao by lazy { db.fileSettingsDao() }
     private val folderDao by lazy { db.folderSettingsDao() }
@@ -118,6 +205,7 @@ class PlaybackService : Service() {
         activeService = this
         db = AppDatabase.getInstance(this)
         appSettingsRepository = AppSettingsRepository(this)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         createNotificationChannel()
 
@@ -174,13 +262,25 @@ class PlaybackService : Service() {
             }
         }
 
-        // Save when playback pauses, update notification, and check if service should stop
+        // Save when playback pauses, update notification, manage audio focus & noisy receiver, and check if service should stop
         serviceScope.launch {
-            var wasPaused = false
+            var wasPaused = playerEngine.state.value.paused
             playerEngine.state.collect { state ->
                 adapter.notifyStateChanged()
                 if (state.paused && !wasPaused) {
                     saveCurrentPosition()
+                    updateNoisyReceiver(false)
+                    if (!resumeOnFocusGain) {
+                        abandonAudioFocus()
+                    }
+                } else if (!state.paused && wasPaused) {
+                    val granted = requestAudioFocus()
+                    if (!granted) {
+                        Log.w("VP", "Audio focus denied -> pausing playback")
+                        playerEngine.pause()
+                    } else {
+                        updateNoisyReceiver(true)
+                    }
                 }
                 if (state.paused != wasPaused) {
                     updateNotification()
@@ -211,12 +311,16 @@ class PlaybackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i("VP", "PlaybackService onStartCommand (action=${intent?.action})")
         when (intent?.action) {
-            ACTION_PLAY_PAUSE -> playerEngine.togglePause()
+            ACTION_PLAY_PAUSE -> {
+                resumeOnFocusGain = false
+                playerEngine.togglePause()
+            }
             ACTION_REWIND_10 -> playerEngine.seekRelative(-10.0, exact = true)
             ACTION_FORWARD_10 -> playerEngine.seekRelative(10.0, exact = true)
             ACTION_PREVIOUS -> skipToNeighbour(forward = false)
             ACTION_NEXT -> skipToNeighbour(forward = true)
             ACTION_STOP -> {
+                resumeOnFocusGain = false
                 playerEngine.pause()
                 saveCurrentPosition()
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -780,6 +884,9 @@ class PlaybackService : Service() {
         periodicSaveJob?.cancel()
         serviceScope.cancel()
         saveCurrentPosition()
+
+        updateNoisyReceiver(false)
+        abandonAudioFocus()
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         nm?.cancel(NOTIFICATION_ID)

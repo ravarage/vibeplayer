@@ -75,6 +75,24 @@ Application id and base package: `com.vibeplayer`.
 - Ownership: P1 to P4 a `PlayerViewModel` owns the engine. From P5 the `PlaybackService` owns it and
   the ViewModel binds to the service; the UI contract (the three flows) does not change.
 
+## PiP, Background Audio, and Lifecycle Decisions (P5)
+- **Engine & Service Ownership**: From P5, `PlaybackService` is a foreground service (`mediaPlayback`) that owns the `PlayerEngine`, media session, notification, playlist tracking, and position persistence. `PlayerViewModel` binds to the service and proxies flows/actions. When only the browser is open or playback stops and no clients are bound, the service stops itself and releases the engine (no engine alive when idle).
+- **PiP vs Background Audio Decision**:
+  - **Home gesture / App switch while playing**: Enters Picture-in-Picture automatically via `autoEnterEnabled(!paused && hasDuration)`. The video shrinks into a floating window and continues playing video and audio.
+  - **Back gesture / Screen off (leaving player)**:
+    - **Background Audio ON**: Playback continues uninterrupted in `PlaybackService`. When the activity stops and the surface is destroyed, `VideoSurface.surfaceDestroyed` calls `PlayerEngine.detachSurface()`, setting mpv property `vo=null` and `wid=0`. Video frame decoding and GPU rendering stop completely (0 GPU overhead), while audio keeps playing via `ao=audiotrack`. The foreground media notification and MediaSession remain active. When the user returns to the player, `surfaceCreated` calls `PlayerEngine.attachSurface()`, re-enabling `vo=gpu` and `vid=auto`, which instantly restores picture without re-seeking or buffering.
+    - **Background Audio OFF**: The player pauses on `onStop()`. Unbinding the activity leaves `boundClients == 0`, prompting `PlaybackService` to stop itself, cancel the notification, and release the engine.
+  - **PiP Dismissal / Close**: When the user closes the PiP window (via the 'X' button or flinging it away), Android stops the activity while in PiP (`onStop` with `isInPictureInPictureMode == true`). The activity explicitly pauses playback on PiP close. Because playback is paused and unbinds, `PlaybackService` stops itself even if background audio is enabled.
+- **Audio Focus & Becoming Noisy**:
+  - `PlaybackService` manages `AudioManager` audio focus requests (`AUDIOFOCUS_GAIN`) with media usage and movie content type.
+  - Focus loss permanent (`AUDIOFOCUS_LOSS`): pauses playback immediately and drops focus.
+  - Focus loss transient (`AUDIOFOCUS_LOSS_TRANSIENT` / `CAN_DUCK`): pauses playback and flags `resumeOnFocusGain = true`. When focus is regained (`AUDIOFOCUS_GAIN`), playback resumes automatically. User-initiated pause/play clears the transient resume flag.
+  - Becoming noisy (`ACTION_AUDIO_BECOMING_NOISY`): receiver registered while actively playing pauses playback when headphones or Bluetooth audio disconnects.
+- **Task Removal (`onTaskRemoved`)**:
+  - Swiping the app away from recent tasks calls `Service.onTaskRemoved`.
+  - If background audio is enabled and playback is actively playing, the foreground service and notification persist so the user can continue listening.
+  - If background audio is disabled, or if playback is paused / reached EOF, the service saves position snapshot, dismisses the notification, and stops itself to avoid zombie processes.
+
 ## Playback modes (candidate until P0-09)
 Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d uses all 8 cores),
 `hwdec-codecs=h264,hevc,vp9`. AV1 always decodes in software with dav1d.
