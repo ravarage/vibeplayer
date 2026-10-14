@@ -236,6 +236,22 @@ resets. *Files*: Gestures.kt, PlayerEngine.kt. *Accept*: smooth zoom on 4K; rese
 **P3-08 Haptics** — Haptic tick on skip, on swipe-seek steps and at seek bar ends. *Files*: same.
 *Accept*: felt on device; none while locked.
 
+**P3-09 Hold for fast playback** — **User request (2026-10-14).** Press and hold on the right half
+of the video: playback runs at the "hold speed" while the finger stays down and returns to the file's
+own speed on release (YouTube / MX Player style). Setting "Hold speed" in the gestures section
+(1.5x, 2x default, 3x, 4x). While held: a small pill at the top centre ("2x" with a fast-forward
+icon), one haptic tick on start, pitch correction stays on, audio keeps playing. Does not persist
+as the file's speed, does not count as a speed change for P4-07, is ignored while locked, in the
+mini player and while a sheet is open. Must not break the other gestures: a hold that turns into a
+vertical drag stays a volume swipe (decide by slop before the long-press timeout), a horizontal drag
+stays a swipe seek, single and double tap unchanged, and the hold does not show the controls.
+*Files*: ui/player/Gestures.kt, Indicators.kt, PlayerEngine.kt (a temporary speed override that
+does not touch the saved speed), data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt.
+*Accept*: on the device, `adb shell input swipe x y x y 3000` (a 3 s hold at one point on the right
+half) shows the pill, `speed` reads the hold speed during the hold and the file's speed after;
+time-pos advances about twice as fast during a 2x hold; a vertical swipe on the right still changes
+volume; setting the hold speed to 3x takes effect; nothing is persisted for the file.
+
 ## P4 Tracks and per-file memory
 
 **P4-01 Room setup** — Database, `FileSettings` entity and DAO per ARCHITECTURE. *Files*: data/db/*.
