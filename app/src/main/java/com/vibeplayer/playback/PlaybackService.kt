@@ -281,6 +281,10 @@ class PlaybackService : Service() {
                 isGlobalDriverFailure = failure.scope == com.vibeplayer.player.VulkanFailureScope.DRIVER
             )
         }
+        // A content:// file plays from a descriptor (fdclose://N) that mpv closes with its handle; a
+        // reconfigure (quality toggle, Vulkan/GLES fallback) or a B-08 reload asks for a fresh one
+        // from the file's identity, the original content URI. The engine calls this on IO.
+        playerEngine.pathReopener = { identity -> reopenContentUri(identity) }
         serviceScope.launch(Dispatchers.IO) {
             appSettingsRepository.migrateRendererDefaultIfNeeded()
         }
@@ -683,6 +687,20 @@ class PlaybackService : Service() {
         }
     }
 
+    /** IO only. A fresh `fdclose://N` for a content:// [identity], or null (grant gone, file deleted). */
+    private fun reopenContentUri(identity: String): String? {
+        if (!identity.startsWith("content://")) return null
+        return try {
+            contentResolver.openFileDescriptor(Uri.parse(identity), "r")?.let { pfd ->
+                "fdclose://${pfd.detachFd()}"
+            }
+        } catch (e: Exception) {
+            // SecurityException when the URI grant ended with the activity, FileNotFoundException.
+            Log.w("VP", "Reopening $identity failed: ${e.message}")
+            null
+        }
+    }
+
     private fun queryDisplayName(uri: Uri): String {
         try {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -927,7 +945,8 @@ class PlaybackService : Service() {
                 speed = speed,
                 aspect = aspect,
                 subDelayMs = subDelayMs,
-                audioDelayMs = audioDelayMs
+                audioDelayMs = audioDelayMs,
+                identity = identityKey ?: path
             )
             currentKey = key
             if (playAfterLoad) playerEngine.play()

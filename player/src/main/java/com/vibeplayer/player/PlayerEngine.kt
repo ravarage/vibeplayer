@@ -98,6 +98,15 @@ class PlayerEngine(
     @Volatile var playbackConfig: PlaybackConfig = initialConfig
         private set
     @Volatile private var currentFilePath: String = ""
+    /** Identity of [currentFilePath] (see [LoadRequest.identity]). */
+    @Volatile private var currentFileIdentity: String = ""
+    /**
+     * Resolves a fresh `fdclose://N` path for a content:// identity, so a file opened through a
+     * descriptor can be loaded again on a new handle. Blocking; called on the IO dispatcher only.
+     * Installed by the owner of the engine (PlaybackService, which holds the ContentResolver).
+     */
+    @Volatile var pathReopener: ((identity: String) -> String?)? = null
+    private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var attachedSurface: Surface? = null
     @Volatile private var shaderDirectory: String = ""
     @Volatile private var currentShaderPreset: ShaderPreset = ShaderPreset.NONE
@@ -116,7 +125,9 @@ class PlayerEngine(
         val speed: Double,
         val aspect: String?,
         val subDelayMs: Int = 0,
-        val audioDelayMs: Int = 0
+        val audioDelayMs: Int = 0,
+        /** Stable identity of the file (its content:// URI for an fdclose:// path); defaults to the path. */
+        val identity: String = path
     )
     @Volatile private var lastLoad: LoadRequest? = null
     private val loadSerial = AtomicInteger(0)
@@ -255,6 +266,16 @@ class PlayerEngine(
          */
         fun isVulkanVoFailure(fileLoaded: Boolean, surfaceAttached: Boolean, vid: String?, voConfigured: Boolean): Boolean =
             fileLoaded && surfaceAttached && !voConfigured && !vid.isNullOrEmpty() && vid != "no"
+
+        /** Closes the descriptor of an `fdclose://N` path that mpv never got to own. */
+        fun closeFdPath(path: String) {
+            val fd = ReloadPolicy.fdOf(path) ?: return
+            try {
+                android.os.ParcelFileDescriptor.adoptFd(fd).close()
+            } catch (e: Exception) {
+                Log.w("VP", "closing $path failed: ${e.message}")
+            }
+        }
 
         fun getGpuApiChoices(): List<String> {
             if (cachedGpuApis.isNotEmpty()) return cachedGpuApis
@@ -545,11 +566,9 @@ class PlayerEngine(
             }
             // The old Surface still belongs to the abandoned handle's video output.
             _surfaceEpoch.update { it + 1 }
-            load(
-                request.path, request.startPositionMs, request.audioTrackId, request.audioEnabled,
-                request.subTrackId, request.subEnabled, request.speed, request.aspect,
-                request.subDelayMs, request.audioDelayMs
-            )
+            // An fdclose:// file gets a fresh descriptor: the stuck handle keeps the old one (and a
+            // simulated stall closes it when its handle is destroyed).
+            reloadOnNewHandle(request, loadSerial.incrementAndGet(), paused = false, why = "B-08 recovery", reuseOpenFd = true)
         }
     }
 
@@ -850,13 +869,15 @@ class PlayerEngine(
         speed: Double = 1.0,
         aspect: String? = null,
         subDelayMs: Int = 0,
-        audioDelayMs: Int = 0
+        audioDelayMs: Int = 0,
+        identity: String? = null
     ) {
+        val fileIdentity = identity ?: path
         val hadOverride = speedOverride != null
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
-        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs)
+        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity)
         loadSerial.incrementAndGet()
         scope.launch {
             val recovered = softwareRecoveryPath
@@ -878,7 +899,8 @@ class PlayerEngine(
                 aspect = aspect,
                 subDelayMs = subDelayMs,
                 audioDelayMs = audioDelayMs,
-                paused = false
+                paused = false,
+                identity = fileIdentity
             )
         }
     }
@@ -894,10 +916,12 @@ class PlayerEngine(
         aspect: String? = null,
         subDelayMs: Int = 0,
         audioDelayMs: Int = 0,
-        paused: Boolean = false
+        paused: Boolean = false,
+        identity: String = path
     ) {
         assertCommandThread()
         currentFilePath = path
+        currentFileIdentity = identity
         fileLoaded = false
         lastPlaybackRestartMs = 0L
         fallbackCheckJob?.cancel()
@@ -1022,6 +1046,82 @@ class PlayerEngine(
         }
     }
 
+    private fun loadRequest(request: LoadRequest, paused: Boolean) {
+        loadInternal(
+            path = request.path,
+            startPositionMs = request.startPositionMs,
+            audioTrackId = request.audioTrackId,
+            audioEnabled = request.audioEnabled,
+            subTrackId = request.subTrackId,
+            subEnabled = request.subEnabled,
+            speed = request.speed,
+            aspect = request.aspect,
+            subDelayMs = request.subDelayMs,
+            audioDelayMs = request.audioDelayMs,
+            paused = paused,
+            identity = request.identity
+        )
+    }
+
+    /**
+     * Loads [request] again on the current handle as load number [serial] (already counted in
+     * [loadSerial]). An fdclose:// path gets a fresh descriptor from [pathReopener] on the IO
+     * dispatcher first; the descriptor is closed again on every path that does not reach loadfile
+     * (a newer load came in, the engine was released, the handle could not be created).
+     * Runs on the command thread.
+     */
+    private fun reloadOnNewHandle(
+        request: LoadRequest,
+        serial: Int,
+        paused: Boolean,
+        why: String,
+        /** B-08: the old handle is leaked, not destroyed, so its descriptor is still open and usable. */
+        reuseOpenFd: Boolean = false
+    ) {
+        assertCommandThread()
+        val plan = ReloadPolicy.plan(request.path, request.identity, pathReopener != null)
+        when {
+            plan == ReloadPolicy.Plan.Same || (plan == ReloadPolicy.Plan.Impossible && reuseOpenFd) -> {
+                lastLoad = request
+                loadRequest(request, paused)
+            }
+            plan == ReloadPolicy.Plan.Impossible -> {
+                Log.w("VP", "$why: ${request.path} cannot be reopened on the new handle; reopen the file to continue")
+            }
+            plan is ReloadPolicy.Plan.Reopen -> {
+                val reopener = pathReopener ?: return
+                Log.i("VP", "$why: resolving a fresh descriptor for ${plan.identity}")
+                ioScope.launch {
+                    val fresh = try {
+                        reopener(plan.identity)
+                    } catch (t: Throwable) {
+                        Log.w("VP", "$why: reopening ${plan.identity} failed: ${t.message}")
+                        null
+                    }
+                    if (fresh == null) {
+                        Log.w("VP", "$why: ${plan.identity} could not be reopened; reopen the file to continue")
+                        return@launch
+                    }
+                    val task = Runnable {
+                        if (released || serial != loadSerial.get() || handle == 0L) {
+                            Log.i("VP", "$why: reopened descriptor not used (newer load or no handle); closing it")
+                            closeFdPath(fresh)
+                            return@Runnable
+                        }
+                        val reopened = request.copy(path = fresh)
+                        lastLoad = reopened
+                        loadRequest(reopened, paused)
+                    }
+                    try {
+                        if (released) closeFdPath(fresh) else commandExecutor.execute(task)
+                    } catch (_: RejectedExecutionException) {
+                        closeFdPath(fresh)
+                    }
+                }
+            }
+        }
+    }
+
     fun setShaderDirectory(dir: String) {
         shaderDirectory = dir
     }
@@ -1071,6 +1171,7 @@ class PlayerEngine(
                 _position.value
             }
             val curPath = currentFilePath
+            val curIdentity = currentFileIdentity.ifEmpty { curPath }
             val wasPaused = _state.value.paused
             val curAid = _state.value.selectedAudioTrackId
             val curAudioEnabled = curAid != null || _state.value.tracks.none { it.type == "audio" }
@@ -1104,29 +1205,13 @@ class PlayerEngine(
                 MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
             }
 
-            // fdclose://N: mpv closed N with the old handle; reopening it would read a dead or reused
-            // fd (another file of this process). The open path has to resolve the URI again.
-            val reloadable = !curPath.startsWith("fdclose://")
-            if (curPath.isNotEmpty() && reloadCurrentFile && !reloadable) {
-                Log.w("VP", "reconfigure: $curPath cannot be reopened on the new handle; reopen the file to continue")
-            }
-            if (curPath.isNotEmpty() && reloadCurrentFile && reloadable) {
+            if (curPath.isNotEmpty() && reloadCurrentFile) {
                 // A new load for the B-08 watchdog: the previous serial already saw its playback-restart.
-                lastLoad = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay)
-                loadSerial.incrementAndGet()
-                loadInternal(
-                    path = curPath,
-                    startPositionMs = curPos,
-                    audioTrackId = curAid,
-                    audioEnabled = curAudioEnabled,
-                    subTrackId = curSid,
-                    subEnabled = curSubEnabled,
-                    speed = curSpeed,
-                    aspect = curAspect,
-                    subDelayMs = curSubDelay,
-                    audioDelayMs = curAudioDelay,
-                    paused = wasPaused
-                )
+                // fdclose://N: mpv closed N with the old handle; reopening it would read a dead or
+                // reused fd, so a fresh one is resolved from the file's content:// identity.
+                val serial = loadSerial.incrementAndGet()
+                val request = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay, curIdentity)
+                reloadOnNewHandle(request, serial, wasPaused, "reconfigure")
             }
         }
     }
@@ -1704,6 +1789,7 @@ class PlayerEngine(
         statsJob?.cancel()
         statsJob = null
         checkScope.cancel()
+        ioScope.cancel()
         val task = Runnable {
             assertCommandThread()
             if (handle != 0L) {
