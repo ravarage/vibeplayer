@@ -8,7 +8,7 @@ import com.vibeplayer.playback.PlaybackService
 
 /**
  * Debug-only broadcast receiver for automating playback actions via adb:
- * pause, play, next, prev, seek, aspect, speed, and double_tap.
+ * pause, play, next, prev, seek, aspect, speed, double_tap and clear_vulkan_cache.
  */
 class DebugActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -97,6 +97,12 @@ class DebugActionReceiver : BroadcastReceiver() {
                 val sec = if (side == "left") -10.0 else 10.0
                 engine.seekRelative(sec, exact = true)
                 Log.i("VP", "DebugActionReceiver: double_tap side=$side, seekRelative $sec s")
+            }
+            action == "clear_vulkan_cache" -> {
+                // P6-07 tests: a forced Vulkan failure is remembered per format on this driver
+                // build; this undoes it so the table row applies again.
+                com.vibeplayer.playback.VulkanDriverCache.clearCache(context)
+                Log.i("VP", "DebugActionReceiver: cleared Vulkan driver cache (remembered failures)")
             }
             else -> {
                 Log.w("VP", "DebugActionReceiver: unknown action '$action'")
