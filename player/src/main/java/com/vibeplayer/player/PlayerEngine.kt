@@ -701,6 +701,9 @@ class PlayerEngine(
         for ((key, value) in playbackConfig.getOptionTable()) {
             MpvNative.setOptionString(handle, key, value)
         }
+        if (playbackConfig.debugMpvOptions.isNotEmpty()) {
+            Log.i("VP", "Debug mpv_opts applied at init: ${playbackConfig.debugMpvOptions}")
+        }
 
         val res = MpvNative.initialize(handle)
         Log.i("VP", "MpvNative.initialize returned $res (vo=${playbackConfig.vo}, path=${playbackConfig.efficientPath}, renderer=${playbackConfig.renderer})")
@@ -1164,7 +1167,26 @@ class PlayerEngine(
         } catch (t: Throwable) {
             Log.w("VP", "Error notifying onVulkanFailureListener: ${t.message}")
         }
-        reconfigure(playbackConfig.copy(renderer = Renderer.GLES))
+        reconfigure(glesFallbackConfig(playbackConfig))
+    }
+
+    /**
+     * The OpenGL ES configuration after a Vulkan failure. A configuration picked from the format table is
+     * resolved again without Vulkan, so a Vulkan row lands on its measured GLES values (e.g. H.264:
+     * copy-back with vo=gpu, never gpu-next carried over); anything else (probes, overrides) only
+     * switches the renderer.
+     */
+    private fun glesFallbackConfig(current: PlaybackConfig): PlaybackConfig {
+        val fromTable = current.formatProfile?.takeIf { it.vo == current.voOverride && it.renderer == current.renderer }
+            ?: return current.copy(renderer = Renderer.GLES)
+        val resolved = FormatProfileTable.resolve(fromTable.format, current.mode, RendererSetting.AUTO, isVulkanAvailableForFormat = false)
+        setCurrentFormatProfile(resolved)
+        return current.copy(
+            renderer = Renderer.GLES,
+            voOverride = resolved.vo,
+            hwdecOverride = if (current.hwdecOverride == "no") "no" else resolved.decodeMode.hwdec,
+            formatProfile = resolved
+        )
     }
 
     fun handleGlesFailure(reason: String) {
