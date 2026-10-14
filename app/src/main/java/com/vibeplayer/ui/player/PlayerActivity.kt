@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.vibeplayer.playback.PlaybackService
 import com.vibeplayer.player.PlayerEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -455,6 +456,13 @@ class PlayerActivity : ComponentActivity() {
                 currentVideoPath = dataUri.toString()
                 currentVideoTitle = dataUri.lastPathSegment ?: "Video"
             }
+        } else {
+            // Launched without a target (notification tap after the player was closed with background
+            // audio on): show the file the service is playing, not the built-in default.
+            PlaybackService.currentInstance?.currentPath?.value?.let {
+                currentVideoPath = it
+                if (it.startsWith("/")) currentVideoTitle = File(it).name
+            }
         }
         Log.i("VP", "Resolved video path: $currentVideoPath (title: $currentVideoTitle)")
     }
@@ -543,6 +551,11 @@ class PlayerActivity : ComponentActivity() {
             playerEngine.debugSimulateStallOnce = true
         }
         playbackStarted = true
+        val noExplicitTarget = intent.getStringExtra("path").isNullOrEmpty() && intent.data == null
+        if (noExplicitTarget && PlaybackService.currentInstance?.currentPath?.value == currentVideoPath) {
+            Log.i("VP", "PlayerActivity re-attached to the running session of $currentVideoPath; not reloading")
+            return
+        }
         openResolvedVideo()
     }
 
