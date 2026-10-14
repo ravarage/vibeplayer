@@ -516,6 +516,17 @@ P6-07 table; keep the table as data (an asset generated from the benchmark CSV, 
 driver hash) so a new driver build can be re-benchmarked and the table regenerated without code
 changes. Ties go to the lower-power option._
 
+**P6-08 Quick re-check on today's driver (fill-in task)** — **User request (2026-10-14): run in free
+phone time between other tasks, not as a priority.** The formats where OpenGL ES measured better or was
+assumed better: H.264 8-bit (ichiban.mp4), HEVC 10-bit 4K (hevc10_4k.mp4), VP9 (vp9_1080p.webm).
+For each, 60 s with the benchmark runner (P6-03, per-second samples, auto-play off) on: OpenGL ES
+zero-copy (`vo=gpu`, `hwdec=mediacodec`), OpenGL ES copy-back, Vulkan `vo=gpu` copy-back, Vulkan
+`vo=gpu-next` copy-back. Record steady dropped/mistimed frames, frame-time variance, app CPU, battery
+current (mark "charging" if plugged in: then current is not comparable) and temperature, with the
+Vulkan driver hash. Plus 20 cold opens of ichiban.mp4 per configuration for the start stall. Write a
+short table in docs/BENCHMARK.md "Quick re-check (driver <hash>)" and one line of conclusion per format;
+append the Vulkan rows to vulkan.txt. About 25 minutes of phone time; can be split.
+
 **P6-01 Quality mode** — Quality option table; mode setting and in-player toggle using
 `reconfigure()`. *Files*: PlaybackMode.kt, PlayerEngine.kt, ui/settings/*. *Accept*: overlay shows
 `gpu-next` and `mediacodec-copy`; switching mid-file keeps position and tracks.
