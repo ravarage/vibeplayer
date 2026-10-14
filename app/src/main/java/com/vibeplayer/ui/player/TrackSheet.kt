@@ -101,7 +101,8 @@ fun SubtitleTrackSheet(
     tracks: List<Track>,
     selectedTrackId: Int?,
     onSelectTrack: (Int?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenSync: (() -> Unit)? = null
 ) {
     val subTracks = remember(tracks) { tracks.filter { it.type == "sub" } }
 
@@ -128,6 +129,16 @@ fun SubtitleTrackSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (onOpenSync != null) {
+                    item {
+                        TrackRow(
+                            title = "Sync & delay",
+                            subtitle = "Subtitle and audio delay",
+                            isSelected = false,
+                            onClick = onOpenSync
+                        )
+                    }
+                }
                 item {
                     val isOff = (selectedTrackId == null)
                     TrackRow(

@@ -23,7 +23,13 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
 class PlayerEngine(
-    initialConfig: PlaybackConfig = PlaybackConfig()
+    initialConfig: PlaybackConfig = PlaybackConfig(),
+    /**
+     * P7-02: the service-owned engine starts creating the mpv handle immediately but waits (on its own
+     * command thread, at most [INITIAL_CONFIG_WAIT_MS]) for [provideInitialConfig], so the handle is
+     * built once with the right mode/renderer instead of being rebuilt by [reconfigure].
+     */
+    private val waitForInitialConfig: Boolean = false
 ) {
 
     private fun newCommandExecutor(): ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -37,6 +43,42 @@ class PlayerEngine(
     @Volatile private var scope = CoroutineScope(commandDispatcher + SupervisorJob())
     @Volatile private var released = false
     @Volatile private var timePosObserved = true
+
+    private val initialConfigLatch = java.util.concurrent.CountDownLatch(1)
+    private var initialConfigOverride: PlaybackConfig? = null
+    private var initStarted = false
+    private val initialisedSignal = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val _firstFrameReady = MutableStateFlow(false)
+    /** True after the first playback-restart of this engine (first frame is up); never reset. */
+    val firstFrameReady: StateFlow<Boolean> = _firstFrameReady.asStateFlow()
+
+    /** Completes when the mpv handle has been created and initialised (also if that failed). */
+    suspend fun awaitInitialised() = initialisedSignal.await()
+
+    /**
+     * Supplies the config for the first mpv handle. Returns false when the handle was already created
+     * (the caller then falls back to [reconfigure]). Only has an effect on engines created with
+     * waitForInitialConfig.
+     */
+    fun provideInitialConfig(config: PlaybackConfig): Boolean = synchronized(initialConfigLatch) {
+        if (initStarted) return false
+        initialConfigOverride = config
+        initialConfigLatch.countDown()
+        true
+    }
+
+    private fun awaitInitialConfig() {
+        if (waitForInitialConfig) {
+            try {
+                initialConfigLatch.await(INITIAL_CONFIG_WAIT_MS, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+            }
+        }
+        synchronized(initialConfigLatch) {
+            initStarted = true
+            initialConfigOverride?.let { playbackConfig = it }
+        }
+    }
 
     private fun executeCommand(block: () -> Unit) {
         if (released) return
@@ -57,6 +99,8 @@ class PlayerEngine(
     @Volatile private var shaderDirectory: String = ""
     @Volatile private var currentShaderPreset: ShaderPreset = ShaderPreset.NONE
     @Volatile private var savedVid: String? = null
+    /** P4-13 global subtitle appearance; applied to every loadfile and live when changed. */
+    @Volatile private var subtitleStyle = SubtitleStyle()
 
     // ---- B-08 safety net state ----
     private data class LoadRequest(
@@ -67,7 +111,9 @@ class PlayerEngine(
         val subTrackId: Int?,
         val subEnabled: Boolean,
         val speed: Double,
-        val aspect: String?
+        val aspect: String?,
+        val subDelayMs: Int = 0,
+        val audioDelayMs: Int = 0
     )
     @Volatile private var lastLoad: LoadRequest? = null
     private val loadSerial = AtomicInteger(0)
@@ -104,6 +150,7 @@ class PlayerEngine(
 
     companion object {
         private const val DETACH_TIMEOUT_MS = 1500L
+        private const val INITIAL_CONFIG_WAIT_MS = 600L
         @Volatile var sessionVulkanFailed: Boolean = false
         @Volatile var cachedGpuApis: List<String> = emptyList()
 
@@ -257,13 +304,15 @@ class PlayerEngine(
                 MpvEvent.PLAYBACK_RESTART -> {
                     if (ignoreRestartSerial == loadSerial.get()) return
                     restartSeenSerial = loadSerial.get()
-                    Log.i("VP-Perf", "playback-restart at ${System.currentTimeMillis()}")
+                    PerfLog.mark("playback-restart")
+                    _firstFrameReady.value = true
                 }
                 MpvEvent.END_FILE -> {
                     logStats()
                     Log.i("VP", "mpv event end-file")
                 }
                 MpvEvent.FILE_LOADED -> {
+                    PerfLog.mark("file-loaded")
                     Log.i("VP", "mpv event file-loaded")
                     if (!pendingPauseOnLoad) {
                         _state.update { it.copy(paused = false) }
@@ -381,7 +430,8 @@ class PlayerEngine(
             _surfaceEpoch.update { it + 1 }
             load(
                 request.path, request.startPositionMs, request.audioTrackId, request.audioEnabled,
-                request.subTrackId, request.subEnabled, request.speed, request.aspect
+                request.subTrackId, request.subEnabled, request.speed, request.aspect,
+                request.subDelayMs, request.audioDelayMs
             )
         }
     }
@@ -476,7 +526,13 @@ class PlayerEngine(
 
     init {
         scope.launch {
-            initHandle()
+            awaitInitialConfig()
+            try {
+                initHandle()
+            } finally {
+                initialisedSignal.complete(Unit)
+            }
+            PerfLog.mark("engine-initialised")
         }
     }
 
@@ -566,6 +622,7 @@ class PlayerEngine(
                 val restoreVid = savedVid ?: "auto"
                 MpvNative.setPropertyString(handle, "vid", restoreVid)
                 Log.i("VP", "Surface attached to mpv handle; restored vid=$restoreVid")
+                PerfLog.mark("surface-attached")
                 savedVid = null
                 checkVulkanVoInitialization()
             }
@@ -625,13 +682,15 @@ class PlayerEngine(
         subTrackId: Int? = null,
         subEnabled: Boolean = true,
         speed: Double = 1.0,
-        aspect: String? = null
+        aspect: String? = null,
+        subDelayMs: Int = 0,
+        audioDelayMs: Int = 0
     ) {
         val hadOverride = speedOverride != null
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
-        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null) }
-        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect)
+        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
+        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs)
         loadSerial.incrementAndGet()
         scope.launch {
             val recovered = softwareRecoveryPath
@@ -651,6 +710,8 @@ class PlayerEngine(
                 subEnabled = subEnabled,
                 speed = speed,
                 aspect = aspect,
+                subDelayMs = subDelayMs,
+                audioDelayMs = audioDelayMs,
                 paused = false
             )
         }
@@ -665,6 +726,8 @@ class PlayerEngine(
         subEnabled: Boolean = true,
         speed: Double = 1.0,
         aspect: String? = null,
+        subDelayMs: Int = 0,
+        audioDelayMs: Int = 0,
         paused: Boolean = false
     ) {
         assertCommandThread()
@@ -710,6 +773,12 @@ class PlayerEngine(
                 val spd = String.format(java.util.Locale.US, "%.2f", speed)
                 options.add("speed=$spd")
             }
+
+            // P4-13: the delays are per file; a new file must not inherit the previous file's values,
+            // so the defaults are written explicitly. The subtitle style is global.
+            options.add("sub-delay=${SyncDelay.toSeconds(subDelayMs)}")
+            options.add("audio-delay=${SyncDelay.toSeconds(audioDelayMs)}")
+            subtitleStyle.mpvOptions().forEach { (k, v) -> options.add("$k=$v") }
 
             if (paused) {
                 options.add("pause=yes")
@@ -772,6 +841,7 @@ class PlayerEngine(
                 Log.i("VP", "Loading $path from start without options")
                 arrayOf("loadfile", path, "replace")
             }
+            PerfLog.mark("loadfile-issued")
             val res = MpvNative.command(handle, cmd)
             Log.i("VP", "loadfile res=$res for $path")
             if (paused) {
@@ -831,6 +901,8 @@ class PlayerEngine(
             val curSubEnabled = curSid != null
             val curSpeed = _state.value.speed
             val curAspect = _state.value.aspect
+            val curSubDelay = _state.value.subDelayMs
+            val curAudioDelay = _state.value.audioDelayMs
             val surface = attachedSurface
 
             if (handle != 0L) {
@@ -864,6 +936,8 @@ class PlayerEngine(
                     subEnabled = curSubEnabled,
                     speed = curSpeed,
                     aspect = curAspect,
+                    subDelayMs = curSubDelay,
+                    audioDelayMs = curAudioDelay,
                     paused = wasPaused
                 )
             }
@@ -1138,6 +1212,36 @@ class PlayerEngine(
                 MpvNative.setPropertyDouble(handle, "speed", target ?: _state.value.speed)
                 Log.i("VP", "setSpeedOverride: ${target ?: "cleared"}")
             }
+        }
+    }
+
+    /** P4-13: live subtitle delay in ms (clamped); returns the applied value through [PlayerState.subDelayMs]. */
+    fun setSubDelay(ms: Int) {
+        val v = SyncDelay.clamp(ms)
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) MpvNative.setPropertyString(handle, "sub-delay", SyncDelay.toSeconds(v))
+            _state.update { it.copy(subDelayMs = v) }
+        }
+    }
+
+    fun setAudioDelay(ms: Int) {
+        val v = SyncDelay.clamp(ms)
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) MpvNative.setPropertyString(handle, "audio-delay", SyncDelay.toSeconds(v))
+            _state.update { it.copy(audioDelayMs = v) }
+        }
+    }
+
+    /** P4-13: global subtitle style; applies to the current file now and to every later load. */
+    fun setSubtitleStyle(style: SubtitleStyle) {
+        val s = style.normalized()
+        if (s == subtitleStyle) return // P7-02: no extra mpv work when loadfile already applied it
+        subtitleStyle = s
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) s.mpvOptions().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
         }
     }
 

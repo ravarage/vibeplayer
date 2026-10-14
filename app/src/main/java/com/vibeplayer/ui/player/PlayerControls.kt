@@ -77,6 +77,8 @@ fun PlayerControls(
     onSelectSubTrack: ((Int?) -> Unit)? = null,
     onSelectSpeed: ((Double) -> Unit)? = null,
     onPersistSpeed: ((Double) -> Unit)? = null,
+    onSetSubDelay: ((Int) -> Unit)? = null,
+    onSetAudioDelay: ((Int) -> Unit)? = null,
     onCycleAspect: (() -> Unit)? = null,
     onToggleMode: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -98,10 +100,11 @@ fun PlayerControls(
     var showAudioTrackSheet by remember { mutableStateOf(false) }
     var showSubTrackSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
+    var showSyncSheet by remember { mutableStateOf(false) }
 
     // Auto-hide controls after 3 seconds of inactivity (paused while sheet is open)
-    LaunchedEffect(controlsVisible, playerState.paused, showAudioTrackSheet, showSubTrackSheet, showSpeedSheet) {
-        if (controlsVisible && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet && !showSpeedSheet) {
+    LaunchedEffect(controlsVisible, playerState.paused, showAudioTrackSheet, showSubTrackSheet, showSpeedSheet, showSyncSheet) {
+        if (controlsVisible && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet && !showSpeedSheet && !showSyncSheet) {
             interactionEvents.collectLatest { timestamp ->
                 if (timestamp != Long.MAX_VALUE) {
                     delay(3000)
@@ -463,6 +466,23 @@ fun PlayerControls(
                 },
                 onDismiss = {
                     showSubTrackSheet = false
+                    interactionEvents.value = System.currentTimeMillis()
+                },
+                onOpenSync = {
+                    showSubTrackSheet = false
+                    showSyncSheet = true
+                }
+            )
+        }
+
+        if (showSyncSheet) {
+            SyncSheet(
+                subDelayMs = playerState.subDelayMs,
+                audioDelayMs = playerState.audioDelayMs,
+                onSubDelay = { ms -> onSetSubDelay?.invoke(ms) ?: playerEngine.setSubDelay(ms) },
+                onAudioDelay = { ms -> onSetAudioDelay?.invoke(ms) ?: playerEngine.setAudioDelay(ms) },
+                onDismiss = {
+                    showSyncSheet = false
                     interactionEvents.value = System.currentTimeMillis()
                 }
             )

@@ -19,5 +19,7 @@ data class FileSettings(
     val subEnabled: Boolean = true,
     val speed: Float = 1.0f,
     val aspect: String? = null,
+    val subDelayMs: Int = 0,
+    val audioDelayMs: Int = 0,
     val lastPlayedAt: Long = System.currentTimeMillis()
 )

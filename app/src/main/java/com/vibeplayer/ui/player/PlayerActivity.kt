@@ -43,7 +43,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.vibeplayer.data.prefs.AppSettingsRepository
 import com.vibeplayer.playback.PlaybackService
+import com.vibeplayer.player.PerfLog
 import com.vibeplayer.player.PlayerEngine
+import com.vibeplayer.data.thumbs.ThumbnailPause
+import com.vibeplayer.data.prefs.AppSettings
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -73,11 +79,24 @@ import kotlinx.coroutines.flow.map
 
 class PlayerActivity : ComponentActivity() {
 
+    private companion object {
+        /** P7-02: deferred start-up work (thumbnails, permission dialog) resumes at the latest after this. */
+        const val STARTUP_DEFER_TIMEOUT_MS = 4000L
+    }
+
     val viewModel: PlayerViewModel by viewModels()
     val playerEngine: PlayerEngine get() = viewModel.playerEngine
     private var playbackStarted = false
-    private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
-    private var currentVideoTitle: String = "ichiban.mp4"
+    @Volatile private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
+    // State: a content:// title is resolved off the main thread after the first composition.
+    private var currentVideoTitle: String by mutableStateOf("ichiban.mp4")
+    /** P7-02: content:// URI whose display name / fd are resolved on IO (see resolveContentOnIo). */
+    private var pendingContentUri: Uri? = null
+
+    /** P7-02: everything the first open needs from settings, computed on IO while the UI comes up. */
+    private class Startup(val config: PlaybackConfig, val preset: com.vibeplayer.player.ShaderPreset?)
+    private var startupDeferred: Deferred<Startup>? = null
+    private var contentDeferred: Deferred<Unit>? = null
     private var currentIdentityKey: String? = null
     private var currentFolderKey: String? = null
 
@@ -145,7 +164,14 @@ class PlayerActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    private fun resolveConfig(appSettings: com.vibeplayer.data.prefs.AppSettings? = null): PlaybackConfig {
+    private fun resolveConfig(appSettings: AppSettings): PlaybackConfig =
+        resolveConfig(appSettings.playbackMode, appSettings.renderer)
+
+    /** Null mode/renderer (no settings yet): keep what the service-owned engine runs. */
+    private fun resolveConfig(
+        modeSetting: com.vibeplayer.data.prefs.PlaybackModeOption? = null,
+        rendererSetting: com.vibeplayer.data.prefs.RendererOption? = null
+    ): PlaybackConfig {
         val modeArg = intent.getStringExtra("mode") ?: intent.getStringExtra("playback_mode")
         val mode = when (modeArg?.lowercase()) {
             "quality" -> PlaybackMode.QUALITY
@@ -153,8 +179,8 @@ class PlayerActivity : ComponentActivity() {
             // Without settings (onCreate/onNewIntent) keep what the service-owned engine already
             // runs, so reopening from the notification never flips a playing file's mode.
             else -> when {
-                appSettings == null -> playerEngine.playbackConfig.mode
-                appSettings.playbackMode == com.vibeplayer.data.prefs.PlaybackModeOption.QUALITY -> PlaybackMode.QUALITY
+                modeSetting == null -> playerEngine.playbackConfig.mode
+                modeSetting == com.vibeplayer.data.prefs.PlaybackModeOption.QUALITY -> PlaybackMode.QUALITY
                 else -> PlaybackMode.EFFICIENT
             }
         }
@@ -164,8 +190,8 @@ class PlayerActivity : ComponentActivity() {
             "vulkan" -> com.vibeplayer.player.Renderer.VULKAN
             "gles", "opengl" -> com.vibeplayer.player.Renderer.GLES
             else -> when {
-                appSettings == null -> playerEngine.playbackConfig.renderer
-                appSettings.renderer == com.vibeplayer.data.prefs.RendererOption.VULKAN -> com.vibeplayer.player.Renderer.VULKAN
+                rendererSetting == null -> playerEngine.playbackConfig.renderer
+                rendererSetting == com.vibeplayer.data.prefs.RendererOption.VULKAN -> com.vibeplayer.player.Renderer.VULKAN
                 else -> com.vibeplayer.player.Renderer.GLES
             }
         }
@@ -274,8 +300,19 @@ class PlayerActivity : ComponentActivity() {
         Log.i("VP", "PlayerActivity onCreate")
         // Before the ViewModel exists: it decides whether the service may post a notification.
         PlaybackService.benchmarkRun = intent.getBooleanExtra("benchmark", false)
-        if (!PlaybackService.benchmarkRun) checkNotificationPermission()
-
+        PerfLog.mark("intent-received")
+        // P7-02: touching the engine creates it and starts its mpv initialisation on its own thread,
+        // in parallel with everything below. Thumbnail extraction (browser) waits until the first
+        // frame is up so it does not compete with start-up.
+        val engine = playerEngine
+        ThumbnailPause.setPaused(true)
+        lifecycleScope.launch {
+            withTimeoutOrNull(STARTUP_DEFER_TIMEOUT_MS) { engine.firstFrameReady.first { it } }
+            ThumbnailPause.setPaused(false)
+            // The notification-permission dialog and its DataStore read are not needed for the first frame.
+            if (!PlaybackService.benchmarkRun) checkNotificationPermission()
+        }
+        startStartupWork(engine)
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeControlStream = AudioManager.STREAM_MUSIC
@@ -330,12 +367,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
-        val config = resolveConfig()
-        if (config != playerEngine.playbackConfig) {
-            playerEngine.reconfigure(config)
-        }
-
-        resolveVideoPath()
+        resolveVideoPath(deferContent = true)
         checkPermissionAndProceed()
 
         if (intent.getStringExtra("test") == "p1_02") {
@@ -451,6 +483,8 @@ class PlayerActivity : ComponentActivity() {
                                 onSelectSubTrack = { viewModel.setSubtitleTrack(it) },
                                 onSelectSpeed = { viewModel.setSpeed(it) },
                                 onPersistSpeed = { viewModel.persistSpeed(it) },
+                                onSetSubDelay = { viewModel.setSubDelay(it) },
+                                onSetAudioDelay = { viewModel.setAudioDelay(it) },
                                 onToggleMode = { viewModel.togglePlaybackMode() },
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
@@ -486,6 +520,53 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    private val startupHints by lazy { getSharedPreferences("startup_hint", Context.MODE_PRIVATE) }
+
+    /**
+     * P7-02, IO: (1) give the engine its config straight away, using the mode/renderer seen last time
+     * (no DataStore read needed), so the first mpv handle is built once; (2) read the real settings
+     * and resolve the config for the open; (3) resolve a content:// URI. The open waits for these.
+     */
+    private fun startStartupWork(engine: PlayerEngine) {
+        startupDeferred = lifecycleScope.async(Dispatchers.IO) {
+            val modeHint = startupHints.getString("mode", null)?.let {
+                runCatching { com.vibeplayer.data.prefs.PlaybackModeOption.valueOf(it) }.getOrNull()
+            }
+            val rendererHint = startupHints.getString("renderer", null)?.let {
+                runCatching { com.vibeplayer.data.prefs.RendererOption.valueOf(it) }.getOrNull()
+            }
+            val hinted = resolveConfig(modeHint, rendererHint)
+            if (!engine.provideInitialConfig(hinted)) {
+                // The handle exists already (service-owned engine of a running session, or init did
+                // not wait): keep what the engine runs, as before, never the remembered setting.
+                val current = resolveConfig()
+                if (current != engine.playbackConfig) engine.reconfigure(current)
+            }
+            val settings = viewModel.appSettingsRepository.appSettingsFlow.first()
+            if (settings.playbackMode.name != modeHint?.name || settings.renderer.name != rendererHint?.name) {
+                startupHints.edit()
+                    .putString("mode", settings.playbackMode.name)
+                    .putString("renderer", settings.renderer.name)
+                    .apply()
+            }
+            computeStartup(settings)
+        }
+        contentDeferred = lifecycleScope.async(Dispatchers.IO) { resolveContentOnIo() }
+    }
+
+    private fun computeStartup(settings: AppSettings): Startup {
+        val shaderArg = intent.getStringExtra("shader") ?: intent.getStringExtra("shader_preset")
+        val preset = when (shaderArg?.lowercase()) {
+            "anime4k_a", "a" -> com.vibeplayer.player.ShaderPreset.ANIME4K_A
+            "anime4k_b", "b" -> com.vibeplayer.player.ShaderPreset.ANIME4K_B
+            "anime4k_c", "c" -> com.vibeplayer.player.ShaderPreset.ANIME4K_C
+            "snapdragon_gsr", "gsr" -> com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR
+            "none" -> com.vibeplayer.player.ShaderPreset.NONE
+            else -> null
+        }
+        return Startup(resolveConfig(settings), preset)
+    }
+
     private fun hideSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
@@ -519,9 +600,14 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun resolveVideoPath() {
+    /**
+     * @param deferContent onCreate: do not query the content resolver here (main thread); keep the URI
+     * in [pendingContentUri] and let [resolveContentOnIo] fill in title and fd path.
+     */
+    private fun resolveVideoPath(deferContent: Boolean = false) {
         currentIdentityKey = null
         currentFolderKey = null
+        pendingContentUri = null
         val extraPath = intent.getStringExtra("path")
         val dataUri = intent.data
         if (!extraPath.isNullOrEmpty()) {
@@ -534,8 +620,14 @@ class PlayerActivity : ComponentActivity() {
                 currentVideoPath = path
                 currentVideoTitle = File(path).name
             } else if (scheme == "content") {
-                currentVideoTitle = queryDisplayName(dataUri)
-                currentVideoPath = resolveContentUri(dataUri)
+                if (deferContent) {
+                    currentVideoTitle = dataUri.lastPathSegment ?: "Video"
+                    currentVideoPath = dataUri.toString()
+                    pendingContentUri = dataUri
+                } else {
+                    currentVideoTitle = queryDisplayName(dataUri)
+                    currentVideoPath = resolveContentUri(dataUri)
+                }
                 currentIdentityKey = dataUri.toString()
                 currentFolderKey = dataUri.toString().substringBeforeLast('/', "")
             } else {
@@ -553,26 +645,34 @@ class PlayerActivity : ComponentActivity() {
         Log.i("VP", "Resolved video path: $currentVideoPath (title: $currentVideoTitle)")
     }
 
-    private fun openResolvedVideo() {
+    /** IO: display name and file descriptor of a content:// target (see resolveVideoPath). */
+    private fun resolveContentOnIo() {
+        val uri = pendingContentUri
+        if (uri != null) {
+            currentVideoTitle = queryDisplayName(uri)
+            currentVideoPath = resolveContentUri(uri)
+            pendingContentUri = null
+        } else if (!currentVideoPath.startsWith("fdclose://")) {
+            val file = File(currentVideoPath)
+            Log.i("VP", "File access: path=$currentVideoPath exists=${file.exists()} canRead=${file.canRead()} size=${file.length()}")
+        }
+    }
+
+    /** @param useStartup the cold-start open: reuse the work started in onCreate instead of redoing it. */
+    private fun openResolvedVideo(useStartup: Boolean = false) {
         lifecycleScope.launch {
-            val appSettings = viewModel.appSettingsRepository.appSettingsFlow.first()
-            val config = resolveConfig(appSettings)
-            val shaderArg = intent.getStringExtra("shader") ?: intent.getStringExtra("shader_preset")
-            val preset = when (shaderArg?.lowercase()) {
-                "anime4k_a", "a" -> com.vibeplayer.player.ShaderPreset.ANIME4K_A
-                "anime4k_b", "b" -> com.vibeplayer.player.ShaderPreset.ANIME4K_B
-                "anime4k_c", "c" -> com.vibeplayer.player.ShaderPreset.ANIME4K_C
-                "snapdragon_gsr", "gsr" -> com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR
-                "none" -> com.vibeplayer.player.ShaderPreset.NONE
-                else -> null
-            }
+            val startup = startupDeferred.takeIf { useStartup }?.await()
+                ?: withContext(Dispatchers.IO) {
+                    computeStartup(viewModel.appSettingsRepository.appSettingsFlow.first())
+                }
+            if (useStartup) contentDeferred?.await()
             viewModel.openVideo(
                 path = currentVideoPath,
                 identityKey = currentIdentityKey,
                 folderKey = currentFolderKey,
                 title = currentVideoTitle,
-                playbackConfig = config,
-                shaderPreset = preset
+                playbackConfig = startup.config,
+                shaderPreset = startup.preset
             )
         }
     }
@@ -640,11 +740,6 @@ class PlayerActivity : ComponentActivity() {
     private fun tryStartPlayback() {
         if (playbackStarted) return
 
-        if (!currentVideoPath.startsWith("fdclose://")) {
-            val file = File(currentVideoPath)
-            Log.i("VP", "File access: path=$currentVideoPath exists=${file.exists()} canRead=${file.canRead()} size=${file.length()}")
-        }
-
         val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
         if (!forceHwdec.isNullOrEmpty()) {
             playerEngine.setHwdec(forceHwdec)
@@ -658,7 +753,7 @@ class PlayerActivity : ComponentActivity() {
             Log.i("VP", "PlayerActivity re-attached to the running session of $currentVideoPath; not reloading")
             return
         }
-        openResolvedVideo()
+        openResolvedVideo(useStartup = true)
     }
 
     private fun runP102Test() {
@@ -917,5 +1012,6 @@ class PlayerActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i("VP", "PlayerActivity onDestroy")
+        ThumbnailPause.setPaused(false)
     }
 }
