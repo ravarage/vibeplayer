@@ -19,8 +19,7 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
 
 ## In progress
 
-- P6: quality mode, renderer switch (OpenGL ES default, experimental Vulkan with automatic fallback) and the
-  benchmark harness exist; the benchmark runs and the choice of default renderer are still to do.
+- P6: best configuration per format chosen before opening (P6-07) implemented with table lookup, MediaExtractor format detection (<50 ms), Vulkan driver cache, and safety net chain (Vulkan -> GLES -> software); quality mode, renderer switch (Auto default / Vulkan / OpenGL ES), and the benchmark harness exist; the benchmark runs and refinement of the table remain.
 - P7: performance. Release build, recomposition and idle-cost work, start time under 1 second, baseline
   profile, memory budget. Several parts are coded but not yet measured on the phone.
 - Subtitle and audio delay plus subtitle style (P4-13, MX Player parity) and the start-time work exist on an

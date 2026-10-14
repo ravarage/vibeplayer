@@ -118,7 +118,27 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
   new option table, reloads the file and seeks.
 
 ## Vulkan status update (2026-10-13)
-**User decision 2026-10-14 (supersedes the GLES-default notes below): one phone, so the configuration is chosen BEFORE opening from a per-format table of what was measured best on it (Vulkan where it measured best and is available); fallback chain Vulkan -> OpenGL ES -> software only as a safety net. See TASKS.md P6-07.**
+**User decision 2026-10-14 (supersedes the GLES-default notes below; implemented in P6-07): one phone, so the configuration is chosen BEFORE opening from a per-format table of what was measured best on it (Vulkan where it measured best and is available); fallback chain Vulkan -> OpenGL ES -> software only as a safety net. See TASKS.md P6-07.**
+
+### Per-format best configuration table (P6-07)
+The application targets one phone, OS, and GPU (Snapdragon 778G / Adreno 642L), so rather than guessing at runtime, it identifies the video format cheaply before opening and selects the configuration measured as best:
+
+| Format | Decode Mode (`hwdec`) | Preferred Renderer | `vo` | Why (measured) |
+|---|---|---|---|---|
+| H.264 8-bit | MediaCodec copy-back (`mediacodec-copy`) | Vulkan if available, else OpenGL ES | `gpu` (Quality: `gpu-next`) | Zero-copy stalled 12/40 and 5/60 opens (B-08); copy-back 0/80 stalls on GLES, 5/80 on Vulkan |
+| H.264 10-bit (Hi10P) | Software (`no`) | Vulkan if available, else OpenGL ES | `gpu` (Quality: `gpu-next`) | No hardware decoder on Snapdragon 778G |
+| HEVC 8/10-bit | MediaCodec zero-copy (`mediacodec`) | OpenGL ES | `gpu` (Quality: `gpu-next`) | 0/20 stalls zero-copy; lowest power path |
+| VP9 | MediaCodec zero-copy (`mediacodec`) | OpenGL ES | `gpu` (Quality: `gpu-next`) | 0/20 stalls zero-copy |
+| AV1 (any) | dav1d software, all cores (`no`) | Vulkan if available, else OpenGL ES | `gpu` (Quality: `gpu-next`) | Fewest drops in 4K test (359 vs 517/565) |
+| other | Software (`no`) | OpenGL ES | `gpu` (Quality: `gpu-next`) | Safe default |
+
+- **Quality mode override**: Overrides the renderer column with `gpu-next` on Vulkan (else GLES).
+- **Fast format detection**: `VideoFormatDetector` uses Android `MediaExtractor` off the main thread in parallel with engine initialization (`Dispatchers.IO`), extracting MIME, profile, and bit depth under ~5-15 ms (well within the 50 ms budget). Falls back to `other` on error or timeout.
+- **Vulkan driver availability**: Probed and cached per driver build (`Build.FINGERPRINT` + `vulkan.adreno.so` mtime; never the 1.1 feature flag). Reset on driver update.
+- **Safety net chain**: Vulkan -> OpenGL ES -> software (`hwdec=no`) at the exact same position with one short on-screen message (`_onScreenMessage`), `VULKAN-FAIL` / `GLES-FAIL` log lines, and remembered format failures on this driver build so subsequent opens of that format immediately avoid Vulkan.
+- **Renderer setting**: `Auto (default)` / `Vulkan` / `OpenGL ES`. One-time DataStore migration moves old default `OPENGL` users to `AUTO`.
+- **Debug overlay**: Displays the chosen row description (`ROW: ...`) and selection reason (`REASON: ...`).
+- **Debug intent extras**: `force_vulkan_failure=true` and `force_gles_failure=true` test the safety chain.
 
 **User note 2026-10-13: the Vulkan 1.3 driver on the phone is the user's own port and is not finished.** Keep Vulkan support in the app and the Vulkan-enabled libraries as the default build, but treat the Vulkan renderer as experimental: OpenGL ES stays the default renderer for every mode unless the P6 benchmark and a stability run show Vulkan is at least as good, the automatic fallback to GLES is mandatory, and a Vulkan failure (init error, device lost, corruption, crash in `vulkan.adreno.so`) is to be reported to the user with the log lines, since it is useful for their driver work, not treated as an app bug to work around silently. The driver may change between sessions: re-read its version (`cmd gpu vkjson`) at the start of any P6 task and record it next to every benchmark number.
 
