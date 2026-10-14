@@ -1035,7 +1035,12 @@ class PlayerEngine(
         }
     }
 
-    fun reconfigure(newConfig: PlaybackConfig) {
+    /**
+     * @param reloadCurrentFile false when the caller loads another file right after (openVideo): the
+     * old file is then not reloaded on the new handle (a wasted loadfile whose pause state would
+     * carry over to the next file).
+     */
+    fun reconfigure(newConfig: PlaybackConfig, reloadCurrentFile: Boolean = true) {
         executeCommand {
             assertCommandThread()
             if (playbackConfig == newConfig) return@executeCommand
@@ -1078,7 +1083,10 @@ class PlayerEngine(
                 MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
             }
 
-            if (curPath.isNotEmpty()) {
+            if (curPath.isNotEmpty() && reloadCurrentFile) {
+                // A new load for the B-08 watchdog: the previous serial already saw its playback-restart.
+                lastLoad = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay)
+                loadSerial.incrementAndGet()
                 loadInternal(
                     path = curPath,
                     startPositionMs = curPos,

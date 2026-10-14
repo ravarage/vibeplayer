@@ -902,7 +902,8 @@ class PlaybackService : Service() {
                 playerEngine.playbackConfig.vo != targetConfig.vo ||
                 playerEngine.playbackConfig.hwdecOverride != targetConfig.hwdecOverride
             ) {
-                playerEngine.reconfigure(targetConfig)
+                // The new file is loaded below: do not reload the leaving one on the new handle.
+                playerEngine.reconfigure(targetConfig, reloadCurrentFile = false)
             }
 
             val effectivePreset = shaderPreset ?: mapShaderPreset(appSettings.shaderPreset)
