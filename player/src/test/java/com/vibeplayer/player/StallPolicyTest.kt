@@ -12,8 +12,9 @@ class StallPolicyTest {
         restart: Boolean = false,
         surface: Boolean = true,
         recovered: Boolean = false,
-        elapsed: Long = StallPolicy.FIRST_CHECK_MS
-    ) = StallPolicy.Facts(released, sameLoad, restart, surface, recovered, elapsed)
+        elapsed: Long = StallPolicy.FIRST_CHECK_MS,
+        vid: String? = null
+    ) = StallPolicy.Facts(released, sameLoad, restart, surface, recovered, elapsed, vid)
 
     @Test
     fun probesWhenPlaybackHasNotStartedInTime() {
@@ -39,6 +40,11 @@ class StallPolicyTest {
     @Test
     fun doesNothingWithoutASurface() {
         assertEquals(StallPolicy.Action.NONE, StallPolicy.onTimer(facts(surface = false)))
+    }
+
+    @Test
+    fun doesNothingWhenVideoDisabled() {
+        assertEquals(StallPolicy.Action.NONE, StallPolicy.onTimer(facts(vid = "no")))
     }
 
     @Test

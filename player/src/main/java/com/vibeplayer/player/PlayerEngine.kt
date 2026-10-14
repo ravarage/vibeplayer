@@ -56,6 +56,7 @@ class PlayerEngine(
     @Volatile private var attachedSurface: Surface? = null
     @Volatile private var shaderDirectory: String = ""
     @Volatile private var currentShaderPreset: ShaderPreset = ShaderPreset.NONE
+    @Volatile private var savedVid: String? = null
 
     // ---- B-08 safety net state ----
     private data class LoadRequest(
@@ -325,7 +326,8 @@ class PlayerEngine(
             playbackRestartSeen = restartSeenSerial == serial,
             surfaceAttached = attachedSurface != null,
             alreadyRecovered = softwareRecoveryPath != null && softwareRecoveryPath == lastLoad?.path,
-            elapsedSinceFileLoadedMs = android.os.SystemClock.elapsedRealtime() - armedAt
+            elapsedSinceFileLoadedMs = android.os.SystemClock.elapsedRealtime() - armedAt,
+            vid = if (savedVid != null || attachedSurface == null) "no" else null
         )
         if (StallPolicy.onTimer(facts) != StallPolicy.Action.PROBE) return
         // Liveness probe: a stuck core never answers a synchronous property read, and the command
@@ -561,7 +563,10 @@ class PlayerEngine(
             attachedSurface = surface
             if (handle != 0L) {
                 MpvNative.attachSurface(handle, surface)
-                Log.i("VP", "Surface attached to mpv handle")
+                val restoreVid = savedVid ?: "auto"
+                MpvNative.setPropertyString(handle, "vid", restoreVid)
+                Log.i("VP", "Surface attached to mpv handle; restored vid=$restoreVid")
+                savedVid = null
                 checkVulkanVoInitialization()
             }
         }
@@ -582,8 +587,13 @@ class PlayerEngine(
                 }
                 attachedSurface = null
                 if (handle != 0L) {
+                    val currentVid = MpvNative.getPropertyString(handle, "vid")
+                    if (!currentVid.isNullOrEmpty() && currentVid != "no") {
+                        savedVid = currentVid
+                    }
                     MpvNative.detachSurface(handle)
-                    Log.i("VP", "Surface detached from mpv handle")
+                    MpvNative.setPropertyString(handle, "vid", "no")
+                    Log.i("VP", "Surface detached from mpv handle; vid set to no (savedVid=$savedVid)")
                 }
             }
             // Called from surfaceDestroyed on the main thread. Bounded: if the command thread is
@@ -673,6 +683,13 @@ class PlayerEngine(
         }
         if (handle != 0L) {
             val options = mutableListOf<String>()
+            // P5-03: no surface (background audio) means no video decoding; vid is restored on attach.
+            if (attachedSurface == null) {
+                savedVid = "auto"
+                options.add("vid=no")
+            } else {
+                savedVid = null
+            }
             if (startPositionMs > 0L) {
                 val sec = String.format(java.util.Locale.US, "%.3f", startPositionMs / 1000.0)
                 options.add("start=$sec")
@@ -830,6 +847,11 @@ class PlayerEngine(
 
             if (surface != null) {
                 MpvNative.attachSurface(handle, surface)
+                savedVid = null
+            }
+            // P5-03: the new handle starts at full volume; keep an audio-focus duck in progress.
+            if (isDucked) {
+                MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
             }
 
             if (curPath.isNotEmpty()) {
@@ -1156,6 +1178,36 @@ class PlayerEngine(
         }
     }
 
+    @Volatile private var isDucked = false
+    @Volatile private var preDuckVolume: Double? = null
+
+    /**
+     * Lowers mpv volume to 30% of its current value on transient audio focus loss (CAN_DUCK),
+     * and restores it when focus is regained.
+     */
+    fun setDuck(duck: Boolean) {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            if (duck) {
+                if (isDucked) return@executeCommand
+                val cur = MpvNative.getPropertyDouble(handle, "volume") ?: 100.0
+                preDuckVolume = cur
+                isDucked = true
+                val ducked = cur * 0.3
+                MpvNative.setPropertyDouble(handle, "volume", ducked)
+                Log.i("VP", "PlayerEngine ducking audio: volume $cur -> $ducked")
+            } else {
+                if (!isDucked) return@executeCommand
+                val restore = preDuckVolume ?: 100.0
+                MpvNative.setPropertyDouble(handle, "volume", restore)
+                Log.i("VP", "PlayerEngine unducking audio: volume restored to $restore")
+                preDuckVolume = null
+                isDucked = false
+            }
+        }
+    }
+
     @Volatile
     private var lastKeyframeSeekTime: Long = 0L
 
@@ -1269,6 +1321,9 @@ class PlayerEngine(
         if (released) return
         released = true
         speedOverride = null
+        savedVid = null
+        isDucked = false
+        preDuckVolume = null
         watchdog.shutdownNow()
         statsJob?.cancel()
         statsJob = null
