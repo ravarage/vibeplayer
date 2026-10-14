@@ -43,6 +43,8 @@ data class PlayerState(
     val videoCodec: String? = null,
     val fallback: Boolean = false,
     val aspect: String? = null,
+    val subDelayMs: Int = 0,
+    val audioDelayMs: Int = 0,
     val rendererInUse: String = "GLES",
     val lastVulkanError: String? = null
 )

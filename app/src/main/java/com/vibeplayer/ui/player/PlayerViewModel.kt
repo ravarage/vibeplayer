@@ -180,6 +180,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         (service ?: PlaybackService.currentInstance)?.persistSpeed(speed)
     }
 
+    fun setSubDelay(ms: Int) {
+        (service ?: PlaybackService.currentInstance)?.setSubDelay(ms)
+    }
+
+    fun setAudioDelay(ms: Int) {
+        (service ?: PlaybackService.currentInstance)?.setAudioDelay(ms)
+    }
+
     fun setAspect(aspect: String?) {
         (service ?: PlaybackService.currentInstance)?.setAspect(aspect)
     }

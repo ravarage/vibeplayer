@@ -99,6 +99,8 @@ class PlayerEngine(
     @Volatile private var shaderDirectory: String = ""
     @Volatile private var currentShaderPreset: ShaderPreset = ShaderPreset.NONE
     @Volatile private var savedVid: String? = null
+    /** P4-13 global subtitle appearance; applied to every loadfile and live when changed. */
+    @Volatile private var subtitleStyle = SubtitleStyle()
 
     // ---- B-08 safety net state ----
     private data class LoadRequest(
@@ -109,7 +111,9 @@ class PlayerEngine(
         val subTrackId: Int?,
         val subEnabled: Boolean,
         val speed: Double,
-        val aspect: String?
+        val aspect: String?,
+        val subDelayMs: Int = 0,
+        val audioDelayMs: Int = 0
     )
     @Volatile private var lastLoad: LoadRequest? = null
     private val loadSerial = AtomicInteger(0)
@@ -426,7 +430,8 @@ class PlayerEngine(
             _surfaceEpoch.update { it + 1 }
             load(
                 request.path, request.startPositionMs, request.audioTrackId, request.audioEnabled,
-                request.subTrackId, request.subEnabled, request.speed, request.aspect
+                request.subTrackId, request.subEnabled, request.speed, request.aspect,
+                request.subDelayMs, request.audioDelayMs
             )
         }
     }
@@ -677,13 +682,15 @@ class PlayerEngine(
         subTrackId: Int? = null,
         subEnabled: Boolean = true,
         speed: Double = 1.0,
-        aspect: String? = null
+        aspect: String? = null,
+        subDelayMs: Int = 0,
+        audioDelayMs: Int = 0
     ) {
         val hadOverride = speedOverride != null
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
-        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null) }
-        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect)
+        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
+        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs)
         loadSerial.incrementAndGet()
         scope.launch {
             val recovered = softwareRecoveryPath
@@ -703,6 +710,8 @@ class PlayerEngine(
                 subEnabled = subEnabled,
                 speed = speed,
                 aspect = aspect,
+                subDelayMs = subDelayMs,
+                audioDelayMs = audioDelayMs,
                 paused = false
             )
         }
@@ -717,6 +726,8 @@ class PlayerEngine(
         subEnabled: Boolean = true,
         speed: Double = 1.0,
         aspect: String? = null,
+        subDelayMs: Int = 0,
+        audioDelayMs: Int = 0,
         paused: Boolean = false
     ) {
         assertCommandThread()
@@ -762,6 +773,12 @@ class PlayerEngine(
                 val spd = String.format(java.util.Locale.US, "%.2f", speed)
                 options.add("speed=$spd")
             }
+
+            // P4-13: the delays are per file; a new file must not inherit the previous file's values,
+            // so the defaults are written explicitly. The subtitle style is global.
+            options.add("sub-delay=${SyncDelay.toSeconds(subDelayMs)}")
+            options.add("audio-delay=${SyncDelay.toSeconds(audioDelayMs)}")
+            subtitleStyle.mpvOptions().forEach { (k, v) -> options.add("$k=$v") }
 
             if (paused) {
                 options.add("pause=yes")
@@ -884,6 +901,8 @@ class PlayerEngine(
             val curSubEnabled = curSid != null
             val curSpeed = _state.value.speed
             val curAspect = _state.value.aspect
+            val curSubDelay = _state.value.subDelayMs
+            val curAudioDelay = _state.value.audioDelayMs
             val surface = attachedSurface
 
             if (handle != 0L) {
@@ -917,6 +936,8 @@ class PlayerEngine(
                     subEnabled = curSubEnabled,
                     speed = curSpeed,
                     aspect = curAspect,
+                    subDelayMs = curSubDelay,
+                    audioDelayMs = curAudioDelay,
                     paused = wasPaused
                 )
             }
@@ -1191,6 +1212,36 @@ class PlayerEngine(
                 MpvNative.setPropertyDouble(handle, "speed", target ?: _state.value.speed)
                 Log.i("VP", "setSpeedOverride: ${target ?: "cleared"}")
             }
+        }
+    }
+
+    /** P4-13: live subtitle delay in ms (clamped); returns the applied value through [PlayerState.subDelayMs]. */
+    fun setSubDelay(ms: Int) {
+        val v = SyncDelay.clamp(ms)
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) MpvNative.setPropertyString(handle, "sub-delay", SyncDelay.toSeconds(v))
+            _state.update { it.copy(subDelayMs = v) }
+        }
+    }
+
+    fun setAudioDelay(ms: Int) {
+        val v = SyncDelay.clamp(ms)
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) MpvNative.setPropertyString(handle, "audio-delay", SyncDelay.toSeconds(v))
+            _state.update { it.copy(audioDelayMs = v) }
+        }
+    }
+
+    /** P4-13: global subtitle style; applies to the current file now and to every later load. */
+    fun setSubtitleStyle(style: SubtitleStyle) {
+        val s = style.normalized()
+        if (s == subtitleStyle) return // P7-02: no extra mpv work when loadfile already applied it
+        subtitleStyle = s
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) s.mpvOptions().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
         }
     }
 

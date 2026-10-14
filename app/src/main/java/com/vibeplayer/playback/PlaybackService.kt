@@ -286,6 +286,15 @@ class PlaybackService : Service() {
 
         // P7-02: the Media3 adapter and MediaSession are built after the first frame (see
         // createMediaSession); until then the notification simply has no media style.
+        // P4-13: the live subtitle-style collector also starts after the first frame; every
+        // loadfile already applies the style (openVideo), and setSubtitleStyle ignores an equal value.
+        serviceScope.launch {
+            withTimeoutOrNull(DEFERRED_WORK_TIMEOUT_MS) { playerEngine.firstFrameReady.first { it } }
+            appSettingsRepository.appSettingsFlow
+                .map { it.subtitleStyle() }
+                .distinctUntilChanged()
+                .collect { playerEngine.setSubtitleStyle(it) }
+        }
 
         // Initial foreground notification (type mediaPlayback)
         startForegroundCompat()
@@ -818,6 +827,8 @@ class PlaybackService : Service() {
             val subEnabled = fileChoice?.subEnabled ?: true
             val speed = fileSettings?.speed?.toDouble() ?: 1.0
             val aspect = fileSettings?.aspect
+            val subDelayMs = fileSettings?.subDelayMs ?: 0
+            val audioDelayMs = fileSettings?.audioDelayMs ?: 0
 
             // Quality/efficient mode and renderer come from settings (or the launch intent) and are
             // applied here, the code path that opens every file: opens from the activity, auto-advance,
@@ -845,6 +856,7 @@ class PlaybackService : Service() {
             val effectivePreset = shaderPreset ?: mapShaderPreset(appSettings.shaderPreset)
             if (effectivePreset != ShaderPreset.NONE) shaderExtraction.await()
             playerEngine.setShaderPreset(effectivePreset)
+            playerEngine.setSubtitleStyle(appSettings.subtitleStyle())
 
             playerEngine.load(
                 path = path,
@@ -854,7 +866,9 @@ class PlaybackService : Service() {
                 subTrackId = if (subEnabled) subTrackId else null,
                 subEnabled = subEnabled,
                 speed = speed,
-                aspect = aspect
+                aspect = aspect,
+                subDelayMs = subDelayMs,
+                audioDelayMs = audioDelayMs
             )
             currentKey = key
             if (playAfterLoad) playerEngine.play()
@@ -979,6 +993,27 @@ class PlaybackService : Service() {
             )
             dao.upsert(updated)
             Log.i("VP", "Persisted speed=$speed for key=$key")
+        }
+    }
+
+    fun setSubDelay(ms: Int) {
+        val v = com.vibeplayer.player.SyncDelay.clamp(ms)
+        playerEngine.setSubDelay(v)
+        persistDelays { it.copy(subDelayMs = v) }
+    }
+
+    fun setAudioDelay(ms: Int) {
+        val v = com.vibeplayer.player.SyncDelay.clamp(ms)
+        playerEngine.setAudioDelay(v)
+        persistDelays { it.copy(audioDelayMs = v) }
+    }
+
+    private fun persistDelays(change: (FileSettings) -> FileSettings) {
+        if (benchmarkRun) return
+        val key = currentKey ?: return
+        serviceScope.launch(Dispatchers.IO) {
+            val base = dao.getByKey(key) ?: FileSettings(key = key)
+            dao.upsert(change(base).copy(lastPlayedAt = System.currentTimeMillis()))
         }
     }
 

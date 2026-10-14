@@ -47,8 +47,13 @@ data class AppSettings(
     val shaderPreset: ShaderPresetOption = ShaderPresetOption.NONE,
     val preferredAudioLanguages: List<String> = listOf("en"),
     val preferredSubtitleLanguages: List<String> = listOf("en"),
-    val subtitleMode: SubtitlePreferenceMode = SubtitlePreferenceMode.FORCED_ONLY
-)
+    val subtitleMode: SubtitlePreferenceMode = SubtitlePreferenceMode.FORCED_ONLY,
+    val subtitleScale: Double = 1.0,
+    val subtitlePos: Int = 100,
+    val subtitleAssOverride: Boolean = false
+) {
+    fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
+}
 
 val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
 
@@ -65,6 +70,9 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_PREFERRED_AUDIO_LANGS = stringPreferencesKey("preferred_audio_langs")
         private val KEY_PREFERRED_SUB_LANGS = stringPreferencesKey("preferred_sub_langs")
         private val KEY_SUBTITLE_MODE = stringPreferencesKey("subtitle_mode")
+        private val KEY_SUB_SCALE = doublePreferencesKey("sub_scale")
+        private val KEY_SUB_POS = intPreferencesKey("sub_pos")
+        private val KEY_SUB_ASS_OVERRIDE = booleanPreferencesKey("sub_ass_override")
         private val KEY_NOTIFICATION_PERMISSION_DENIED = booleanPreferencesKey("notification_permission_denied")
     }
 
@@ -125,7 +133,10 @@ class AppSettingsRepository(private val context: Context) {
             shaderPreset = shaderPreset,
             preferredAudioLanguages = preferredAudioLanguages,
             preferredSubtitleLanguages = preferredSubtitleLanguages,
-            subtitleMode = subtitleMode
+            subtitleMode = subtitleMode,
+            subtitleScale = com.vibeplayer.player.SubtitleStyle.normalizeScale(prefs[KEY_SUB_SCALE] ?: 1.0),
+            subtitlePos = com.vibeplayer.player.SubtitleStyle.normalizePos(prefs[KEY_SUB_POS] ?: 100),
+            subtitleAssOverride = prefs[KEY_SUB_ASS_OVERRIDE] ?: false
         )
     }
 
@@ -165,6 +176,18 @@ class AppSettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { it[KEY_SUBTITLE_MODE] = mode.name }
     }
 
+    suspend fun setSubtitleScale(v: Double) {
+        context.settingsDataStore.edit { it[KEY_SUB_SCALE] = com.vibeplayer.player.SubtitleStyle.normalizeScale(v) }
+    }
+
+    suspend fun setSubtitlePos(v: Int) {
+        context.settingsDataStore.edit { it[KEY_SUB_POS] = com.vibeplayer.player.SubtitleStyle.normalizePos(v) }
+    }
+
+    suspend fun setSubtitleAssOverride(on: Boolean) {
+        context.settingsDataStore.edit { it[KEY_SUB_ASS_OVERRIDE] = on }
+    }
+
     suspend fun updateSettings(settings: AppSettings) {
         context.settingsDataStore.edit { prefs ->
             prefs[KEY_PLAYBACK_MODE] = settings.playbackMode.name
@@ -178,6 +201,9 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_PREFERRED_AUDIO_LANGS] = settings.preferredAudioLanguages.joinToString(",")
             prefs[KEY_PREFERRED_SUB_LANGS] = settings.preferredSubtitleLanguages.joinToString(",")
             prefs[KEY_SUBTITLE_MODE] = settings.subtitleMode.name
+            prefs[KEY_SUB_SCALE] = settings.subtitleScale
+            prefs[KEY_SUB_POS] = settings.subtitlePos
+            prefs[KEY_SUB_ASS_OVERRIDE] = settings.subtitleAssOverride
         }
     }
 }
