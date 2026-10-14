@@ -638,6 +638,9 @@ class PlayerActivity : ComponentActivity() {
         val hasExplicitTarget = !intent.getStringExtra("path").isNullOrEmpty() || intent.data != null
         if (currentVideoPath != oldPath) {
             // openVideo resolves the per-format configuration and reconfigures at most once.
+            // playbackStarted: a cold-start open still waiting for a permission result must not
+            // run afterwards and replace this one.
+            playbackStarted = true
             openResolvedVideo()
         } else {
             // Same file (notification tap, re-launch): resolveConfig() without settings and format
