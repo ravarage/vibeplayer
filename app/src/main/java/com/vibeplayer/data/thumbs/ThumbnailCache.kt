@@ -39,13 +39,48 @@ class ThumbnailCache(
 
     companion object {
         const val NEGATIVE_CACHE_VERSION = 4
+
+        /**
+         * P7-07: fixed memory budget. Bitmap pixels live in the native heap (counted in PSS), so the old
+         * 1/8 of the Java heap limit (tens of MiB, varies per device) was not a bound we chose.
+         * A 320x180 ARGB_8888 thumbnail is 225 KiB; 16 MiB holds about 70, i.e. a few screens of the grid
+         * (the visible grid is ~12-20), the rest comes back from the WebP disk cache.
+         */
+        const val MEMORY_BUDGET_KB = 16 * 1024
+
+        /** Cache size to keep after ComponentCallbacks2.onTrimMemory(level); pure for unit tests. */
+        fun trimTargetKb(level: Int, currentKb: Int): Int = when {
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> 0
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> currentKb / 2
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> 0
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> currentKb / 2
+            else -> currentKb
+        }
     }
 
-    // Memory LRU Cache: 1/8th of available runtime memory in KB
+    private val trimCallbacks = object : android.content.ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) {
+            memoryCache.trimToSize(trimTargetKb(level, memoryCache.size()))
+        }
+        override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {}
+        @Deprecated("Deprecated in API 34")
+        override fun onLowMemory() {
+            memoryCache.evictAll()
+        }
+    }
+
+    init {
+        context.applicationContext.registerComponentCallbacks(trimCallbacks)
+    }
+
+    /** Unregister the trim callback; call when the owner leaves composition. */
+    fun close() {
+        context.applicationContext.unregisterComponentCallbacks(trimCallbacks)
+    }
+
+    // Memory LRU cache with a fixed budget in KB
     private val memoryCache: LruCache<String, Bitmap> = run {
-        val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024).toInt()
-        val cacheSizeKb = (maxMemoryKb / 8).coerceAtLeast(1024)
-        object : LruCache<String, Bitmap>(cacheSizeKb) {
+        object : LruCache<String, Bitmap>(MEMORY_BUDGET_KB) {
             override fun sizeOf(key: String, bitmap: Bitmap): Int {
                 return (bitmap.byteCount / 1024).coerceAtLeast(1)
             }

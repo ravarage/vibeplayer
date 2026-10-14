@@ -53,6 +53,7 @@ data class PlaybackConfig(
         options["hwdec-codecs"] = "h264,hevc,vp9"
         options["sub-auto"] = "fuzzy"
         options["audio-pitch-correction"] = "yes"
+        options.putAll(MemoryBudget.demuxerOptions()) // P7-07
         debugMsgLevel?.let { options["msg-level"] = it }
 
         val cacheDir = shaderCacheDir ?: defaultShaderCacheDir
