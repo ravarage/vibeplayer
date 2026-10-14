@@ -85,6 +85,8 @@ Filled in and kept current by the tasks that create them (P0-06, P0-07).
 | Play a test clip | `adb shell am start -a android.intent.action.VIEW -d file:///sdcard/Movies/vibeplayer-test/h264_1080p.mp4 -t video/* com.vibeplayer` |
 | Regression check on the phone (after every merge; `--only a,b`, `--skip a,b`, `--out DIR`, `--stall-opens N`) | `python3 tools/devcheck/run.py` (details: tools/devcheck/README.md; unit tests: `python3 -m unittest discover tools/devcheck/tests`) |
 | Logs | `adb logcat -s VP VP-Perf mpv` |
+| Run benchmark (P6-03) | `adb shell am broadcast -a com.vibeplayer.BENCHMARK -n com.vibeplayer/.BenchmarkReceiver [--es path <path>] [--ei seconds 15] [--es mode quality\|efficient] [--es renderer gles\|vulkan] [--es vo gpu-next\|gpu] [--es shader none\|...] [--ez cold true\|false] [--es profile fast\|default] [--es decoder auto\|software]` |
+| Run benchmark matrix (P6-03) | `python3 tools/bench/run_matrix.py [--matrix short\|av1_attribution\|stability\|shaders] [--allow-charging]` |
 | Is video really visible? | `tools/check_video.py` (exit 0 = visible, 1 = black/frozen) |
 
 ## Code conventions

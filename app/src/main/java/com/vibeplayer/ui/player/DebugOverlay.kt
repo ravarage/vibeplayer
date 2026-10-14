@@ -76,12 +76,18 @@ fun DebugOverlay(
             Spacer(modifier = Modifier.height(6.dp))
 
             DebugRow("VO", stats.vo.ifEmpty { "unknown" })
+            DebugRow("GPU API", stats.gpuApi.ifEmpty { "unknown" })
+            DebugRow("GPU CTX", stats.gpuContext.ifEmpty { "unknown" })
             DebugRow("HWDEC", stats.hwdecCurrent.ifEmpty { "unknown" })
             DebugRow("MODE", stats.mode.ifEmpty { "unknown" })
             DebugRow("RES", if (stats.videoW > 0 && stats.videoH > 0) "${stats.videoW}x${stats.videoH}" else "unknown")
             DebugRow("FPS", String.format(Locale.US, "%.2f", stats.fps))
             DebugRow("DROPS (VO)", "${stats.frameDropCount}")
             DebugRow("DROPS (DEC)", "${stats.decoderFrameDropCount}")
+            val vkErr = stats.lastVulkanError
+            if (!vkErr.isNullOrEmpty()) {
+                DebugRow("VK ERR", vkErr)
+            }
         }
     }
 }

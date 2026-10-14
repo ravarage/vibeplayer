@@ -16,6 +16,10 @@ data class PlayerStats(
     val vo: String = "",
     val hwdecCurrent: String = "",
     val mode: String = "",
+    val gpuApi: String = "",
+    val gpuContext: String = "",
+    val rendererInUse: String = "",
+    val lastVulkanError: String? = null,
     val videoW: Int = 0,
     val videoH: Int = 0,
     val fps: Double = 0.0,
@@ -38,5 +42,8 @@ data class PlayerState(
     val selectedSubTrackId: Int? = null,
     val videoCodec: String? = null,
     val fallback: Boolean = false,
-    val aspect: String? = null
+    val aspect: String? = null,
+    val rendererInUse: String = "GLES",
+    val lastVulkanError: String? = null
 )
+

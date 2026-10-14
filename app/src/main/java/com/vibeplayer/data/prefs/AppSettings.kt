@@ -17,14 +17,16 @@ enum class PlaybackModeOption(val displayName: String, val description: String) 
 }
 
 enum class RendererOption(val displayName: String, val description: String) {
-    OPENGL("OpenGL ES", "Standard GLES 3.2 renderer"),
-    VULKAN("Vulkan", "Vulkan API renderer (P6 benchmark)")
+    OPENGL("OpenGL ES", "Standard GLES 3.2 renderer (default)"),
+    VULKAN("Vulkan (Experimental)", "Vulkan API renderer (Quality mode only, experimental driver)")
 }
 
 enum class ShaderPresetOption(val displayName: String, val description: String) {
     NONE("None", "No post-processing shaders"),
-    ANIME4K("Anime4K Light", "Upscaling and line reconstruction for animation"),
-    GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution")
+    ANIME4K_A("Anime4K A (Fast)", "Restore CNN + Upscale CNN x2 for fast perceptual anime upscaling (Quality mode only)"),
+    ANIME4K_B("Anime4K B (Fast)", "Restore CNN Soft + Upscale CNN x2 for softer line reconstruction (Quality mode only)"),
+    ANIME4K_C("Anime4K C (Fast)", "Upscale Denoise + Upscale CNN x2 for sharp high-detail anime (Quality mode only)"),
+    SNAPDRAGON_GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution spatial upscaler (Quality mode only)")
 }
 
 enum class SubtitlePreferenceMode(val displayName: String, val description: String) {
@@ -76,7 +78,12 @@ class AppSettingsRepository(private val context: Context) {
         }
 
         val shaderPreset = try {
-            ShaderPresetOption.valueOf(prefs[KEY_SHADER_PRESET] ?: ShaderPresetOption.NONE.name)
+            when (val name = prefs[KEY_SHADER_PRESET]) {
+                "ANIME4K" -> ShaderPresetOption.ANIME4K_A
+                "GSR" -> ShaderPresetOption.SNAPDRAGON_GSR
+                null -> ShaderPresetOption.NONE
+                else -> ShaderPresetOption.valueOf(name)
+            }
         } catch (_: Exception) {
             ShaderPresetOption.NONE
         }

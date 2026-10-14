@@ -17,6 +17,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -69,8 +70,8 @@ import kotlinx.coroutines.flow.map
 
 class PlayerActivity : ComponentActivity() {
 
-    private val viewModel: PlayerViewModel by viewModels()
-    private val playerEngine: PlayerEngine get() = viewModel.playerEngine
+    val viewModel: PlayerViewModel by viewModels()
+    val playerEngine: PlayerEngine get() = viewModel.playerEngine
     private var playbackStarted = false
     private var currentVideoPath: String = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
     private var currentVideoTitle: String = "ichiban.mp4"
@@ -141,7 +142,36 @@ class PlayerActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    private fun resolveConfig(): PlaybackConfig {
+    private fun resolveConfig(appSettings: com.vibeplayer.data.prefs.AppSettings? = null): PlaybackConfig {
+        val modeArg = intent.getStringExtra("mode") ?: intent.getStringExtra("playback_mode")
+        val mode = when (modeArg?.lowercase()) {
+            "quality" -> PlaybackMode.QUALITY
+            "efficient" -> PlaybackMode.EFFICIENT
+            else -> if (appSettings?.playbackMode == com.vibeplayer.data.prefs.PlaybackModeOption.QUALITY) {
+                PlaybackMode.QUALITY
+            } else {
+                PlaybackMode.EFFICIENT
+            }
+        }
+
+        val rendererArg = intent.getStringExtra("renderer")
+        val requestedRenderer = when (rendererArg?.lowercase()) {
+            "vulkan" -> com.vibeplayer.player.Renderer.VULKAN
+            "gles", "opengl" -> com.vibeplayer.player.Renderer.GLES
+            else -> if (appSettings?.renderer == com.vibeplayer.data.prefs.RendererOption.VULKAN) {
+                com.vibeplayer.player.Renderer.VULKAN
+            } else {
+                com.vibeplayer.player.Renderer.GLES
+            }
+        }
+
+        val resolvedRenderer = com.vibeplayer.player.RendererResolver.resolveRenderer(
+            requestedRenderer = requestedRenderer,
+            mode = mode,
+            gpuApiChoices = playerEngine.availableGpuApis.ifEmpty { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() },
+            sessionVulkanFailed = com.vibeplayer.player.PlayerEngine.sessionVulkanFailed
+        )
+
         val pathArg = intent.getStringExtra("efficient_path") ?: intent.getStringExtra("path_mode")
         val path = when (pathArg?.lowercase()) {
             "path_a", "a" -> EfficientPath.PATH_A
@@ -151,6 +181,19 @@ class PlayerActivity : ComponentActivity() {
         val debugMsgLevel = if (com.vibeplayer.BuildConfig.DEBUG) {
             intent.getStringExtra("mpv_msg_level")?.takeIf { it.isNotBlank() }
         } else null
+        val shaderCache = File(cacheDir, "gpu-shader-cache").apply { mkdirs() }.absolutePath
+        PlaybackConfig.defaultShaderCacheDir = shaderCache
+
+        val fastProfile = intent.getBooleanExtra("fast_profile", false) ||
+            intent.getBooleanExtra("profile_fast", false) ||
+            intent.getStringExtra("profile")?.lowercase() == "fast"
+        val decoderExtra = intent.getStringExtra("decoder")?.lowercase()
+        val hwdecOverride = when (decoderExtra) {
+            "software", "sw", "no" -> "no"
+            "auto" -> null
+            else -> intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
+        }
+
         if (com.vibeplayer.BuildConfig.DEBUG) {
             val probeVo = intent.getStringExtra("probe_vo")
             val probeRenderer = intent.getStringExtra("probe_renderer")
@@ -160,14 +203,21 @@ class PlayerActivity : ComponentActivity() {
                     renderer = if (probeRenderer == "vulkan") com.vibeplayer.player.Renderer.VULKAN
                     else com.vibeplayer.player.Renderer.GLES,
                     voOverride = probeVo,
-                    debugMsgLevel = debugMsgLevel
+                    debugMsgLevel = debugMsgLevel,
+                    shaderCacheDir = shaderCache,
+                    fastProfile = fastProfile,
+                    hwdecOverride = hwdecOverride
                 )
             }
         }
         return PlaybackConfig(
-            mode = PlaybackMode.EFFICIENT,
+            mode = mode,
             efficientPath = path,
-            debugMsgLevel = debugMsgLevel
+            renderer = resolvedRenderer,
+            debugMsgLevel = debugMsgLevel,
+            shaderCacheDir = shaderCache,
+            fastProfile = fastProfile,
+            hwdecOverride = hwdecOverride
         )
     }
 
@@ -181,6 +231,10 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i("VP", "PlayerActivity onCreate")
+
+        if (intent.getBooleanExtra("benchmark", false)) {
+            viewModel.isBenchmarkRun = true
+        }
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeControlStream = AudioManager.STREAM_MUSIC
@@ -214,6 +268,13 @@ class PlayerActivity : ComponentActivity() {
                 .map { PipState(it.videoWidth, it.videoHeight, it.paused, it.durationMs > 0L) }
                 .distinctUntilChanged()
                 .collect { state -> updatePipParams(state) }
+        }
+
+        // Listen for engine on-screen messages (e.g. Vulkan fallback)
+        lifecycleScope.launch {
+            playerEngine.onScreenMessage.collect { msg ->
+                android.widget.Toast.makeText(this@PlayerActivity, msg, android.widget.Toast.LENGTH_SHORT).show()
+            }
         }
 
         // Auto-advance and the skip buttons change the ViewModel path without a new Intent.
@@ -346,6 +407,7 @@ class PlayerActivity : ComponentActivity() {
                                 onSelectSubTrack = { viewModel.setSubtitleTrack(it) },
                                 onSelectSpeed = { viewModel.setSpeed(it) },
                                 onPersistSpeed = { viewModel.persistSpeed(it) },
+                                onToggleMode = { viewModel.togglePlaybackMode() },
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                                     val current = playerState.aspect ?: "fit"
@@ -437,11 +499,26 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun openResolvedVideo() {
-        viewModel.openVideo(
-            path = currentVideoPath,
-            identityKey = currentIdentityKey,
-            folderKey = currentFolderKey
-        )
+        lifecycleScope.launch {
+            val appSettings = viewModel.appSettingsRepository.appSettingsFlow.first()
+            val config = resolveConfig(appSettings)
+            val shaderArg = intent.getStringExtra("shader") ?: intent.getStringExtra("shader_preset")
+            val preset = when (shaderArg?.lowercase()) {
+                "anime4k_a", "a" -> com.vibeplayer.player.ShaderPreset.ANIME4K_A
+                "anime4k_b", "b" -> com.vibeplayer.player.ShaderPreset.ANIME4K_B
+                "anime4k_c", "c" -> com.vibeplayer.player.ShaderPreset.ANIME4K_C
+                "snapdragon_gsr", "gsr" -> com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR
+                "none" -> com.vibeplayer.player.ShaderPreset.NONE
+                else -> null
+            }
+            viewModel.openVideo(
+                path = currentVideoPath,
+                identityKey = currentIdentityKey,
+                folderKey = currentFolderKey,
+                playbackConfig = config,
+                shaderPreset = preset
+            )
+        }
     }
 
     private fun queryDisplayName(uri: Uri): String {

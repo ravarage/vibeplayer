@@ -78,6 +78,7 @@ fun PlayerControls(
     onSelectSpeed: ((Double) -> Unit)? = null,
     onPersistSpeed: ((Double) -> Unit)? = null,
     onCycleAspect: (() -> Unit)? = null,
+    onToggleMode: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val interactionEvents = remember { MutableStateFlow(System.currentTimeMillis()) }
@@ -234,6 +235,27 @@ fun PlayerControls(
                                 modifier = Modifier
                                     .background(Color(0x33FF0000), shape = CircleShape)
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) Color(0x3300E676) else Color(0x22FFFFFF))
+                                .clickable {
+                                    interactionEvents.value = System.currentTimeMillis()
+                                    onToggleMode?.invoke()
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) "QUALITY" else "EFFICIENT",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) Color(0xFF00E676) else Color.White
                             )
                         }
 
