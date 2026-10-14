@@ -28,13 +28,16 @@ object StallPolicy {
         val surfaceAttached: Boolean,
         /** Value of mpv's `hwdec-current` ("mediacodec", "mediacodec-copy", "no", ""). */
         val hwdecCurrent: String,
-        val elapsedSinceFileLoadedMs: Long
+        val elapsedSinceFileLoadedMs: Long,
+        /** Value of mpv's `vid` property (e.g. "1", "auto", "no"), or null if unspecified. */
+        val vid: String? = null
     )
 
     /** Whether the engine should be probed for a stuck core now. */
     fun onTimer(facts: Facts): Action = when {
         facts.released || !facts.sameLoad || facts.playbackRestartSeen -> Action.NONE
         !facts.surfaceAttached -> Action.NONE
+        facts.vid == "no" -> Action.NONE
         // Only hardware decoding stalls this way; a software reload is the cure, so a load that
         // already decodes in software is left alone (this also limits recovery to one attempt).
         !facts.hwdecCurrent.startsWith("mediacodec") -> Action.NONE

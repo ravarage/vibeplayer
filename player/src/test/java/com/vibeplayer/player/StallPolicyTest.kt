@@ -12,8 +12,9 @@ class StallPolicyTest {
         restart: Boolean = false,
         surface: Boolean = true,
         hwdec: String = "mediacodec",
-        elapsed: Long = StallPolicy.FIRST_CHECK_MS
-    ) = StallPolicy.Facts(released, sameLoad, restart, surface, hwdec, elapsed)
+        elapsed: Long = StallPolicy.FIRST_CHECK_MS,
+        vid: String? = null
+    ) = StallPolicy.Facts(released, sameLoad, restart, surface, hwdec, elapsed, vid)
 
     @Test
     fun probesWhenHardwareDecodeHasNotStartedInTime() {
@@ -40,6 +41,11 @@ class StallPolicyTest {
     @Test
     fun doesNothingWithoutASurface() {
         assertEquals(StallPolicy.Action.NONE, StallPolicy.onTimer(facts(surface = false)))
+    }
+
+    @Test
+    fun doesNothingWhenVideoDisabled() {
+        assertEquals(StallPolicy.Action.NONE, StallPolicy.onTimer(facts(vid = "no")))
     }
 
     @Test

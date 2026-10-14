@@ -52,6 +52,7 @@ class PlayerEngine(
         private set
     @Volatile private var currentFilePath: String = ""
     @Volatile private var attachedSurface: Surface? = null
+    @Volatile private var savedVid: String? = null
 
     // ---- B-08 safety net state ----
     private data class LoadRequest(
@@ -286,7 +287,8 @@ class PlayerEngine(
             playbackRestartSeen = restartSeenSerial == serial,
             surfaceAttached = attachedSurface != null,
             hwdecCurrent = _state.value.hwdecCurrent,
-            elapsedSinceFileLoadedMs = android.os.SystemClock.elapsedRealtime() - armedAt
+            elapsedSinceFileLoadedMs = android.os.SystemClock.elapsedRealtime() - armedAt,
+            vid = if (savedVid != null || attachedSurface == null) "no" else null
         )
         if (StallPolicy.onTimer(facts) != StallPolicy.Action.PROBE) return
         // Liveness probe: a stuck core never answers a synchronous property read, and the command
@@ -499,7 +501,10 @@ class PlayerEngine(
             attachedSurface = surface
             if (handle != 0L) {
                 MpvNative.attachSurface(handle, surface)
-                Log.i("VP", "Surface attached to mpv handle")
+                val restoreVid = savedVid ?: "auto"
+                MpvNative.setPropertyString(handle, "vid", restoreVid)
+                Log.i("VP", "Surface attached to mpv handle; restored vid=$restoreVid")
+                savedVid = null
             }
         }
     }
@@ -519,8 +524,13 @@ class PlayerEngine(
                 }
                 attachedSurface = null
                 if (handle != 0L) {
+                    val currentVid = MpvNative.getPropertyString(handle, "vid")
+                    if (!currentVid.isNullOrEmpty() && currentVid != "no") {
+                        savedVid = currentVid
+                    }
                     MpvNative.detachSurface(handle)
-                    Log.i("VP", "Surface detached from mpv handle")
+                    MpvNative.setPropertyString(handle, "vid", "no")
+                    Log.i("VP", "Surface detached from mpv handle; vid set to no (savedVid=$savedVid)")
                 }
             }
             // Called from surfaceDestroyed on the main thread. Bounded: if the command thread is
@@ -574,6 +584,12 @@ class PlayerEngine(
             _state.update { it.copy(videoCodec = null, fallback = false, aspect = aspect) }
             if (handle != 0L) {
                 val options = mutableListOf<String>()
+                if (attachedSurface == null) {
+                    savedVid = "auto"
+                    options.add("vid=no")
+                } else {
+                    savedVid = null
+                }
                 if (startPositionMs > 0L) {
                     val sec = String.format(java.util.Locale.US, "%.3f", startPositionMs / 1000.0)
                     options.add("start=$sec")
@@ -1093,6 +1109,7 @@ class PlayerEngine(
     fun release(sync: Boolean = false) {
         if (released) return
         released = true
+        savedVid = null
         watchdog.shutdownNow()
         statsJob?.cancel()
         statsJob = null
