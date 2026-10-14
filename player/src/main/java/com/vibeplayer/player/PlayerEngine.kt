@@ -1865,13 +1865,18 @@ class PlayerEngine(
                 return read
             }
         }
-        val serial = loadSerial.get()
-        return StallPolicy.fallbackPositionMs(
-            playbackStarted = restartSeenSerial == serial,
-            knownMs = _position.value,
-            loadStartMs = lastLoad?.startPositionMs
-        ).also { Log.w("VP", "currentPositionMs: mpv did not answer within $timeoutMs ms, using $it ms") }
+        return lastKnownPositionMs().also { Log.w("VP", "currentPositionMs: mpv did not answer within $timeoutMs ms, using $it ms") }
     }
+
+    /**
+     * Non-blocking position for saving: the last reported one, or the start position of a load
+     * that has not started playing yet (a stalled or still opening file; [_position] is 0 then).
+     */
+    fun lastKnownPositionMs(): Long = StallPolicy.fallbackPositionMs(
+        playbackStarted = restartSeenSerial == loadSerial.get(),
+        knownMs = _position.value,
+        loadStartMs = lastLoad?.startPositionMs
+    )
 
     fun seekRelative(deltaSeconds: Double, exact: Boolean = false) {
         lastPlaybackRestartMs = System.currentTimeMillis()

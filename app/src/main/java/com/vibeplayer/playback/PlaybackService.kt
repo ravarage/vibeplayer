@@ -683,7 +683,7 @@ class PlaybackService : Service() {
                 if (forward) FolderPlaylist.next(from) else FolderPlaylist.previous(from)
             } ?: return@launch
             if (currentVideoPath != from) return@launch
-            openVideo(target, playAfterLoad = true)
+            openVideo(target, playAfterLoad = true, leavingPositionSaved = true)
         }
     }
 
@@ -738,13 +738,15 @@ class PlaybackService : Service() {
         title: String? = null,
         playbackConfig: PlaybackConfig? = null,
         shaderPreset: ShaderPreset? = null,
-        startPositionOverride: Long? = null
+        startPositionOverride: Long? = null,
+        /** skipToNeighbour already saved the leaving file with a fresh (bounded) read. */
+        leavingPositionSaved: Boolean = false
     ) {
         val leavingKey = currentKey
         val leavingPath = currentVideoPath
-        val leavingPos = playerEngine.position.value
+        val leavingPos = playerEngine.lastKnownPositionMs()
         val leavingState = playerEngine.state.value
-        if (!benchmarkRun && leavingKey != null && leavingPath != null && leavingPath != path) {
+        if (!benchmarkRun && !leavingPositionSaved && leavingKey != null && leavingPath != null && leavingPath != path) {
             saveScope.launch {
                 savePositionSnapshot(leavingKey, leavingPos, leavingState)
             }
@@ -1123,12 +1125,13 @@ class PlaybackService : Service() {
         if (benchmarkRun) { releaseWhenDone?.release(); return }
         val generation = loadGeneration
         val key = currentKey ?: run { releaseWhenDone?.release(); return }
-        val knownPos = engine.position.value
+        val knownPos = engine.lastKnownPositionMs()
         val state = engine.state.value
         if (generation != loadGeneration || key != currentKey) { releaseWhenDone?.release(); return }
         saveScope.launch {
+            // Bounded inside the engine (falls back to the last known position during a stall).
             val fresh = try {
-                withTimeoutOrNull(1_000L) { engine.currentPositionMs() }
+                engine.currentPositionMs()
             } catch (_: Exception) {
                 null
             }
