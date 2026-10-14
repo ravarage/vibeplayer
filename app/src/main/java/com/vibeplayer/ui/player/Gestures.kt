@@ -54,6 +54,8 @@ fun GestureLayer(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     isLocked: Boolean = false,
+    gesturesEnabled: Boolean = true,
+    skipSeconds: Int = 10,
     initialBrightness: Float = 0.5f,
     onBrightnessChanged: (Float) -> Unit = {},
     volumeFlow: StateFlow<Int> = MutableStateFlow(0),
@@ -93,6 +95,8 @@ fun GestureLayer(
     val latestDurationMs by rememberUpdatedState(durationMs)
     val latestHoldEnabled by rememberUpdatedState(holdEnabled)
     val latestHoldSpeed by rememberUpdatedState(holdSpeed)
+    val latestGesturesEnabled by rememberUpdatedState(gesturesEnabled)
+    val latestSkipSeconds by rememberUpdatedState(skipSeconds)
     val latestOnHoldStart by rememberUpdatedState(onHoldStart)
     val latestOnHoldEnd by rememberUpdatedState(onHoldEnd)
     var heldSpeed by remember { mutableStateOf<Double?>(null) }
@@ -169,13 +173,13 @@ fun GestureLayer(
                 var lastMoved = 0f
                 val longPressMs = viewConfiguration.longPressTimeoutMillis
                 while (true) {
-                    val holdPossible = latestHoldEnabled && !isLeftZone && !directionLocked
+                    val holdPossible = latestHoldEnabled && latestGesturesEnabled && !isLeftZone && !directionLocked
                     val event = if (holdPossible) {
                         val remaining = longPressMs - (SystemClock.uptimeMillis() - down.uptimeMillis)
                         val e = if (remaining > 0) withTimeoutOrNull(remaining) { awaitPointerEvent() } else null
                         if (e == null) {
                             val elapsed = SystemClock.uptimeMillis() - down.uptimeMillis
-                            if (HoldGesture.classify(startPos.x, width, elapsed, lastMoved, touchSlop, longPressMs) == HoldGesture.Outcome.HOLD) {
+                            if (HoldGesture.classify(startPos.x, width, elapsed, lastMoved, touchSlop, longPressMs, latestHoldEnabled && latestGesturesEnabled) == HoldGesture.Outcome.HOLD) {
                                 directionLocked = true
                                 lockedGesture = GestureType.HOLD
                                 holding = true
@@ -208,6 +212,10 @@ fun GestureLayer(
                     }
 
                     if (activePointers.size >= 2) {
+                        if (!latestGesturesEnabled) {
+                            activePointers.forEach { it.consume() }
+                            continue
+                        }
                         val p1 = activePointers[0]
                         val p2 = activePointers[1]
                         val pDiffX = p1.position.x - p2.position.x
@@ -279,7 +287,10 @@ fun GestureLayer(
                                 doubleTapAccumulatedSec = 0
                                 doubleTapHideJob?.cancel()
                             }
-                            if (absDx > absDy) {
+                            if (!latestGesturesEnabled) {
+                                lockedGesture = GestureType.NONE
+                                change.consume()
+                            } else if (absDx > absDy) {
                                 lockedGesture = GestureType.HORIZONTAL
                                 Log.i("VP", "Gesture detected: HORIZONTAL")
                                 totalSwipeDx = totalDx
@@ -294,6 +305,8 @@ fun GestureLayer(
                                     swipeSeekDeltaSeconds = (targetMs - base) / 1000L
                                 }
                                 HapticFeedbackHelper.triggerTick(view, "swipe-seek step")
+                                onGestureTypeChanged(lockedGesture)
+                                change.consume()
                             } else {
                                 if (isLeftZone) {
                                     lockedGesture = GestureType.LEFT_VERTICAL
@@ -302,9 +315,9 @@ fun GestureLayer(
                                     lockedGesture = GestureType.RIGHT_VERTICAL
                                     Log.i("VP", "Gesture detected: RIGHT_VERTICAL")
                                 }
+                                onGestureTypeChanged(lockedGesture)
+                                change.consume()
                             }
-                            onGestureTypeChanged(lockedGesture)
-                            change.consume()
                         }
                     } else {
                         val dx = change.positionChange().x
@@ -359,12 +372,13 @@ fun GestureLayer(
                     } else {
                         val now = SystemClock.uptimeMillis()
                         val isLeft = startPos.x < width / 2f
+                        val step = latestSkipSeconds.coerceAtLeast(1)
                         if (doubleTapStreakActive && isLeft == doubleTapIsLeft) {
                             // Part of an ongoing streak on same side: accumulate!
                             doubleTapHideJob?.cancel()
-                            doubleTapAccumulatedSec += 10
+                            doubleTapAccumulatedSec += step
                             doubleTapRippleTrigger = now
-                            val deltaSec = if (doubleTapIsLeft) -10.0 else 10.0
+                            val deltaSec = if (doubleTapIsLeft) -step.toDouble() else step.toDouble()
                             val targetMs = (doubleTapBasePosMs + (if (doubleTapIsLeft) -doubleTapAccumulatedSec else doubleTapAccumulatedSec) * 1000L).coerceIn(0L, latestDurationMs)
                             Log.i("VP", "Double-tap streak accumulate: isLeft=$doubleTapIsLeft, sec=$doubleTapAccumulatedSec, deltaSec=$deltaSec")
                             onSeekRelative(deltaSec, true)
@@ -386,9 +400,9 @@ fun GestureLayer(
                                 doubleTapHideJob?.cancel()
                                 doubleTapStreakActive = true
                                 doubleTapIsLeft = isLeft
-                                doubleTapAccumulatedSec = 10
+                                doubleTapAccumulatedSec = step
                                 doubleTapRippleTrigger = now
-                                val deltaSec = if (isLeft) -10.0 else 10.0
+                                val deltaSec = if (isLeft) -step.toDouble() else step.toDouble()
                                 val gType = if (isLeft) GestureType.DOUBLE_TAP_LEFT else GestureType.DOUBLE_TAP_RIGHT
                                 Log.i("VP", "Gesture detected: $gType, deltaSec=$deltaSec")
                                 onSeekRelative(deltaSec, true)

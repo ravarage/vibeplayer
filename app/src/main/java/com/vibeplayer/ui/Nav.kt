@@ -46,8 +46,9 @@ object NavRoutes {
     }
 }
 
-private fun normalizeMediaPath(path: String): String =
+internal fun normalizeMediaPath(path: String): String =
     path.replace("/sdcard/", "/storage/emulated/0/")
+        .replace("/storage/self/primary/", "/storage/emulated/0/")
 
 @Composable
 fun BrowserNavGraph(
@@ -71,6 +72,7 @@ fun BrowserNavGraph(
                 val videosByPath = videos.associateBy { normalizeMediaPath(it.path) }
                 history.asSequence()
                     .filter { it.positionMs > 0L && it.durationMs > 0L }
+                    .distinctBy { normalizeMediaPath(it.key.substringBeforeLast(":")) }
                     .mapNotNull { setting ->
                         val path = setting.key.substringBeforeLast(":")
                         val normalizedPath = normalizeMediaPath(path)
@@ -100,10 +102,15 @@ fun BrowserNavGraph(
     val historyMap = androidx.compose.runtime.remember(historyList) {
         val map = mutableMapOf<String, com.vibeplayer.data.db.FileSettings>()
         for (item in historyList) {
-            map[item.key] = item
+            map.putIfAbsent(item.key, item)
             val p = item.key.substringBeforeLast(":")
-            map[p] = item
-            map[normalizeMediaPath(p)] = item
+            map.putIfAbsent(p, item)
+            val normP = normalizeMediaPath(p)
+            map.putIfAbsent(normP, item)
+            val size = item.key.substringAfterLast(":")
+            if (size != item.key) {
+                map.putIfAbsent("$normP:$size", item)
+            }
         }
         map
     }

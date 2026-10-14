@@ -23,6 +23,8 @@ static jmethodID g_double_valueOf = NULL;
 static jclass g_callback_class = NULL;
 static jmethodID g_cb_on_prop = NULL;
 static jmethodID g_cb_on_event = NULL;
+static jclass g_thumb_frame_class = NULL;
+static jmethodID g_thumb_frame_ctor = NULL;
 
 typedef struct {
     mpv_handle *mpv;
@@ -36,7 +38,7 @@ typedef struct {
     double last_time_pos;
 } mpv_holder_t;
 
-JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     g_vm = vm;
     JNIEnv *env = NULL;
     if ((*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
@@ -48,19 +50,25 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     }
 
     jclass b_cls = (*env)->FindClass(env, "java/lang/Boolean");
-    g_boolean_class = (jclass)(*env)->NewGlobalRef(env, b_cls);
-    g_boolean_valueOf = (*env)->GetStaticMethodID(env, g_boolean_class, "valueOf", "(Z)Ljava/lang/Boolean;");
-    (*env)->DeleteLocalRef(env, b_cls);
+    if (b_cls) {
+        g_boolean_class = (jclass)(*env)->NewGlobalRef(env, b_cls);
+        g_boolean_valueOf = (*env)->GetStaticMethodID(env, g_boolean_class, "valueOf", "(Z)Ljava/lang/Boolean;");
+        (*env)->DeleteLocalRef(env, b_cls);
+    }
 
     jclass l_cls = (*env)->FindClass(env, "java/lang/Long");
-    g_long_class = (jclass)(*env)->NewGlobalRef(env, l_cls);
-    g_long_valueOf = (*env)->GetStaticMethodID(env, g_long_class, "valueOf", "(J)Ljava/lang/Long;");
-    (*env)->DeleteLocalRef(env, l_cls);
+    if (l_cls) {
+        g_long_class = (jclass)(*env)->NewGlobalRef(env, l_cls);
+        g_long_valueOf = (*env)->GetStaticMethodID(env, g_long_class, "valueOf", "(J)Ljava/lang/Long;");
+        (*env)->DeleteLocalRef(env, l_cls);
+    }
 
     jclass d_cls = (*env)->FindClass(env, "java/lang/Double");
-    g_double_class = (jclass)(*env)->NewGlobalRef(env, d_cls);
-    g_double_valueOf = (*env)->GetStaticMethodID(env, g_double_class, "valueOf", "(D)Ljava/lang/Double;");
-    (*env)->DeleteLocalRef(env, d_cls);
+    if (d_cls) {
+        g_double_class = (jclass)(*env)->NewGlobalRef(env, d_cls);
+        g_double_valueOf = (*env)->GetStaticMethodID(env, g_double_class, "valueOf", "(D)Ljava/lang/Double;");
+        (*env)->DeleteLocalRef(env, d_cls);
+    }
 
     jclass cb_cls = (*env)->FindClass(env, "com/vibeplayer/player/MpvNative$EventCallback");
     if (cb_cls) {
@@ -70,6 +78,18 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
         (*env)->DeleteLocalRef(env, cb_cls);
     } else {
         __android_log_print(ANDROID_LOG_WARN, LOG_TAG, "EventCallback class not found in JNI_OnLoad");
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+        }
+    }
+
+    jclass tf_cls = (*env)->FindClass(env, "com/vibeplayer/player/ThumbnailFrame");
+    if (tf_cls) {
+        g_thumb_frame_class = (jclass)(*env)->NewGlobalRef(env, tf_cls);
+        g_thumb_frame_ctor = (*env)->GetMethodID(env, g_thumb_frame_class, "<init>", "(III[B)V");
+        (*env)->DeleteLocalRef(env, tf_cls);
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, LOG_TAG, "ThumbnailFrame class not found in JNI_OnLoad");
         if ((*env)->ExceptionCheck(env)) {
             (*env)->ExceptionClear(env);
         }
@@ -239,10 +259,15 @@ Java_com_vibeplayer_player_MpvNative_setEventCallback(JNIEnv *env, jobject thiz,
 JNIEXPORT jint JNICALL
 Java_com_vibeplayer_player_MpvNative_setOptionString(JNIEnv *env, jobject thiz,
                                                      jlong handle, jstring name, jstring value) {
-    if (!handle) return -1;
+    if (!handle || !name || !value) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return -1;
     const char *c_value = (*env)->GetStringUTFChars(env, value, NULL);
+    if (!c_value) {
+        (*env)->ReleaseStringUTFChars(env, name, c_name);
+        return -1;
+    }
     int res = mpv_set_option_string(holder->mpv, c_name, c_value);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
     (*env)->ReleaseStringUTFChars(env, value, c_value);
@@ -315,7 +340,12 @@ Java_com_vibeplayer_player_MpvNative_setPropertyString(JNIEnv *env, jobject thiz
     if (!handle || !name || !value) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return -1;
     const char *c_value = (*env)->GetStringUTFChars(env, value, NULL);
+    if (!c_value) {
+        (*env)->ReleaseStringUTFChars(env, name, c_name);
+        return -1;
+    }
     int res = mpv_set_property_string(holder->mpv, c_name, c_value);
     if (res >= 0 && strcmp(c_name, "vo") == 0 && strcmp(c_value, "null") != 0) {
         strncpy(holder->vo_in_use, c_value, sizeof(holder->vo_in_use) - 1);
@@ -548,6 +578,7 @@ Java_com_vibeplayer_player_MpvNative_extractThumbnail(JNIEnv *env, jobject thiz,
         jstring jpath, jint width, jint height, jint timeout_ms, jint start_percent) {
     if (!jpath || width < 1 || height < 1) return NULL;
     const char *path = (*env)->GetStringUTFChars(env, jpath, NULL);
+    if (!path) return NULL;
     mpv_handle *mpv = mpv_create();
     if (!mpv) { (*env)->ReleaseStringUTFChars(env, jpath, path); return NULL; }
     char vf[96];
@@ -581,7 +612,7 @@ Java_com_vibeplayer_player_MpvNative_extractThumbnail(JNIEnv *env, jobject thiz,
         if (remaining <= 0) break;
         mpv_event *event = mpv_wait_event(mpv, remaining / 1000.0);
         if (event && event->event_id == MPV_EVENT_PLAYBACK_RESTART) { ready = 1; break; }
-        if (event && event->event_id == MPV_EVENT_SHUTDOWN) break;
+        if (event && (event->event_id == MPV_EVENT_SHUTDOWN || event->event_id == MPV_EVENT_END_FILE)) break;
     }
     if (!ready) goto cleanup;
 
@@ -599,15 +630,26 @@ Java_com_vibeplayer_player_MpvNative_extractThumbnail(JNIEnv *env, jobject thiz,
             jbyteArray pixels = (*env)->NewByteArray(env, (jsize)bytes);
             if (pixels) {
                 (*env)->SetByteArrayRegion(env, pixels, 0, (jsize)bytes, (const jbyte *)dn->u.ba->data);
-                jclass cls = (*env)->FindClass(env, "com/vibeplayer/player/ThumbnailFrame");
-                jmethodID ctor = cls ? (*env)->GetMethodID(env, cls, "<init>", "(III[B)V") : NULL;
-                if (ctor) {
+                jclass cls = g_thumb_frame_class ? g_thumb_frame_class : (*env)->FindClass(env, "com/vibeplayer/player/ThumbnailFrame");
+                jmethodID ctor = g_thumb_frame_ctor ? g_thumb_frame_ctor : (cls ? (*env)->GetMethodID(env, cls, "<init>", "(III[B)V") : NULL);
+                if (cls && ctor) {
                     jobject frame = (*env)->NewObject(env, cls, ctor, w, h, stride, pixels);
-                    if (frame) result = 0;
-                    mpv_free_node_contents(&node);
-                    mpv_terminate_destroy(mpv);
-                    (*env)->ReleaseStringUTFChars(env, jpath, path);
-                    return frame;
+                    (*env)->DeleteLocalRef(env, pixels);
+                    if (cls != g_thumb_frame_class) {
+                        (*env)->DeleteLocalRef(env, cls);
+                    }
+                    if (frame) {
+                        result = 0;
+                        mpv_free_node_contents(&node);
+                        mpv_terminate_destroy(mpv);
+                        (*env)->ReleaseStringUTFChars(env, jpath, path);
+                        return frame;
+                    }
+                } else {
+                    (*env)->DeleteLocalRef(env, pixels);
+                    if (cls && cls != g_thumb_frame_class) {
+                        (*env)->DeleteLocalRef(env, cls);
+                    }
                 }
             }
         }
@@ -616,6 +658,9 @@ Java_com_vibeplayer_player_MpvNative_extractThumbnail(JNIEnv *env, jobject thiz,
 cleanup:
     (void)result;
     mpv_terminate_destroy(mpv);
-    (*env)->ReleaseStringUTFChars(env, jpath, path);
+    if (path) (*env)->ReleaseStringUTFChars(env, jpath, path);
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
     return NULL;
 }

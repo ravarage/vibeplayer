@@ -436,6 +436,8 @@ class PlayerActivity : ComponentActivity() {
                 else -> currentVideoTitle
             }
             val neighbours by viewModel.neighbours.collectAsState()
+            val gesturesEnabled by viewModel.gesturesEnabled.collectAsState()
+            val skipSeconds by viewModel.skipSeconds.collectAsState()
             val zoomState = playerEngine.zoomState
             val isInPip by _isInPipFlow.collectAsState()
             val initialDebugOverlay = com.vibeplayer.BuildConfig.DEBUG && (
@@ -476,6 +478,8 @@ class PlayerActivity : ComponentActivity() {
                             GestureLayer(
                                 modifier = Modifier.fillMaxSize(),
                                 isLocked = isLocked,
+                                gesturesEnabled = gesturesEnabled,
+                                skipSeconds = skipSeconds,
                                 initialBrightness = initialBrightness(),
                                 onBrightnessChanged = { b ->
                                     val lp = window.attributes
