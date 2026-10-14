@@ -91,3 +91,20 @@ the Compose UI did not draw a single frame, i.e. nothing recomposes into a visib
 ticks while idle. Not measured: recomposition counts per control with the controls visible (P7-03
 acceptance), battery power (P7-06 acceptance; the P1-06 baseline has no power figure because the
 phone was charging then), the same runs on the debug build.
+
+## Memory (P7-07)
+
+Measure with `tools/meminfo.py "<label>"` (read-only `adb shell dumpsys meminfo com.vibeplayer`, appends a
+row to docs/meminfo.csv). A/B: debug build, PlayerActivity intent extra `legacy_cache=true` restores mpv's
+old 150 MiB / 50 MiB demuxer limits. New values: forward 32 MiB, back 16 MiB (MemoryBudget.kt).
+
+Before (reviewer, 2026-10-13, 1080p H.264 playing): TOTAL PSS 428 MB, native heap 253 MB, graphics 78 MB,
+Dalvik 6 MB.
+
+| State | TOTAL PSS before | TOTAL PSS after | Native heap | Graphics | Dalvik | Target |
+|---|---|---|---|---|---|---|
+| Browser idle after cold start | not measured | not measured | | | | |
+| 1080p H.264 playing 2 min | 428 MB | not measured | 253 MB before | 78 MB before | 6 MB before | <= 220 MB |
+| 4K AV1 playing 2 min | not measured | not measured | | | | |
+| Mini player (PiP) | not measured | not measured | | | | |
+| Browser after closing the player | not measured | not measured | | | | <= 150 MB |

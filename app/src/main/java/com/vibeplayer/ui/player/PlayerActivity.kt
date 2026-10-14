@@ -147,6 +147,8 @@ class PlayerActivity : ComponentActivity() {
             "path_a", "a" -> EfficientPath.PATH_A
             else -> EfficientPath.PATH_B
         }
+        com.vibeplayer.player.MemoryBudget.useLegacyCache =
+            com.vibeplayer.BuildConfig.DEBUG && intent.getBooleanExtra("legacy_cache", false) // P7-07 A/B
         // Debug-only test hooks (B-08 comparison): renderer probe and mpv log detail.
         val debugMsgLevel = if (com.vibeplayer.BuildConfig.DEBUG) {
             intent.getStringExtra("mpv_msg_level")?.takeIf { it.isNotBlank() }

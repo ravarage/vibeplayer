@@ -559,6 +559,7 @@ Java_com_vibeplayer_player_MpvNative_extractThumbnail(JNIEnv *env, jobject thiz,
         {"hwdec", "no"}, {"pause", "yes"}, {"start", start},
         {"vd-lavc-threads", "2"}, {"vd-lavc-skiploopfilter", "all"},
         {"vd-lavc-fast", "yes"}, {"hr-seek", "no"}, {"vf", vf},
+        {"demuxer-max-bytes", "4MiB"}, {"demuxer-max-back-bytes", "1MiB"}, /* keep in sync with MemoryBudget.kt */
         {"msg-level", "all=no"}, {NULL, NULL}
     };
     int result = -1;
