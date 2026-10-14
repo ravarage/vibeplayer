@@ -73,6 +73,8 @@ class PlaybackService : Service() {
         /** P7-02: deferred start-up work (MediaSession, shader extraction) runs at the latest after this. */
         private const val DEFERRED_WORK_TIMEOUT_MS = 3000L
         const val CHANNEL_ID = "vibeplayer_playback"
+        /** Benchmark runs: silent channel for the notification Android requires after startForegroundService. */
+        const val BENCHMARK_CHANNEL_ID = "vibeplayer_benchmark"
         const val NOTIFICATION_ID = 1001
 
         const val ACTION_PLAY_PAUSE = "com.vibeplayer.playback.ACTION_PLAY_PAUSE"
@@ -467,9 +469,18 @@ class PlaybackService : Service() {
         return targetDir
     }
 
-    private fun startForegroundCompat() {
-        if (benchmarkRun) return // no notification during a benchmark
-        val notif = buildNotification(currentVideoTitle.value, !playerEngine.state.value.paused)
+    /**
+     * [notice] NONE does nothing; SILENT (benchmark run) posts a minimal notification on a silent channel;
+     * MEDIA the normal one. See [ForegroundStartPolicy] for which applies where.
+     */
+    private fun startForegroundCompat(notice: ForegroundNotice = ForegroundStartPolicy.opportunistic(benchmarkRun)) {
+        if (notice == ForegroundNotice.NONE) return
+        val notif = if (notice == ForegroundNotice.SILENT) {
+            Log.i("VP", "PlaybackService: foreground start during a benchmark run -> silent notification")
+            buildBenchmarkNotification()
+        } else {
+            buildNotification(currentVideoTitle.value, !playerEngine.state.value.paused)
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
@@ -496,10 +507,11 @@ class PlaybackService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i("VP", "PlaybackService onStartCommand (action=${intent?.action})")
-        // Every startForegroundService() must be followed by startForeground() or the app is killed;
+        // Every startForegroundService() must be followed by startForeground() or the app is killed, also
+        // during a benchmark run (silent notification) and whatever the benchmark flag says by now;
         // a service that already left the foreground (task removed while still bound) is reused.
         // Already foreground since onCreate: the notification is kept current by updateNotification().
-        if (intent?.action != ACTION_STOP && intent?.action != ACTION_DISMISS && !isForegroundService) startForegroundCompat()
+        startForegroundCompat(ForegroundStartPolicy.onStartCommand(intent?.action, benchmarkRun, isForegroundService))
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> {
                 if (isDucked) {
@@ -1204,6 +1216,27 @@ class PlaybackService : Service() {
             dao.upsert(updated)
             Log.i("VP", "Saved leaving-file position $positionMs ms (dur=$duration ms) for key $key")
         }
+    }
+
+    private fun buildBenchmarkNotification(): Notification {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (nm.getNotificationChannel(BENCHMARK_CHANNEL_ID) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(BENCHMARK_CHANNEL_ID, "Benchmark", NotificationManager.IMPORTANCE_MIN).apply {
+                    description = "Debug benchmark runs"
+                    setShowBadge(false)
+                    setSound(null, null)
+                    enableVibration(false)
+                }
+            )
+        }
+        return NotificationCompat.Builder(this, BENCHMARK_CHANNEL_ID)
+            .setContentTitle("Benchmark run")
+            .setSmallIcon(R.drawable.ic_pip_play)
+            .setSilent(true)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .build()
     }
 
     private fun createNotificationChannel() {

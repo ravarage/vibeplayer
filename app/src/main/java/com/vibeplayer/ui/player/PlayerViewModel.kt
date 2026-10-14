@@ -117,8 +117,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val intent = Intent(application, PlaybackService::class.java)
-        // A benchmark run only binds: startForegroundService would force a notification.
-        if (!PlaybackService.benchmarkRun) {
+        // A benchmark run only binds: startForegroundService would force a notification. The service
+        // answers every startForegroundService with startForeground whatever the flag says later.
+        if (com.vibeplayer.playback.ForegroundStartPolicy.shouldStartForegroundService(PlaybackService.benchmarkRun)) {
             try {
                 ContextCompat.startForegroundService(application, intent)
             } catch (e: Exception) {

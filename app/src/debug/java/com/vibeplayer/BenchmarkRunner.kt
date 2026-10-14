@@ -293,7 +293,24 @@ object BenchmarkRunner {
             // 12. Cleanup
             app.unregisterActivityLifecycleCallbacks(lifecycleListener)
             kotlinx.coroutines.withContext(Dispatchers.Main) { activity?.finish() }
+            endBenchmarkMode()
         }
+    }
+
+    /**
+     * The benchmark flag is process-wide: clear it when the run is over so a later normal open is not
+     * treated as a benchmark (no history, no notification). Not before the service is gone: its onUnbind
+     * relies on the flag to stop instead of playing on in the background.
+     */
+    private suspend fun endBenchmarkMode() {
+        for (i in 1..50) {
+            if (com.vibeplayer.playback.PlaybackService.currentInstance == null) break
+            delay(100L)
+        }
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
+            com.vibeplayer.playback.PlaybackService.benchmarkRun = false
+        }
+        Log.i("VP", "Benchmark: run over, benchmark mode off (service gone: ${com.vibeplayer.playback.PlaybackService.currentInstance == null})")
     }
 
     private fun getMpvHandle(engine: PlayerEngine): Long {

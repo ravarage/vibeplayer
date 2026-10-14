@@ -629,6 +629,9 @@ class PlayerActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // singleTop: a benchmark launch can arrive here, and a normal open (notification, browser) after
+        // a benchmark must not keep the benchmark flag (no history writes, no notification).
+        PlaybackService.benchmarkRun = intent.getBooleanExtra("benchmark", false)
         val config = resolveConfig()
         val oldPath = viewModel.currentPath.value ?: currentVideoPath
         resolveVideoPath()
