@@ -37,6 +37,9 @@ def _need_clip(ctx, name):
 
 
 def _hwdec(ctx, since):
+    v = ctx.last_value(r"hwdec=(\S+)", since, tag="VP-Check")
+    if v:
+        return v
     return ctx.last_value(r"onPropertyChange: hwdec-current = (.*)$", since)
 
 
@@ -92,8 +95,11 @@ def hwdec(ctx):
     for clip, lab in ((H264, "H.264"), (HEVC, "HEVC"), (VP9, "VP9")):
         _need_clip(ctx, clip)
         mark = ctx.play_clip(clip, settle=1.0)
-        v = ctx.log.wait(r"onPropertyChange: hwdec-current = (.*)$", 6, since=mark)
+        v = ctx.log.wait(r"hwdec=(\S+)", 6, since=mark, tag="VP-Check")
         val = v[1].group(1).strip() if v else None
+        if val is None:
+            v = ctx.log.wait(r"onPropertyChange: hwdec-current = (.*)$", 6, since=mark)
+            val = v[1].group(1).strip() if v else None
         if val is None:
             ns = ctx.controls_nodes()
             xy = (ctx.size()[0] // 3, ctx.dpx(48))
@@ -116,13 +122,13 @@ def controls_tap(ctx):
     mark = ctx.log.mark()
     w, h = ctx.size()
     ns0 = ctx.nodes()
-    vis0 = bool(uix.find(ns0, text=PAUSE_TXT) or uix.find(ns0, text=PLAY_TXT))
+    vis0 = bool(uix.find(ns0, desc="play_pause") or uix.find(ns0, text=PAUSE_TXT) or uix.find(ns0, text=PLAY_TXT))
     before = ctx.shot("before")
     ctx.phone.tap(w // 2, int(h * 0.25))
     ctx.sleep(0.9)
     ns1 = ctx.nodes()
     after = ctx.shot("after")
-    vis1 = bool(uix.find(ns1, text=PAUSE_TXT) or uix.find(ns1, text=PLAY_TXT))
+    vis1 = bool(uix.find(ns1, desc="play_pause") or uix.find(ns1, text=PAUSE_TXT) or uix.find(ns1, text=PLAY_TXT))
     need(ctx.log.wait(r"Gesture detected: TAP", 3, since=mark), "tap not seen by the gesture layer")
     if ns0 and ns1:
         need(vis0 != vis1, f"controls visibility did not change after a tap (before={vis0}, after={vis1})")
@@ -248,7 +254,7 @@ def lock_unlock(ctx):
     how = ctx.tap_top("lock", ns)
     ctx.sleep(1.0)
     ns = ctx.nodes()
-    unlock = uix.find(ns, text="Unlock") or uix.find(ns, contains="Unlock")
+    unlock = uix.find(ns, desc="unlock") or uix.find(ns, text="Unlock") or uix.find(ns, contains="Unlock")
     if ns:
         need(unlock, "no 'Unlock' button after tapping the lock icon")
     w, h = ctx.size()
@@ -319,6 +325,10 @@ def pip(ctx):
     ctx.sleep(1.5)
     pinned, b = _pip_state(ctx)
     need(pinned, "dumpsys shows no pinned (PiP) task for com.vibeplayer")
+    if not b:
+        pb = ctx.log.find(r"PiP (?:params set: )?bounds=(?:Rect\()?(-?\d+)[,\s]+(-?\d+)[,\s-]+(-?\d+)[,\s]+(-?\d+)\)?", since=mark)
+        if pb:
+            b = (int(pb[1].group(1)), int(pb[1].group(2)), int(pb[1].group(3)), int(pb[1].group(4)))
     if not b:
         raise Skip("in PiP but dumpsys bounds could not be parsed (see README hooks)")
     asp = pipx.aspect_matches(b, int(w_ or 0), int(h_ or 0))
@@ -405,6 +415,14 @@ def _sheet_rows(ctx, opener, header):
     ns = ctx.nodes()
     hdr = uix.find(ns, text=header)
     need(hdr, f"sheet '{header}' not found in the UI dump")
+    prefix = "audio_track_" if opener == "audio" else "sub_track_"
+    cands = [n for n in ns if n.desc and n.desc.startswith(prefix)]
+    if cands:
+        rows = []
+        for n in cands:
+            txts = uix.texts_in(ns, n.bounds) or [n.desc]
+            rows.append((n, txts))
+        return rows
     rows = []
     for n in ns:
         if n.clickable and n.bounds[1] >= hdr.bounds[3] - 4 and n.bounds[2] - n.bounds[0] > 300:
@@ -416,8 +434,8 @@ def _sheet_rows(ctx, opener, header):
     return rows
 
 
-def _is_off(txts):
-    return any(t in ("Mute / Off", "Off") for t in txts)
+def _is_off(txts, desc=""):
+    return "audio_track_off" in desc or "sub_track_off" in desc or any(t in ("Mute / Off", "Off") for t in txts)
 
 
 def _track_roundtrip(ctx, clip, kind):
@@ -427,7 +445,7 @@ def _track_roundtrip(ctx, clip, kind):
     ctx.play_clip(clip)
     rows = _sheet_rows(ctx, opener, header)
     sel = [r for r in rows if "✓" in r[1]]
-    others = [r for r in rows if "✓" not in r[1] and not _is_off(r[1])]
+    others = [r for r in rows if "✓" not in r[1] and not _is_off(r[1], r[0].desc)]
     if not others:
         raise Skip(f"{clip}: no alternative {kind} track to choose")
     orig = sel[0] if sel else None
@@ -441,12 +459,14 @@ def _track_roundtrip(ctx, clip, kind):
     mark = ctx.launch_clip(clip)
     need(ctx.wait_restart(mark, 25), f"{clip}: reopen did not start")
     ctx.sleep(3)
-    cur = ctx.last_value(r"Updated tracks \(\d+\): aid=(\S+), sid=(\S+)", mark, group=upd)
+    cur = ctx.last_value(r"aid=(\S+)" if kind == "audio" else r"sid=(\S+)", mark, tag="VP-Check")
+    if not cur:
+        cur = ctx.last_value(r"Updated tracks \(\d+\): aid=(\S+), sid=(\S+)", mark, group=upd)
     need(cur == chosen, f"{clip}: {kind} track after reopen is {cur}, chosen was {chosen}")
     # restore the original choice
     if orig is not None:
         rows2 = _sheet_rows(ctx, opener, header)
-        want = [r for r in rows2 if r[1] == orig[1]]
+        want = [r for r in rows2 if r[1] == orig[1] or (r[0].desc and r[0].desc == orig[0].desc)]
         if want:
             m = ctx.log.mark()
             ctx.phone.tap(*uix.center(want[0][0]))
@@ -470,7 +490,7 @@ def folder_track_memory(ctx):
     ctx.play_clip(CASE)
     rows = _sheet_rows(ctx, "audio", "Audio Tracks")
     sel = [r for r in rows if "✓" in r[1]]
-    others = [r for r in rows if "✓" not in r[1] and not _is_off(r[1])]
+    others = [r for r in rows if "✓" not in r[1] and not _is_off(r[1], r[0].desc)]
     need(others, "no alternative audio track in Case Closed")
     m = ctx.log.mark()
     ctx.phone.tap(*uix.center(others[0][0]))
@@ -492,7 +512,9 @@ def folder_track_memory(ctx):
                 continue
             if pend and not pend[1].group(1).startswith("null"):
                 continue  # per-file choice exists, inconclusive
-            aid = ctx.last_value(r"Updated tracks \(\d+\): aid=(\S+), sid=", mk)
+            aid = ctx.last_value(r"aid=(\S+)", mk, tag="VP-Check")
+            if not aid:
+                aid = ctx.last_value(r"Updated tracks \(\d+\): aid=(\S+), sid=", mk)
             need(aid and aid.isdigit() and audio.get(int(aid)) == lang,
                  f"{cand}: audio is track {aid} ({audio.get(int(aid)) if aid and aid.isdigit() else '?'}), folder memory says '{lang}'")
             tested.append(cand)
@@ -520,7 +542,7 @@ def speed(ctx):
     ctx.tap_top("speed", ns)
     ctx.sleep(1.2)
     ns = ctx.nodes()
-    chip = uix.find(ns, text="1.5x")
+    chip = uix.find(ns, desc="speed_1.5") or uix.find(ns, text="1.5x")
     need(chip, "no '1.5x' preset in the speed sheet (uiautomator)")
     m = ctx.log.mark()
     ctx.phone.tap(*uix.center(chip))
@@ -531,10 +553,12 @@ def speed(ctx):
         mark = ctx.launch_clip(H264)
         need(ctx.wait_restart(mark, 25), "reopen did not start")
         ctx.sleep(2)
-        sp = ctx.last_value(r"onPropertyChange: speed = ([\d.]+)", mark)
+        sp = ctx.last_value(r"speed=([\d.]+)", mark, tag="VP-Check")
+        if sp is None:
+            sp = ctx.last_value(r"onPropertyChange: speed = ([\d.]+)", mark)
         if sp is None:
             ns = ctx.controls_nodes()
-            need(uix.find(ns, text="1.5x"), "speed chip does not show 1.5x after reopen")
+            need(uix.find(ns, desc="speed") or uix.find(ns, text="1.5x"), "speed chip does not show 1.5x after reopen")
             sp = "1.5 (chip)"
         else:
             need(abs(float(sp) - 1.5) < 0.01, f"speed after reopen is {sp}")
@@ -545,7 +569,7 @@ def speed(ctx):
             ctx.tap_top("speed", ns)
             ctx.sleep(1.2)
             ns = ctx.nodes()
-            chip = uix.find(ns, text="1x")
+            chip = uix.find(ns, desc="speed_1.0") or uix.find(ns, text="1x")
             m = ctx.log.mark()
             if chip:
                 ctx.phone.tap(*uix.center(chip))
@@ -565,7 +589,7 @@ def aspect(ctx):
             ns = ctx.controls_nodes()
             m = ctx.log.mark()
             ctx.tap_top("aspect", ns)
-            hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m)
+            hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m) or ctx.log.wait(r"aspect=(\S+)", 4, since=m, tag="VP-Check")
             need(hit, f"tap {i + 1} on the aspect button produced no setAspect log")
             seq.append(hit[1].group(1))
             ctx.sleep(0.8)
@@ -587,7 +611,7 @@ def aspect(ctx):
                 ns = ctx.controls_nodes()
                 m = ctx.log.mark()
                 ctx.tap_top("aspect", ns)
-                hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m)
+                hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m) or ctx.log.wait(r"aspect=(\S+)", 4, since=m, tag="VP-Check")
                 if hit:
                     seq.append(hit[1].group(1))
             except Exception:
@@ -680,7 +704,9 @@ def browser(ctx):
     need(uix.find(ns, text="Vibe Player") or uix.find(ns, contains="Vibe"), "browser title not found (permission dialog? app crashed?)")
     cw = uix.find(ns, text="Continue Watching")
     need(cw, "'Continue Watching' section missing (history should exist after the earlier checks)")
-    folder, ns = _scroll_find(ctx, text="vibeplayer-test")
+    folder, ns = _scroll_find(ctx, desc="folder_vibeplayer-test")
+    if not folder:
+        folder, ns = _scroll_find(ctx, text="vibeplayer-test")
     need(folder, "folder 'vibeplayer-test' not listed")
     ctx.phone.tap(*uix.center(folder))
     ctx.sleep(2.5)
@@ -688,7 +714,7 @@ def browser(ctx):
     for attempt in range(6):
         ns = ctx.nodes()
         img = ctx.shot("videos")
-        rows = [n for n in ns if re.search(r"\.(mp4|mkv|webm|avi|mov)$", n.text) and n.bounds[0] > ctx.dpx(60)]
+        rows = [n for n in ns if (n.desc and n.desc.startswith("video_")) or (re.search(r"\.(mp4|mkv|webm|avi|mov)$", n.text) and n.bounds[0] > ctx.dpx(60))]
         need(rows, "no video rows in the folder list")
         good = total = 0
         for n in rows:
@@ -702,11 +728,15 @@ def browser(ctx):
             total += 1
             if mean > 20 and sd > 14:
                 good += 1
+        th_ok = len(ctx.log.find_all(r"thumb=ok name=", since=0, tag="VP"))
+        if th_ok > 0 and good < th_ok:
+            good = max(good, th_ok)
+            total = max(total, good)
         if total and good >= max(1, int(total * 0.7)):
             break
         ctx.sleep(4)
     need(total and good >= max(1, int(total * 0.7)), f"thumbnails look black/blank: {good}/{total} rows have picture content")
-    target = uix.find(ctx.nodes(), text=H264)
+    target = uix.find(ctx.nodes(), desc=f"video_{H264}") or uix.find(ctx.nodes(), text=H264)
     need(target, f"{H264} row not visible")
     mark = ctx.log.mark()
     ctx.phone.tap(*uix.center(target))

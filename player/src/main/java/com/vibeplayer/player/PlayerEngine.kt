@@ -15,6 +15,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -97,6 +99,56 @@ class PlayerEngine(
 
     private val _onScreenMessage = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
     val onScreenMessage: kotlinx.coroutines.flow.SharedFlow<String> = _onScreenMessage
+
+    private val _isInPip = MutableStateFlow(false)
+    val isInPip: StateFlow<Boolean> = _isInPip.asStateFlow()
+
+    fun setIsInPip(inPip: Boolean) {
+        if (_isInPip.value != inPip) {
+            _isInPip.value = inPip
+            emitCheckLog(force = true)
+        }
+    }
+
+    private val checkScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    @Volatile private var lastCheckSnapshot: String = ""
+    @Volatile private var lastCheckLogTimeMs: Long = 0L
+
+    fun emitCheckLog(force: Boolean = false) {
+        val s = _state.value
+        val pos = _position.value
+        val dur = s.durationMs
+        val stateStr = when {
+            s.eof -> "ended"
+            s.paused -> "paused"
+            dur > 0L || pos > 0L -> "playing"
+            else -> "idle"
+        }
+        val hwdec = s.hwdecCurrent
+        val vo = _stats.value.vo.ifEmpty {
+            if (playbackConfig.mode == PlaybackMode.QUALITY) "gpu-next"
+            else if (playbackConfig.efficientPath == EfficientPath.PATH_A) "mediacodec_embed"
+            else "gpu"
+        }
+        val speed = s.speed
+        val aspect = s.aspect ?: "fit"
+        val aid = s.selectedAudioTrackId?.toString() ?: "no"
+        val sid = s.selectedSubTrackId?.toString() ?: "no"
+        val path = currentFilePath
+        val pip = _isInPip.value
+        val renderer = playbackConfig.renderer.name.lowercase()
+
+        val stateSnapshot = "$stateStr|$dur|$hwdec|$vo|$speed|$aspect|$aid|$sid|$path|$pip|$renderer"
+        val now = System.currentTimeMillis()
+        val stateChanged = stateSnapshot != lastCheckSnapshot
+        val timeDue = (now - lastCheckLogTimeMs) >= 2000L
+
+        if (force || stateChanged || (stateStr == "playing" && timeDue)) {
+            lastCheckSnapshot = stateSnapshot
+            lastCheckLogTimeMs = now
+            Log.i("VP-Check", "state=$stateStr pos_ms=$pos dur_ms=$dur hwdec=$hwdec vo=$vo speed=$speed aspect=$aspect aid=$aid sid=$sid path=$path pip=$pip renderer=$renderer")
+        }
+    }
 
     @Volatile private var pendingPauseOnLoad: Boolean = false
     @Volatile var lastVulkanErrorText: String? = null
@@ -477,6 +529,12 @@ class PlayerEngine(
     init {
         scope.launch {
             initHandle()
+        }
+        checkScope.launch {
+            while (isActive) {
+                delay(500)
+                emitCheckLog()
+            }
         }
     }
 
@@ -1327,6 +1385,7 @@ class PlayerEngine(
         watchdog.shutdownNow()
         statsJob?.cancel()
         statsJob = null
+        checkScope.cancel()
         val task = Runnable {
             assertCommandThread()
             if (handle != 0L) {

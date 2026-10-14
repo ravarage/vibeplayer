@@ -33,6 +33,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import com.vibeplayer.data.media.VideoFolder
 import com.vibeplayer.data.thumbs.AsyncThumbnail
 import com.vibeplayer.data.thumbs.ThumbnailCache
@@ -174,6 +177,10 @@ fun FolderItemRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = "folder_${folder.name}"
+                testTag = "folder_${folder.name}"
+            }
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

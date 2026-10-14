@@ -357,7 +357,11 @@ class PlayerActivity : ComponentActivity() {
             val neighbours by viewModel.neighbours.collectAsState()
             val zoomState = playerEngine.zoomState
             val isInPip by _isInPipFlow.collectAsState()
-            var showDebugOverlay by remember { mutableStateOf(false) }
+            val initialDebugOverlay = com.vibeplayer.BuildConfig.DEBUG && (
+                intent.getBooleanExtra("debug_overlay", false) ||
+                intent.getStringExtra("debug_overlay")?.toBooleanStrictOrNull() == true
+            )
+            var showDebugOverlay by remember { mutableStateOf(initialDebugOverlay) }
             var controlsVisible by remember { mutableStateOf(true) }
             var isLocked by remember { mutableStateOf(false) }
             var aspectIndicatorText by remember { mutableStateOf("") }
@@ -566,13 +570,20 @@ class PlayerActivity : ComponentActivity() {
                 "none" -> com.vibeplayer.player.ShaderPreset.NONE
                 else -> null
             }
+            val debugStartMs = if (com.vibeplayer.BuildConfig.DEBUG && intent.hasExtra("start_ms")) {
+                intent.getLongExtra("start_ms", -1L).takeIf { it >= 0 }
+                    ?: intent.getIntExtra("start_ms", -1).toLong().takeIf { it >= 0 }
+                    ?: intent.getStringExtra("start_ms")?.toLongOrNull()?.takeIf { it >= 0 }
+            } else null
+
             viewModel.openVideo(
                 path = currentVideoPath,
                 identityKey = currentIdentityKey,
                 folderKey = currentFolderKey,
                 title = currentVideoTitle,
                 playbackConfig = config,
-                shaderPreset = preset
+                shaderPreset = preset,
+                startPositionOverride = debugStartMs
             )
         }
     }
@@ -729,8 +740,74 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    private val debugReceiver = if (com.vibeplayer.BuildConfig.DEBUG) {
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent == null) return
+                val action = intent.getStringExtra("action")
+                    ?: intent.action?.removePrefix("com.vibeplayer.")?.removePrefix("DEBUG_")?.lowercase()
+                    ?: return
+                Log.i("VP", "PlayerActivity debugReceiver: action=$action")
+                when {
+                    action == "pause" -> playerEngine.pause()
+                    action == "play" -> playerEngine.play()
+                    action == "toggle_pause" -> playerEngine.togglePause()
+                    action == "next" -> viewModel.skipToNeighbour(true)
+                    action == "prev" -> viewModel.skipToNeighbour(false)
+                    action.startsWith("seek:") -> {
+                        action.substringAfter("seek:").toLongOrNull()?.let { playerEngine.seekTo(it, exact = true) }
+                    }
+                    action == "seek" -> {
+                        val ms = intent.getLongExtra("ms", -1L).takeIf { it >= 0 }
+                            ?: intent.getLongExtra("position_ms", -1L).takeIf { it >= 0 }
+                            ?: intent.getStringExtra("ms")?.toLongOrNull()
+                        if (ms != null) {
+                            playerEngine.seekTo(ms, exact = true)
+                        } else {
+                            val deltaSec = intent.getDoubleExtra("delta_s", 0.0)
+                            if (deltaSec != 0.0) playerEngine.seekRelative(deltaSec, exact = true)
+                        }
+                    }
+                    action.startsWith("aspect:") -> {
+                        viewModel.setAspect(action.substringAfter("aspect:"))
+                    }
+                    action == "aspect" -> {
+                        val mode = intent.getStringExtra("mode") ?: intent.getStringExtra("aspect")
+                        if (mode != null) {
+                            viewModel.setAspect(mode)
+                        } else {
+                            val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
+                            val cur = playerEngine.state.value.aspect ?: "fit"
+                            val nextMode = modes[(modes.indexOf(cur) + 1) % modes.size]
+                            viewModel.setAspect(nextMode)
+                        }
+                    }
+                    action.startsWith("speed:") -> {
+                        action.substringAfter("speed:").toDoubleOrNull()?.let {
+                            viewModel.setSpeed(it)
+                            viewModel.persistSpeed(it)
+                        }
+                    }
+                    action == "speed" -> {
+                        val sp = intent.getDoubleExtra("speed", -1.0).takeIf { it > 0 }
+                            ?: intent.getStringExtra("speed")?.toDoubleOrNull()
+                        if (sp != null) {
+                            viewModel.setSpeed(sp)
+                            viewModel.persistSpeed(sp)
+                        }
+                    }
+                    action == "double_tap" || intent.action == "com.vibeplayer.DEBUG_DOUBLE_TAP" -> {
+                        val side = intent.getStringExtra("side")?.lowercase() ?: "right"
+                        playerEngine.seekRelative(if (side == "left") -10.0 else 10.0, exact = true)
+                    }
+                }
+            }
+        }
+    } else null
+
     private fun updatePipParams(state: PipState) {
         val bounds = windowManager.currentWindowMetrics.bounds
+        val rectHint = PipHelper.calculateSourceRectHint(bounds.width(), bounds.height(), state.videoWidth, state.videoHeight)
         val params = PipHelper.buildPipParams(
             context = this,
             videoWidth = state.videoWidth,
@@ -742,6 +819,9 @@ class PlayerActivity : ComponentActivity() {
         )
         try {
             setPictureInPictureParams(params)
+            val rectStr = rectHint?.let { "${it.left},${it.top},${it.right},${it.bottom}" } ?: "none"
+            val boundsStr = "${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}"
+            Log.i("VP", "PiP params set: bounds=$boundsStr sourceRectHint=$rectStr")
         } catch (e: Exception) {
             Log.w("VP", "Failed to setPictureInPictureParams: ${e.message}")
         }
@@ -767,8 +847,11 @@ class PlayerActivity : ComponentActivity() {
         newConfig: Configuration
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        Log.i("VP", "onPictureInPictureModeChanged: isInPictureInPictureMode=$isInPictureInPictureMode")
+        val bounds = windowManager.currentWindowMetrics.bounds
+        val boundsStr = "${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}"
+        Log.i("VP", "onPictureInPictureModeChanged: isInPictureInPictureMode=$isInPictureInPictureMode bounds=$boundsStr")
         _isInPipFlow.value = isInPictureInPictureMode
+        playerEngine.setIsInPip(isInPictureInPictureMode)
         if (!isInPictureInPictureMode) {
             hideSystemBars()
         }
@@ -792,6 +875,17 @@ class PlayerActivity : ComponentActivity() {
             ContextCompat.registerReceiver(this, pipReceiver, pipFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
         } catch (e: Exception) {
             Log.w("VP", "Failed to register pip receiver: ${e.message}")
+        }
+        if (debugReceiver != null) {
+            try {
+                val debugFilter = IntentFilter().apply {
+                    addAction("com.vibeplayer.DEBUG_ACTION")
+                    addAction("com.vibeplayer.DEBUG_DOUBLE_TAP")
+                }
+                ContextCompat.registerReceiver(this, debugReceiver, debugFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            } catch (e: Exception) {
+                Log.w("VP", "Failed to register debug receiver: ${e.message}")
+            }
         }
     }
 
@@ -837,6 +931,11 @@ class PlayerActivity : ComponentActivity() {
         try {
             unregisterReceiver(pipReceiver)
         } catch (_: Exception) {}
+        if (debugReceiver != null) {
+            try {
+                unregisterReceiver(debugReceiver)
+            } catch (_: Exception) {}
+        }
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = lp

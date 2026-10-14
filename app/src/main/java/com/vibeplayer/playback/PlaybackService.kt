@@ -676,7 +676,8 @@ class PlaybackService : Service() {
         playAfterLoad: Boolean = false,
         title: String? = null,
         playbackConfig: PlaybackConfig? = null,
-        shaderPreset: ShaderPreset? = null
+        shaderPreset: ShaderPreset? = null,
+        startPositionOverride: Long? = null
     ) {
         val leavingKey = currentKey
         val leavingPath = currentVideoPath
@@ -725,7 +726,10 @@ class PlaybackService : Service() {
             val appSettings = appSettingsRepository.appSettingsFlow.first()
             if (generation != loadGeneration || currentVideoPath != path) return@launch
 
-            val startPositionMs = if (startFromBeginning) {
+            val startPositionMs = if (startPositionOverride != null) {
+                Log.i("VP", "Resume: override starting from $startPositionOverride ms")
+                startPositionOverride
+            } else if (startFromBeginning) {
                 0L
             } else if (fileSettings != null) {
                 val dur = fileSettings.durationMs

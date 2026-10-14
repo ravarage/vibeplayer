@@ -15,6 +15,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.Dispatchers
@@ -238,6 +241,30 @@ class ThumbnailCache(
     }
 }
 
+private fun isBitmapBlack(bitmap: Bitmap): Boolean {
+    val width = bitmap.width
+    val height = bitmap.height
+    if (width <= 0 || height <= 0) return true
+    val stepX = (width / 8).coerceAtLeast(1)
+    val stepY = (height / 8).coerceAtLeast(1)
+    var totalLuma = 0L
+    var count = 0
+    for (y in 0 until height step stepY) {
+        for (x in 0 until width step stepX) {
+            val pixel = bitmap.getPixel(x, y)
+            val r = (pixel shr 16) and 0xFF
+            val g = (pixel shr 8) and 0xFF
+            val b = pixel and 0xFF
+            val luma = (r * 299 + g * 587 + b * 114) / 1000
+            totalLuma += luma
+            count++
+        }
+    }
+    if (count == 0) return true
+    val avgLuma = totalLuma / count
+    return avgLuma < 5
+}
+
 @Composable
 fun AsyncThumbnail(
     path: String,
@@ -249,6 +276,7 @@ fun AsyncThumbnail(
 ) {
     val key = remember(path, sizeBytes, mtime) { cache.makeCacheKey(path, sizeBytes, mtime) }
     var bitmap by remember(key) { mutableStateOf(cache.getFromMemory(key)) }
+    val name = remember(path) { if (path.isNotEmpty()) File(path).name else "" }
 
     LaunchedEffect(key) {
         if (bitmap == null && path.isNotEmpty()) {
@@ -257,12 +285,30 @@ fun AsyncThumbnail(
     }
 
     val currentBitmap = bitmap
+
+    LaunchedEffect(key, currentBitmap) {
+        if (name.isNotEmpty()) {
+            val status = when {
+                currentBitmap == null -> "missing"
+                isBitmapBlack(currentBitmap) -> "black"
+                else -> "ok"
+            }
+            Log.i("VP", "thumb=$status name=$name")
+        }
+    }
+
     if (currentBitmap != null) {
+        val thumbTag = "thumb_$name"
         Image(
             bitmap = currentBitmap.asImageBitmap(),
-            contentDescription = null,
+            contentDescription = thumbTag,
             contentScale = ContentScale.Crop,
-            modifier = modifier.fillMaxSize()
+            modifier = modifier
+                .fillMaxSize()
+                .semantics {
+                    contentDescription = thumbTag
+                    testTag = thumbTag
+                }
         )
     } else {
         placeholder()

@@ -99,6 +99,12 @@ class Phone:
             cmd += " " + extras
         return self.sh(cmd, 20)
 
+    def broadcast(self, action="com.vibeplayer.DEBUG_ACTION", extras=""):
+        cmd = f"am broadcast -p {PKG} -a {action}"
+        if extras:
+            cmd += " " + extras
+        return self.sh(cmd, 15)
+
     def logcat_clear(self):
         self.run(["logcat", "-c"], 15)
 

@@ -176,6 +176,9 @@ class Ctx:
         return hits[-1][1].group(group) if hits else None
 
     def duration_s(self, since=0):
+        c = self.last_value(r"dur_ms=(\d+)", since, tag="VP-Check")
+        if c and int(c) > 0:
+            return int(c) / 1000.0
         v = self.last_value(r"onPropertyChange: duration = ([\d.]+)", since)
         if v:
             return float(v)
@@ -215,13 +218,13 @@ class Ctx:
                 self.phone.tap(w // 2, int(h * 0.25))
                 self.sleep(0.8)
                 return []
-            if uix.find(ns, text=PAUSE_TXT) or uix.find(ns, text=PLAY_TXT):
+            if uix.find(ns, desc="play_pause") or uix.find(ns, text=PAUSE_TXT) or uix.find(ns, text=PLAY_TXT):
                 return ns
             w, h = self.size()
             self.phone.tap(w // 2, int(h * 0.25))
             self.sleep(0.9)
         ns = self.nodes()
-        need(uix.find(ns, text=PAUSE_TXT) or uix.find(ns, text=PLAY_TXT), "controls did not appear on tap")
+        need(uix.find(ns, desc="play_pause") or uix.find(ns, text=PAUSE_TXT) or uix.find(ns, text=PLAY_TXT), "controls did not appear on tap")
         return ns
 
     def top_xy(self, k_dp):
@@ -231,12 +234,14 @@ class Ctx:
     TOP = {"lock": 40, "pip": 92, "aspect": 144, "sub": 196, "audio": 248, "speed": 318}
 
     def tap_top(self, which, ns):
-        spec = {"lock": dict(text="🔒"), "pip": dict(desc="Mini player"), "aspect": dict(desc="Aspect ratio"),
-                "sub": dict(text="💬"), "audio": dict(text="🎵"),
-                "speed": dict(regex=r"^\d+(\.\d+)?x$")}[which]
-        cands = uix.find_all(ns, **spec) if ns else []
-        if which == "speed":
-            cands = [n for n in cands if n.bounds[1] < self.dpx(120)]
+        cands = uix.find_all(ns, desc=which) if ns else []
+        if not cands and ns:
+            spec = {"lock": dict(text="🔒"), "pip": dict(desc="Mini player"), "aspect": dict(desc="Aspect ratio"),
+                    "sub": dict(text="💬"), "audio": dict(text="🎵"),
+                    "speed": dict(regex=r"^\d+(\.\d+)?x$")}[which]
+            cands = uix.find_all(ns, **spec)
+            if which == "speed":
+                cands = [n for n in cands if n.bounds[1] < self.dpx(120)]
         if cands:
             self.phone.tap(*uix.center(cands[0]))
             return "ui"
@@ -246,13 +251,16 @@ class Ctx:
     def tap_center_button(self, which, ns):
         w, h = self.size()
         if which == "pause":
-            n = uix.find(ns, text=PAUSE_TXT) or uix.find(ns, text=PLAY_TXT) if ns else None
+            n = (uix.find(ns, desc="play_pause") or
+                 uix.find(ns, text=PAUSE_TXT) or
+                 uix.find(ns, text=PLAY_TXT)) if ns else None
             if n:
                 self.phone.tap(*uix.center(n))
                 return "ui"
             self.phone.tap(w // 2, h // 2)
         else:
-            n = uix.find(ns, text="|◀" if which == "prev" else "▶|") if ns else None
+            n = (uix.find(ns, desc=which) or
+                 uix.find(ns, text="|◀" if which == "prev" else "▶|")) if ns else None
             if n:
                 self.phone.tap(*uix.center(n))
                 return "ui"

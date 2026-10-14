@@ -61,11 +61,27 @@ Written without the phone in hand; first real run will need tuning.
 - Brightness is only restored by an opposite swipe (the app-level window brightness is not read back).
 - Pixel tests cannot tell correct from wrong colours or ASS styling.
 
-## Hooks that would make checks reliable
-(App changes, not done here.)
-1. `contentDescription`/testTag on every control: track rows ("audio_track_<id>"), speed presets, play/pause ("play_pause"), prev/next, lock/unlock, the seek bar, folder and video rows ("video_<name>"), thumbnail images ("thumb_<name>").
-2. A release-safe `VP-Check` log line (tag `VP-Check`, no debug gating) with key=value: `state=playing|paused|ended pos_ms= dur_ms= hwdec= speed= aspect= aid= sid= path= pip=true|false`, emitted on every change and every 2 s. Removes the dependence on debug `onPropertyChange` lines.
-3. Debug/instrumentation intent extras (honoured only when `BuildConfig.DEBUG` or a debug-menu flag): `start_ms` (seek to position after load), `debug_overlay=true` (stats overlay on), `action=pause|play|next|prev|seek:<ms>|aspect|speed:<x>` delivered via a broadcast receiver, so gestures can be tested separately from navigation.
-4. A broadcast `com.vibeplayer.DEBUG_DOUBLE_TAP` (left/right) to exercise the skip path without relying on `input tap` timing.
-5. Log the PiP rectangle (`PiP bounds=l,t,r,b`) from `onPictureInPictureModeChanged` / `setPictureInPictureParams`, and log `sourceRectHint`.
-6. Log a `thumb=ok|black|missing name=` line when a list thumbnail is bound.
+## Hooks implemented to make checks reliable
+The app provides the following hooks for devcheck and automated testing, with devcheck keeping fallbacks when running against older builds:
+1. `contentDescription` and `Modifier.testTag` on interactive controls:
+   - Track-sheet rows: `audio_track_<id>`, `sub_track_<id>`, `audio_track_off`, `sub_track_off`
+   - Speed presets: `speed_<x>` (e.g. `speed_1.0`, `speed_1.5`)
+   - Play/pause: `play_pause`
+   - Previous/next: `prev`, `next`
+   - Lock/unlock: `lock`, `unlock`
+   - Aspect ratio: `aspect`
+   - Mini-player: `pip`
+   - Quality-mode button: `quality_mode`
+   - Seek bar: `seek_bar`
+   - Browser rows: `folder_<name>`, `video_<name>`, `thumb_<name>`
+2. A release-safe `VP-Check` log line (tag `VP-Check`, no debug gating) with key=value:
+   `state=playing|paused|ended pos_ms= dur_ms= hwdec= speed= aspect= aid= sid= path= pip=true|false renderer=gles|vulkan`
+   Emitted on state changes and periodically every 2 s during playback without main-thread mpv queries. Used by devcheck for duration, hwdec, speed, aspect, and track selection.
+3. Debug/instrumentation intent extras (active in debug builds):
+   - `start_ms` (long): Start playback seeked to the given position in ms after opening.
+   - `debug_overlay` (boolean): Force debug performance overlay visible.
+4. Debug broadcast receiver (`DebugActionReceiver`, permission-guarded with `DUMP` or registered with `RECEIVER_NOT_EXPORTED`):
+   Targeting `com.vibeplayer` (`am broadcast -p com.vibeplayer -a com.vibeplayer.DEBUG_ACTION --es action <action>`), supporting actions:
+   - `pause`, `play`, `toggle_pause`, `next`, `prev`, `seek` (`--el pos_ms <ms>`), `aspect`, `speed` (`--ef speed <float>`), and `double_tap` (`--es side left|right`).
+5. PiP rectangle logging: logs `PiP bounds=l,t,r,b` and `sourceRectHint` upon PiP param update and enter/exit. Used by devcheck as a fallback when dumpsys bounds parsing fails.
+6. Thumbnail bind logging: logs `thumb=ok|black|missing name=` under tag `VP` when thumbnails are loaded or displayed.
