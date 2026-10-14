@@ -1,0 +1,49 @@
+# Roadmap
+
+Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summary.
+
+## Done (phases P0 to P5)
+
+- P0: toolchain, device check, native libmpv build for arm64 (mpv v0.41.0, FFmpeg n9.0.2, dav1d 1.5.4,
+  libass 0.17.5, libplacebo v7.360.1), JNI bridge, first playback.
+- P1: player engine, surface lifecycle, controls, scrubbing, efficient-mode comparison, software fallback,
+  debug overlay, open-with intent, styled ASS subtitles.
+- P2: folder browser from MediaStore, sort order, thumbnails with disk cache and a software (mpv) fallback for
+  AV1 and 10-bit clips, settings screen.
+- P3: gestures (brightness, volume, swipe seek, double-tap skip, pinch zoom, lock, haptics). The hold-for-fast-playback
+  gesture is coded and builds but is not yet verified on the phone (beta).
+- P4: per-file memory (position, tracks, speed, aspect), audio and subtitle pickers, speed, aspect modes,
+  history row in the browser, default languages and per-folder track memory, auto-play next file, name and icon.
+- P5: picture-in-picture is done. Background playback with a media notification, lifecycle edge cases are merged
+  but not yet verified on the phone (beta).
+
+## In progress
+
+- P6: quality mode, renderer switch (OpenGL ES default, experimental Vulkan with automatic fallback) and the
+  benchmark harness exist; the benchmark runs and the choice of default renderer are still to do.
+- P7: performance. Release build, recomposition and idle-cost work, start time under 1 second, baseline
+  profile, memory budget. Several parts are coded but not yet measured on the phone.
+- Subtitle and audio delay plus subtitle style (P4-13, MX Player parity) and the start-time work exist on an
+  integration branch and are not part of the first release.
+- Shader presets (Anime4K light presets, Snapdragon GSR) are merged and marked beta; their benchmark (P8-04) is still to do.
+
+## Planned
+
+- P8: shader benchmark (5 minutes per preset on 1080p).
+- P9: tuned native build (`-mcpu=cortex-a78`, ThinLTO) and comparison against the baseline build.
+
+## Known issues
+
+- B-08 (open in `BLOCKERS.md`): on the reference phone the H.264 zero-copy hardware path (MediaCodec) can stall
+  right at start; in roughly 1 of 5 to 1 of 12 opens in three test runs (1/12, 1/3, 4/20) the picture stays black. The cause is in the FFmpeg MediaCodec
+  path and is not yet fixed. The app is designed to recover automatically by reloading the file with software
+  decoding (stall watchdog), and the main thread no longer hangs; the recovery on a real stall has not been
+  confirmed in a long run, and the stuck decoder handle is left behind until the process ends.
+- Vulkan is experimental and depends on the owner's unfinished driver port.
+- The release is signed with a debug key (see README).
+
+## Ideas
+
+- Lower minSdk for wider device support (needs code changes and testing on other phones).
+- An LGPL build option without GPL-only FFmpeg components.
+- Testing on more devices, and hardware AV1 decode where available.

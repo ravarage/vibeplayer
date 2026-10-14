@@ -1,0 +1,54 @@
+# Hardware and compatibility
+
+Vibe Player has been developed and tested on exactly one device. Everything else below is either
+a reasoned expectation or marked untested.
+
+## Best (the reference device)
+
+POCO X5 Pro 5G (codename redwood), Snapdragon 778G, Adreno 642L, 8 GB RAM, Android 17 (a custom build;
+the project owner is porting a Vulkan 1.3 driver to it).
+
+- Hardware decoding through MediaCodec for H.264, HEVC (including 10-bit HEVC 4K in the test clips) and VP9.
+- AV1 is decoded in software with dav1d (the 778G has no AV1 hardware decoder). 10-bit H.264 (Hi10P) also
+  falls back to software.
+- OpenGL ES 3.2 on the Adreno 642L is the default and reliable renderer.
+- Vulkan: the stock driver reports Vulkan 1.1, which is below libplacebo's 1.2 minimum, so the Vulkan
+  renderer cannot start and the app falls back to OpenGL ES. The owner's experimental driver reports
+  Vulkan 1.3.295 (`vulkan.adreno.so`); with it the Vulkan renderer plays H.264 and AV1 in short tests, but
+  it is experimental and OpenGL ES stays the default.
+
+Software AV1 at 4K is the heaviest case. Measured on this phone in one 20-second test with the debug
+overlay's counters (`av1_4k.mp4`, dav1d, all cores, see `ARCHITECTURE.md`, section Vulkan status update):
+frames dropped by the output were 565 with OpenGL ES (`gpu-next`), 517 with Vulkan (`gpu-next`) and 359 with
+Vulkan (`gpu`), with picture moving in every run. Longer runs and battery cost were not measured yet (P6-04, P6-05).
+In other words, 4K AV1 is not smooth on this chip; 1080p AV1 is the realistic target. H.264 1080p had 0 to 7
+dropped frames in the same test.
+
+## Best OS
+
+Android 17 (SDK 37) is the only version tested, and the only one the current build installs on
+(`minSdk = targetSdk = compileSdk = 37`).
+
+## Likely to work if rebuilt with a lower minSdk (untested)
+
+Other arm64-v8a phones with OpenGL ES 3.x: Snapdragon, Dimensity, Tensor and Exynos. Nothing in the code
+was deliberately limited to the reference device, but the app uses recent Android APIs and was never run
+on anything else, so lowering `minSdk` will need code changes and testing. What changes per chip:
+
+- Hardware AV1 decode on newer SoCs: MediaCodec would be used instead of dav1d, if the hwdec list allows it
+  (untested).
+- Vulkan availability: Vulkan 1.2 or newer is required for the Vulkan renderer. Many recent phones qualify;
+  the app tries Vulkan only if the user selects it and otherwise falls back to OpenGL ES.
+- 10-bit HEVC and other profiles depend on the vendor decoder; if the hardware decoder rejects a stream the
+  software decoder is used.
+- CPU speed decides how far software decoding goes (AV1 4K above all). Faster cores than the 778G's will help;
+  slower ones will drop frames earlier.
+
+## Will not work
+
+- Anything that is not arm64-v8a: 32-bit ARM phones, x86 / x86_64 emulators, and Chromebooks or PCs without
+  ARM translation. The native libraries are built for arm64-v8a only.
+- Android below 17 with the published build (minSdk 37).
+- Devices without OpenGL ES 3.x.
+- The Vulkan renderer on Vulkan below 1.2 (including the stock driver of the reference phone). It falls back
+  to OpenGL ES; playback itself still works.
