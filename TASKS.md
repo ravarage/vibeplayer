@@ -415,6 +415,16 @@ _Reviewer notes on P5-04 (commit 55e6192), fix in P5-05:_
   playback running. Until P5-03 adds the background-audio setting, pause in `onStop` when not in PiP;
   after P5-03, pause only if background audio is off._
 
+_Reviewer decisions after the CLAUDE-H review of par/p5 (2026-10-14), to do before the P5 device pass ends:_
+- _Paused from the notification with no activity open: keep the media notification (it leaves the
+  foreground, stays swipe-dismissable, play resumes from it) and stop the service only after 10
+  minutes paused or when the user dismisses it; this is what MX Player and YouTube do._
+- _While the surface is detached for background audio, also set `vid=no` (restore the previous `vid`
+  on re-attach) so video is not decoded with the screen off; measure CPU before/after._
+- _AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK: lower mpv `volume` to about 30% and restore it on gain
+  instead of pausing (add a small PlayerEngine.setDuck(Boolean))._
+- _Ask for POST_NOTIFICATIONS once (remember the denial); content-URI titles use the display name._
+
 **P5-05 Lifecycle edge cases** — PiP ↔ fullscreen, PiP close, swipe from recents, opening a new file
 while playing. *Files*: playback/*. *Accept*: none of these crash or leave a stale notification.
 
