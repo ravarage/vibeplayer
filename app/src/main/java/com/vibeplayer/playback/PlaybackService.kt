@@ -81,7 +81,9 @@ class PlaybackService : Service() {
     }
 
     private val binder = LocalBinder()
-    val playerEngine: PlayerEngine get() = getOrCreateEngine()
+    // Captured once: a getter that called getOrCreateEngine() after onDestroy would create (and leak)
+    // a second engine.
+    val playerEngine: PlayerEngine = getOrCreateEngine()
 
     private var playerAdapter: VibePlayerAdapter? = null
     private var mediaSession: androidx.media3.session.MediaSession? = null
@@ -695,20 +697,26 @@ class PlaybackService : Service() {
         }
     }
 
-    fun saveCurrentPosition() {
+    /**
+     * @param releaseWhenDone engine to release once the final position read has finished (onDestroy):
+     * releasing it first would make the read fail and overwrite the saved position with 0.
+     */
+    fun saveCurrentPosition(releaseWhenDone: PlayerEngine? = null) {
+        val engine = releaseWhenDone ?: playerEngine
         val generation = loadGeneration
-        val key = currentKey ?: return
-        val knownPos = playerEngine.position.value
-        val state = playerEngine.state.value
-        if (generation != loadGeneration || key != currentKey) return
+        val key = currentKey ?: run { releaseWhenDone?.release(); return }
+        val knownPos = engine.position.value
+        val state = engine.state.value
+        if (generation != loadGeneration || key != currentKey) { releaseWhenDone?.release(); return }
         saveScope.launch {
             val fresh = try {
-                withTimeoutOrNull(1_000L) { playerEngine.currentPositionMs() }
+                withTimeoutOrNull(1_000L) { engine.currentPositionMs() }
             } catch (_: Exception) {
                 null
             }
+            releaseWhenDone?.release()
             val pos = if (generation == loadGeneration && key == currentKey) {
-                fresh ?: playerEngine.position.value
+                fresh ?: knownPos
             } else {
                 knownPos
             }
@@ -893,7 +901,10 @@ class PlaybackService : Service() {
         Log.i("VP", "PlaybackService onDestroy")
         periodicSaveJob?.cancel()
         serviceScope.cancel()
-        saveCurrentPosition()
+        // Detach from the statics first so a service created right after cannot pick up this engine.
+        val engine = activeEngine
+        activeEngine = null
+        activeService = null
 
         updateNoisyReceiver(false)
         abandonAudioFocus()
@@ -907,8 +918,7 @@ class PlaybackService : Service() {
         playerAdapter?.release()
         playerAdapter = null
 
-        activeEngine?.release()
-        activeEngine = null
-        activeService = null
+        // Final save reads the position from the engine, then releases it.
+        if (engine != null) saveCurrentPosition(releaseWhenDone = engine)
     }
 }
