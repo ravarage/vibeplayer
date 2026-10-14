@@ -950,6 +950,9 @@ class PlayerEngine(
                 pendingPauseOnLoad = true
             } else {
                 pendingPauseOnLoad = false
+                // pause is global in mpv and survives loadfile: a session paused by the user (or by
+                // keep-open at the end) would open the next file paused while FILE_LOADED reports playing.
+                MpvNative.setPropertyBoolean(handle, "pause", false)
             }
 
             val normAspect = aspect ?: "fit"
