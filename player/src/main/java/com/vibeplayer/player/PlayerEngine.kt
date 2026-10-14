@@ -101,11 +101,37 @@ class PlayerEngine(
     @Volatile private var pendingPauseOnLoad: Boolean = false
     @Volatile var lastVulkanErrorText: String? = null
     @Volatile var availableGpuApis: List<String> = emptyList()
+    @Volatile private var lastPlaybackRestartMs: Long = 0L
+    private var fallbackCheckJob: Job? = null
 
     companion object {
         private const val DETACH_TIMEOUT_MS = 1500L
+        const val FALLBACK_GRACE_PERIOD_MS = 1000L
         @Volatile var sessionVulkanFailed: Boolean = false
         @Volatile var cachedGpuApis: List<String> = emptyList()
+
+        fun computeFallback(
+            hwdec: String,
+            codec: String?,
+            durationMs: Long,
+            hasFilePath: Boolean = true,
+            playbackRestartMs: Long = 0L,
+            nowMs: Long = 0L,
+            minTimeSinceRestartMs: Long = FALLBACK_GRACE_PERIOD_MS,
+            alreadyFallback: Boolean = false
+        ): Boolean {
+            if (!hasFilePath || durationMs <= 0 || codec.isNullOrEmpty()) {
+                return false
+            }
+            val hwdecCodecs = setOf("h264", "hevc", "vp9")
+            val isHwdecCodec = hwdecCodecs.any { codec.lowercase().contains(it) }
+            if (!isHwdecCodec) return false
+            val isNo = hwdec == "no" || hwdec.isEmpty()
+            if (!isNo) return false
+            if (alreadyFallback) return true
+            if (playbackRestartMs <= 0L) return false
+            return (nowMs - playbackRestartMs) >= minTimeSinceRestartMs
+        }
 
         fun getGpuApiChoices(): List<String> {
             if (cachedGpuApis.isNotEmpty()) return cachedGpuApis
@@ -170,6 +196,9 @@ class PlayerEngine(
                         )
                         current.copy(durationMs = durationMs, fallback = fallback)
                     }
+                    if (_state.value.hwdecCurrent == "no" || _state.value.hwdecCurrent.isEmpty()) {
+                        scheduleFallbackCheck()
+                    }
                 }
                 "time-pos" -> {
                     val posMs = when (value) {
@@ -189,6 +218,11 @@ class PlayerEngine(
                         )
                         current.copy(hwdecCurrent = hwdec, fallback = fallback)
                     }
+                    if (hwdec == "no" || hwdec.isEmpty()) {
+                        scheduleFallbackCheck()
+                    } else {
+                        fallbackCheckJob?.cancel()
+                    }
                 }
                 "video-codec", "video-format" -> {
                     val codec = value as? String
@@ -199,6 +233,9 @@ class PlayerEngine(
                             durationMs = current.durationMs
                         )
                         current.copy(videoCodec = codec, fallback = fallback)
+                    }
+                    if (_state.value.hwdecCurrent == "no" || _state.value.hwdecCurrent.isEmpty()) {
+                        scheduleFallbackCheck()
                     }
                 }
                 "eof-reached" -> {
@@ -257,7 +294,9 @@ class PlayerEngine(
                 MpvEvent.PLAYBACK_RESTART -> {
                     if (ignoreRestartSerial == loadSerial.get()) return
                     restartSeenSerial = loadSerial.get()
-                    Log.i("VP-Perf", "playback-restart at ${System.currentTimeMillis()}")
+                    lastPlaybackRestartMs = System.currentTimeMillis()
+                    Log.i("VP-Perf", "playback-restart at $lastPlaybackRestartMs")
+                    scheduleFallbackCheck()
                 }
                 MpvEvent.END_FILE -> {
                     logStats()
@@ -410,13 +449,40 @@ class PlayerEngine(
         }
     }
 
-    private fun computeFallback(hwdec: String, codec: String?, durationMs: Long): Boolean {
-        if (currentFilePath.isEmpty() || durationMs <= 0 || codec.isNullOrEmpty()) {
-            return false
+    internal fun computeFallback(hwdec: String, codec: String?, durationMs: Long): Boolean {
+        return Companion.computeFallback(
+            hwdec = hwdec,
+            codec = codec,
+            durationMs = durationMs,
+            hasFilePath = currentFilePath.isNotEmpty(),
+            playbackRestartMs = lastPlaybackRestartMs,
+            nowMs = System.currentTimeMillis(),
+            alreadyFallback = _state.value.fallback
+        )
+    }
+
+    private fun scheduleFallbackCheck() {
+        val current = _state.value
+        val codec = current.videoCodec
+        if (codec == null || !setOf("h264", "hevc", "vp9").any { codec.lowercase().contains(it) }) {
+            return
         }
-        val hwdecCodecs = setOf("h264", "hevc", "vp9")
-        val isHwdecCodec = hwdecCodecs.any { codec.lowercase().contains(it) }
-        return isHwdecCodec && (hwdec == "no" || hwdec.isEmpty())
+        fallbackCheckJob?.cancel()
+        fallbackCheckJob = scope.launch {
+            delay(FALLBACK_GRACE_PERIOD_MS + 50L)
+            executeCommand {
+                assertCommandThread()
+                val st = _state.value
+                val fallback = computeFallback(
+                    hwdec = st.hwdecCurrent,
+                    codec = st.videoCodec,
+                    durationMs = st.durationMs
+                )
+                if (st.fallback != fallback) {
+                    _state.update { it.copy(fallback = fallback) }
+                }
+            }
+        }
     }
 
     @Volatile private var statsJob: Job? = null
@@ -669,6 +735,9 @@ class PlayerEngine(
     ) {
         assertCommandThread()
         currentFilePath = path
+        lastPlaybackRestartMs = 0L
+        fallbackCheckJob?.cancel()
+        fallbackCheckJob = null
         _zoomState.value = 0.0
         currentPanX = 0.0
         currentPanY = 0.0
@@ -1274,6 +1343,7 @@ class PlayerEngine(
     }
 
     fun seekTo(positionMs: Long, exact: Boolean = false) {
+        lastPlaybackRestartMs = System.currentTimeMillis()
         if (!exact) {
             val now = android.os.SystemClock.uptimeMillis()
             if (now - lastKeyframeSeekTime < 50) {
@@ -1306,6 +1376,7 @@ class PlayerEngine(
     }
 
     fun seekRelative(deltaSeconds: Double, exact: Boolean = false) {
+        lastPlaybackRestartMs = System.currentTimeMillis()
         scope.launch {
             assertCommandThread()
             if (handle != 0L) {
@@ -1325,6 +1396,8 @@ class PlayerEngine(
         isDucked = false
         preDuckVolume = null
         watchdog.shutdownNow()
+        fallbackCheckJob?.cancel()
+        fallbackCheckJob = null
         statsJob?.cancel()
         statsJob = null
         val task = Runnable {
