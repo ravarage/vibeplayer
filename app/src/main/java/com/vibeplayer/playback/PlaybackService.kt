@@ -94,21 +94,44 @@ class PlaybackService : Service() {
     private var audioFocusRequest: android.media.AudioFocusRequest? = null
     private var resumeOnFocusGain = false
     private var hasAudioFocus = false
+    private var isDucked = false
     private var isNoisyReceiverRegistered = false
 
     private val audioFocusListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
         Log.i("VP", "onAudioFocusChange: focusChange=$focusChange")
         val isPlaying = !playerEngine.state.value.paused
-        when (AudioFocusPolicy.handleFocusChange(focusChange, isPlaying, resumeOnFocusGain)) {
+        when (AudioFocusPolicy.handleFocusChange(focusChange, isPlaying, resumeOnFocusGain, isDucked)) {
             FocusAction.PAUSE_PERMANENT -> {
+                if (isDucked) {
+                    isDucked = false
+                    playerEngine.setDuck(false)
+                }
                 resumeOnFocusGain = false
                 playerEngine.pause()
             }
             FocusAction.PAUSE_TRANSIENT -> {
+                if (isDucked) {
+                    isDucked = false
+                    playerEngine.setDuck(false)
+                }
                 resumeOnFocusGain = true
                 playerEngine.pause()
             }
+            FocusAction.DUCK -> {
+                isDucked = true
+                playerEngine.setDuck(true)
+            }
             FocusAction.RESUME -> {
+                resumeOnFocusGain = false
+                playerEngine.play()
+            }
+            FocusAction.UNDUCK -> {
+                isDucked = false
+                playerEngine.setDuck(false)
+            }
+            FocusAction.UNDUCK_AND_RESUME -> {
+                isDucked = false
+                playerEngine.setDuck(false)
                 resumeOnFocusGain = false
                 playerEngine.play()
             }
@@ -120,6 +143,10 @@ class PlaybackService : Service() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
                 Log.i("VP", "ACTION_AUDIO_BECOMING_NOISY -> pausing playback")
+                if (isDucked) {
+                    isDucked = false
+                    playerEngine.setDuck(false)
+                }
                 resumeOnFocusGain = false
                 playerEngine.pause()
             }
@@ -145,6 +172,10 @@ class PlaybackService : Service() {
 
     private fun abandonAudioFocus() {
         if (!hasAudioFocus) return
+        if (isDucked) {
+            isDucked = false
+            playerEngine.setDuck(false)
+        }
         val req = audioFocusRequest
         if (req != null) {
             audioManager.abandonAudioFocusRequest(req)
@@ -357,6 +388,10 @@ class PlaybackService : Service() {
         if (intent?.action != ACTION_STOP && intent?.action != ACTION_DISMISS) startForegroundCompat()
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> {
+                if (isDucked) {
+                    isDucked = false
+                    playerEngine.setDuck(false)
+                }
                 resumeOnFocusGain = false
                 pausedTimeoutJob?.cancel()
                 pausedTimeoutJob = null
@@ -368,6 +403,10 @@ class PlaybackService : Service() {
             ACTION_NEXT -> skipToNeighbour(forward = true)
             ACTION_DISMISS -> {
                 Log.i("VP", "PlaybackService dismissed via notification deleteIntent -> stopping")
+                if (isDucked) {
+                    isDucked = false
+                    playerEngine.setDuck(false)
+                }
                 resumeOnFocusGain = false
                 pausedTimeoutJob?.cancel()
                 pausedTimeoutJob = null
@@ -377,6 +416,10 @@ class PlaybackService : Service() {
                 stopSelf()
             }
             ACTION_STOP -> {
+                if (isDucked) {
+                    isDucked = false
+                    playerEngine.setDuck(false)
+                }
                 resumeOnFocusGain = false
                 pausedTimeoutJob?.cancel()
                 pausedTimeoutJob = null

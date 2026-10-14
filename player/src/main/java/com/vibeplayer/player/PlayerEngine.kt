@@ -581,6 +581,8 @@ class PlayerEngine(
             _zoomState.value = 0.0
             currentPanX = 0.0
             currentPanY = 0.0
+            isDucked = false
+            preDuckVolume = null
             _state.update { it.copy(videoCodec = null, fallback = false, aspect = aspect) }
             if (handle != 0L) {
                 val options = mutableListOf<String>()
@@ -997,6 +999,36 @@ class PlayerEngine(
         }
     }
 
+    @Volatile private var isDucked = false
+    @Volatile private var preDuckVolume: Double? = null
+
+    /**
+     * Lowers mpv volume to 30% of its current value on transient audio focus loss (CAN_DUCK),
+     * and restores it when focus is regained.
+     */
+    fun setDuck(duck: Boolean) {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            if (duck) {
+                if (isDucked) return@executeCommand
+                val cur = MpvNative.getPropertyDouble(handle, "volume") ?: 100.0
+                preDuckVolume = cur
+                isDucked = true
+                val ducked = cur * 0.3
+                MpvNative.setPropertyDouble(handle, "volume", ducked)
+                Log.i("VP", "PlayerEngine ducking audio: volume $cur -> $ducked")
+            } else {
+                if (!isDucked) return@executeCommand
+                val restore = preDuckVolume ?: 100.0
+                MpvNative.setPropertyDouble(handle, "volume", restore)
+                Log.i("VP", "PlayerEngine unducking audio: volume restored to $restore")
+                preDuckVolume = null
+                isDucked = false
+            }
+        }
+    }
+
     @Volatile
     private var lastKeyframeSeekTime: Long = 0L
 
@@ -1110,6 +1142,8 @@ class PlayerEngine(
         if (released) return
         released = true
         savedVid = null
+        isDucked = false
+        preDuckVolume = null
         watchdog.shutdownNow()
         statsJob?.cancel()
         statsJob = null

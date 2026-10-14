@@ -43,7 +43,39 @@ class AudioFocusPolicyTest {
             isPlaying = true,
             resumeOnGain = false
         )
-        assertEquals(FocusAction.PAUSE_TRANSIENT, action)
+        assertEquals(FocusAction.DUCK, action)
+    }
+
+    @Test
+    fun testTransientCanDuckWhilePaused() {
+        val action = AudioFocusPolicy.handleFocusChange(
+            focusChange = AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
+            isPlaying = false,
+            resumeOnGain = false
+        )
+        assertEquals(FocusAction.NONE, action)
+    }
+
+    @Test
+    fun testGainWhenDucked() {
+        val action = AudioFocusPolicy.handleFocusChange(
+            focusChange = AudioManager.AUDIOFOCUS_GAIN,
+            isPlaying = true,
+            resumeOnGain = false,
+            isDucked = true
+        )
+        assertEquals(FocusAction.UNDUCK, action)
+    }
+
+    @Test
+    fun testGainWhenDuckedAndResumeOnGain() {
+        val action = AudioFocusPolicy.handleFocusChange(
+            focusChange = AudioManager.AUDIOFOCUS_GAIN,
+            isPlaying = false,
+            resumeOnGain = true,
+            isDucked = true
+        )
+        assertEquals(FocusAction.UNDUCK_AND_RESUME, action)
     }
 
     @Test
