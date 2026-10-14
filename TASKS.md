@@ -483,7 +483,7 @@ chain on every open, automatic and silent apart from one short message and a log
 2. OpenGL ES (gpu-api=opengl, gpu-context=android) at the same position. If that fails too -> 3.
 3. Software decoding (hwdec=no) on OpenGL ES at the same position (the B-08 watchdog already does
    this for a stalled hardware decoder; reuse it, do not duplicate it).
-Applies to both modes: Quality uses gpu-next on Vulkan; Efficient on Vulkan uses vo=gpu with
+Applies everywhere, not only in the player screen: every open path (player, mini player, auto-play next, previous/next, notification/MediaSession, re-attach after background audio, reconfigure on mode switch, the benchmark runner's default), both modes, and all documentation (ARCHITECTURE.md, README.md, docs/HARDWARE.md, docs/ROADMAP.md) must say Vulkan first with fallback to OpenGL ES, then software. Both modes: Quality uses gpu-next on Vulkan; Efficient on Vulkan uses vo=gpu with
 mediacodec-copy (zero-copy MediaCodec output is GLES-only), so Efficient may cost more CPU/battery on
 Vulkan: the P6 benchmark measures it, and the settings keep a manual choice (Auto = this chain,
 Vulkan, OpenGL ES). The debug overlay shows the renderer actually in use and why (e.g. "GLES (Vulkan
