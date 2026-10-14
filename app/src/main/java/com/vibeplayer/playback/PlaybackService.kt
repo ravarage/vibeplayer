@@ -54,6 +54,13 @@ class PlaybackService : Service() {
         const val CHANNEL_ID = "vibeplayer_playback"
         const val NOTIFICATION_ID = 1001
 
+        const val ACTION_PLAY_PAUSE = "com.vibeplayer.playback.ACTION_PLAY_PAUSE"
+        const val ACTION_REWIND_10 = "com.vibeplayer.playback.ACTION_REWIND_10"
+        const val ACTION_FORWARD_10 = "com.vibeplayer.playback.ACTION_FORWARD_10"
+        const val ACTION_PREVIOUS = "com.vibeplayer.playback.ACTION_PREVIOUS"
+        const val ACTION_NEXT = "com.vibeplayer.playback.ACTION_NEXT"
+        const val ACTION_STOP = "com.vibeplayer.playback.ACTION_STOP"
+
         @Volatile
         private var activeService: PlaybackService? = null
         val currentInstance: PlaybackService? get() = activeService
@@ -74,6 +81,9 @@ class PlaybackService : Service() {
 
     private val binder = LocalBinder()
     val playerEngine: PlayerEngine get() = getOrCreateEngine()
+
+    private var playerAdapter: VibePlayerAdapter? = null
+    private var mediaSession: androidx.media3.session.MediaSession? = null
 
     private lateinit var db: AppDatabase
     private val dao by lazy { db.fileSettingsDao() }
@@ -114,6 +124,24 @@ class PlaybackService : Service() {
         // Ensure engine is instantiated
         getOrCreateEngine()
 
+        // Initialize Media3 SimpleBasePlayer adapter and MediaSession
+        val adapter = VibePlayerAdapter(mainLooper, playerEngine, this)
+        playerAdapter = adapter
+
+        val contentIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, PlayerActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        mediaSession = androidx.media3.session.MediaSession.Builder(this, adapter)
+            .setId("vibeplayer_session")
+            .setSessionActivity(contentIntent)
+            .build()
+
         // Initial foreground notification (type mediaPlayback)
         val initialNotif = buildNotification(currentVideoTitle.value, !playerEngine.state.value.paused)
         try {
@@ -150,6 +178,7 @@ class PlaybackService : Service() {
         serviceScope.launch {
             var wasPaused = false
             playerEngine.state.collect { state ->
+                adapter.notifyStateChanged()
                 if (state.paused && !wasPaused) {
                     saveCurrentPosition()
                 }
@@ -158,6 +187,12 @@ class PlaybackService : Service() {
                     checkShouldStop()
                 }
                 wasPaused = state.paused
+            }
+        }
+
+        serviceScope.launch {
+            playerEngine.position.collect {
+                adapter.notifyStateChanged()
             }
         }
 
@@ -175,6 +210,19 @@ class PlaybackService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i("VP", "PlaybackService onStartCommand (action=${intent?.action})")
+        when (intent?.action) {
+            ACTION_PLAY_PAUSE -> playerEngine.togglePause()
+            ACTION_REWIND_10 -> playerEngine.seekRelative(-10.0, exact = true)
+            ACTION_FORWARD_10 -> playerEngine.seekRelative(10.0, exact = true)
+            ACTION_PREVIOUS -> skipToNeighbour(forward = false)
+            ACTION_NEXT -> skipToNeighbour(forward = true)
+            ACTION_STOP -> {
+                playerEngine.pause()
+                saveCurrentPosition()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
         return START_NOT_STICKY
     }
 
@@ -665,7 +713,33 @@ class PlaybackService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val prevIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_PREVIOUS),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val rewIntent = PendingIntent.getService(
+            this, 2,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_REWIND_10),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val playPauseIntent = PendingIntent.getService(
+            this, 3,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_PLAY_PAUSE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val fwdIntent = PendingIntent.getService(
+            this, 4,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_FORWARD_10),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val nextIntent = PendingIntent.getService(
+            this, 5,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_NEXT),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title.ifEmpty { "Vibe Player" })
             .setContentText(if (isPlaying) "Playing" else "Paused")
             .setSmallIcon(R.drawable.ic_pip_play)
@@ -673,7 +747,24 @@ class PlaybackService : Service() {
             .setOngoing(isPlaying)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
+            .addAction(R.drawable.ic_skip_previous, "Previous", prevIntent)
+            .addAction(R.drawable.ic_pip_rewind, "Rewind 10s", rewIntent)
+            .addAction(
+                if (isPlaying) R.drawable.ic_pip_pause else R.drawable.ic_pip_play,
+                if (isPlaying) "Pause" else "Play",
+                playPauseIntent
+            )
+            .addAction(R.drawable.ic_pip_forward, "Forward 10s", fwdIntent)
+            .addAction(R.drawable.ic_skip_next, "Next", nextIntent)
+
+        val session = mediaSession
+        if (session != null) {
+            val mediaStyle = androidx.media3.session.MediaStyleNotificationHelper.MediaStyle(session)
+                .setShowActionsInCompactView(1, 2, 3) // Rewind 10s, Play/Pause, Forward 10s
+            builder.setStyle(mediaStyle)
+        }
+
+        return builder.build()
     }
 
     fun updateNotification() {
@@ -693,6 +784,11 @@ class PlaybackService : Service() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         nm?.cancel(NOTIFICATION_ID)
         stopForeground(STOP_FOREGROUND_REMOVE)
+
+        mediaSession?.release()
+        mediaSession = null
+        playerAdapter?.release()
+        playerAdapter = null
 
         activeEngine?.release()
         activeEngine = null
