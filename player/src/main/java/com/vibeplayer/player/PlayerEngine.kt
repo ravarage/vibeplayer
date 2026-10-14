@@ -1100,7 +1100,13 @@ class PlayerEngine(
                 MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
             }
 
-            if (curPath.isNotEmpty() && reloadCurrentFile) {
+            // fdclose://N: mpv closed N with the old handle; reopening it would read a dead or reused
+            // fd (another file of this process). The open path has to resolve the URI again.
+            val reloadable = !curPath.startsWith("fdclose://")
+            if (curPath.isNotEmpty() && reloadCurrentFile && !reloadable) {
+                Log.w("VP", "reconfigure: $curPath cannot be reopened on the new handle; reopen the file to continue")
+            }
+            if (curPath.isNotEmpty() && reloadCurrentFile && reloadable) {
                 // A new load for the B-08 watchdog: the previous serial already saw its playback-restart.
                 lastLoad = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay)
                 loadSerial.incrementAndGet()
