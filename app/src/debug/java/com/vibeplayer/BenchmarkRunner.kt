@@ -29,7 +29,9 @@ import java.util.Locale
 
 object BenchmarkRunner {
 
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    // Default, not Main: the loop calls blocking mpv getters every second; on the main thread a busy mpv
+    // core (e.g. audio focus change on an incoming call) caused an ANR (2026-10-14). UI calls switch to Main.
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var activeJob: Job? = null
 
     fun runBenchmark(
@@ -287,7 +289,7 @@ object BenchmarkRunner {
 
             // 12. Cleanup
             app.unregisterActivityLifecycleCallbacks(lifecycleListener)
-            activity?.finish()
+            kotlinx.coroutines.withContext(Dispatchers.Main) { activity?.finish() }
         }
     }
 
