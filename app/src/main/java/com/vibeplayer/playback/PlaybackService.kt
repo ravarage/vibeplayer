@@ -39,8 +39,12 @@ import com.vibeplayer.player.PlayerState
 import com.vibeplayer.player.SubtitleMode
 import com.vibeplayer.player.TrackSelector
 import com.vibeplayer.ui.player.FolderPlaylist
+import com.vibeplayer.player.FormatProfileTable
+import com.vibeplayer.player.RendererSetting
+import com.vibeplayer.player.VideoFormat
 import com.vibeplayer.ui.player.PlayerActivity
 import com.vibeplayer.ui.player.PlayerViewModel.Neighbours
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -268,6 +272,16 @@ class PlaybackService : Service() {
 
         // Ensure engine is instantiated
         getOrCreateEngine()
+
+        playerEngine.onVulkanFailureListener = { format, reason ->
+            val isGlobal = reason.contains("suitable GPU context", ignoreCase = true) ||
+                reason.contains("pl_vulkan", ignoreCase = true) ||
+                reason.contains("Found no suitable device", ignoreCase = true)
+            VulkanDriverCache.recordVulkanFailure(applicationContext, format, isGlobal)
+        }
+        serviceScope.launch(Dispatchers.IO) {
+            appSettingsRepository.migrateRendererDefaultIfNeeded()
+        }
 
         // Shader presets (P7): the service owns the engine, so it owns the directory and the setting.
         playerEngine.setShaderDirectory(File(filesDir, "shaders").absolutePath)
@@ -741,7 +755,7 @@ class PlaybackService : Service() {
         }
         loadJob = serviceScope.launch {
             val resolvedFolderKey = folderKey ?: (File(path).parent ?: "")
-            // P7-02: key (File.exists/length), per-file row, folder row and app settings in parallel,
+            // P7-02: key (File.exists/length), per-file row, folder row, app settings, and format detection in parallel,
             // none of it on the main thread; loadfile follows with everything at once.
             val keyDeferred = async(Dispatchers.IO) { computeKey(identityKey ?: path, sizeBytes) }
             val fileDeferred = async(Dispatchers.IO) {
@@ -752,14 +766,15 @@ class PlaybackService : Service() {
                 if (resolvedFolderKey.isNotEmpty()) folderDao.getByPath(resolvedFolderKey) else null
             }
             val settingsDeferred = async(Dispatchers.IO) { appSettingsRepository.appSettingsFlow.first() }
+            val formatDeferred = async(Dispatchers.IO) {
+                VideoFormatDetector.detect(applicationContext, path, identityKey)
+            }
+
             val key = keyDeferred.await()
             val fileSettings = fileDeferred.await()
             val folderSettings = folderDeferred.await()
             val appSettings = settingsDeferred.await()
-            if (generation != loadGeneration || currentVideoPath != path) return@launch
-            // The renderer decision below needs the gpu-api list, which the engine reads while
-            // initialising; wait for that instead of creating a second mpv handle on this thread.
-            playerEngine.awaitInitialised()
+            val detectedFormat = formatDeferred.await()
             if (generation != loadGeneration || currentVideoPath != path) return@launch
 
             val startPositionMs = if (startPositionOverride != null) {
@@ -842,18 +857,51 @@ class PlaybackService : Service() {
             } else {
                 PlaybackMode.EFFICIENT
             }
-            val targetRenderer = if (appSettings.renderer == RendererOption.VULKAN) Renderer.VULKAN else Renderer.GLES
-            val resolvedRenderer = RendererResolver.resolveRenderer(
-                requestedRenderer = targetRenderer,
+
+            val rendererSetting = when (appSettings.renderer) {
+                RendererOption.AUTO -> RendererSetting.AUTO
+                RendererOption.VULKAN -> RendererSetting.VULKAN
+                RendererOption.OPENGL -> RendererSetting.GLES
+            }
+
+            val libMpvChoices = playerEngine.availableGpuApis.ifEmpty { PlayerEngine.getGpuApiChoices() }
+            val libMpvHasVulkan = libMpvChoices.any { it.equals("vulkan", ignoreCase = true) }
+            val isVulkanAvailable = VulkanDriverCache.isVulkanAvailable(
+                context = applicationContext,
+                format = detectedFormat,
+                libMpvHasVulkan = libMpvHasVulkan
+            ) && !PlayerEngine.sessionVulkanFailed
+
+            val resolvedConfig = FormatProfileTable.resolve(
+                format = detectedFormat,
                 mode = targetMode,
-                gpuApiChoices = playerEngine.availableGpuApis.ifEmpty { PlayerEngine.getGpuApiChoices() },
-                sessionVulkanFailed = PlayerEngine.sessionVulkanFailed
+                rendererSetting = rendererSetting,
+                isVulkanAvailableForFormat = isVulkanAvailable
             )
-            val targetConfig = playbackConfig ?: playerEngine.playbackConfig.copy(
-                mode = targetMode,
-                renderer = resolvedRenderer
-            )
-            if (playerEngine.playbackConfig.mode != targetConfig.mode || playerEngine.playbackConfig.renderer != targetConfig.renderer) {
+            playerEngine.setCurrentFormatProfile(resolvedConfig)
+
+            Log.i("VP", "Picked configuration for ${detectedFormat.label}: ${resolvedConfig.chosenRowDescription} (reason: ${resolvedConfig.reason})")
+
+            val targetConfig = if (playbackConfig?.voOverride != null) {
+                playbackConfig
+            } else {
+                (playbackConfig ?: playerEngine.playbackConfig).copy(
+                    mode = targetMode,
+                    renderer = resolvedConfig.renderer,
+                    voOverride = resolvedConfig.vo,
+                    hwdecOverride = playbackConfig?.hwdecOverride ?: resolvedConfig.decodeMode.hwdec,
+                    formatProfile = resolvedConfig
+                )
+            }
+            playerEngine.provideInitialConfig(targetConfig)
+            playerEngine.awaitInitialised()
+            if (generation != loadGeneration || currentVideoPath != path) return@launch
+
+            if (playerEngine.playbackConfig.mode != targetConfig.mode ||
+                playerEngine.playbackConfig.renderer != targetConfig.renderer ||
+                playerEngine.playbackConfig.vo != targetConfig.vo ||
+                playerEngine.playbackConfig.hwdecOverride != targetConfig.hwdecOverride
+            ) {
                 playerEngine.reconfigure(targetConfig)
             }
 

@@ -31,8 +31,10 @@ Features marked **beta** are merged but not yet verified on the device.
 - Background playback with a media notification (**beta**)
 - Folder browser with thumbnails (software thumbnails for AV1 and 10-bit video) and a continue-watching row
 - Quality mode with an OpenGL ES renderer or an experimental Vulkan renderer, with automatic fallback to OpenGL ES (**beta**)
+- Best configuration per format chosen before opening: Auto renderer mode detects format (MediaExtractor, <50 ms) and selects measured best decoder and renderer (e.g. copy-back on Vulkan for H.264, zero-copy on GLES for HEVC/VP9, Vulkan for AV1) with safety fallback chain (Vulkan -> GLES -> software) (**beta**)
 - Anime4K and Snapdragon GSR shader presets (**beta**)
 - Efficient mode for battery
+
 
 ## Requirements and compatibility
 

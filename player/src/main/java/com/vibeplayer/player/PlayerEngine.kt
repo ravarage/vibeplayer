@@ -202,6 +202,13 @@ class PlayerEngine(
     @Volatile private var pendingPauseOnLoad: Boolean = false
     @Volatile var lastVulkanErrorText: String? = null
     @Volatile var availableGpuApis: List<String> = emptyList()
+    @Volatile var currentFormat: VideoFormat = VideoFormat.OTHER
+    @Volatile var currentResolvedConfig: ResolvedConfiguration? = null
+    @Volatile var onVulkanFailureListener: ((format: VideoFormat?, errorReason: String) -> Unit)? = null
+    /** Debug builds: simulate one forced Vulkan failure. */
+    @Volatile var debugForceVulkanFailureOnce = false
+    /** Debug builds: simulate one forced OpenGL ES failure. */
+    @Volatile var debugForceGlesFailureOnce = false
 
     companion object {
         private const val DETACH_TIMEOUT_MS = 1500L
@@ -380,6 +387,7 @@ class PlayerEngine(
                     }
                     updateTracks(allowPendingSelection = true)
                     checkVulkanVoInitialization()
+                    checkGlesInitialization()
                 }
                 MpvEvent.TRACKS_CHANGED -> {
                     Log.i("VP", "mpv event tracks-changed")
@@ -559,7 +567,7 @@ class PlayerEngine(
                 val gpuContext = MpvNative.getPropertyString(handle, "gpu-context")
                     ?: (playbackConfig.getOptionTable()["gpu-context"] ?: "none")
                 val modeStr = "${playbackConfig.mode} (${if (playbackConfig.mode == PlaybackMode.EFFICIENT) playbackConfig.efficientPath else playbackConfig.renderer})"
-                val rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES"
+                val rendererInUse = playbackConfig.renderer.name
                 _stats.value = PlayerStats(
                     vo = vo,
                     hwdecCurrent = hwdec,
@@ -572,7 +580,10 @@ class PlayerEngine(
                     videoH = _state.value.videoHeight,
                     fps = fps,
                     frameDropCount = drops,
-                    decoderFrameDropCount = decDrops
+                    decoderFrameDropCount = decDrops,
+                    formatProfileRow = currentResolvedConfig?.chosenRowDescription ?: _state.value.formatProfileRow,
+                    formatProfileReason = currentResolvedConfig?.reason ?: _state.value.formatProfileReason,
+                    detectedFormat = currentFormat
                 )
                 Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec mode=$modeStr gpuApi=$gpuApi gpuContext=$gpuContext drops=$drops decDrops=$decDrops fps=$fps")
             }
@@ -634,10 +645,17 @@ class PlayerEngine(
             availableGpuApis = parsedChoices
             cachedGpuApis = parsedChoices
         }
+        if (playbackConfig.formatProfile != null) {
+            currentFormat = playbackConfig.formatProfile?.format
+            currentResolvedConfig = playbackConfig.formatProfile
+        }
         _state.update {
             it.copy(
-                rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES",
-                lastVulkanError = lastVulkanErrorText
+                rendererInUse = playbackConfig.renderer.name,
+                lastVulkanError = lastVulkanErrorText,
+                formatProfileRow = currentResolvedConfig?.chosenRowDescription ?: it.formatProfileRow,
+                formatProfileReason = currentResolvedConfig?.reason ?: it.formatProfileReason,
+                detectedFormat = currentFormat
             )
         }
 
@@ -688,6 +706,7 @@ class PlayerEngine(
                 PerfLog.mark("surface-attached")
                 savedVid = null
                 checkVulkanVoInitialization()
+                checkGlesInitialization()
             }
         }
     }
@@ -1010,11 +1029,16 @@ class PlayerEngine(
     private var vulkanCheckJob: Job? = null
 
     private fun checkVulkanVoInitialization() {
-        if (playbackConfig.mode != PlaybackMode.QUALITY || playbackConfig.renderer != Renderer.VULKAN) {
+        if (playbackConfig.renderer != Renderer.VULKAN) {
             return
         }
         vulkanCheckJob?.cancel()
         vulkanCheckJob = scope.launch {
+            if (BuildConfig.DEBUG && debugForceVulkanFailureOnce) {
+                debugForceVulkanFailureOnce = false
+                handleVulkanFailure("Debug forced Vulkan failure")
+                return@launch
+            }
             val startTime = System.currentTimeMillis()
             var voConfigured = false
             while (isActive && System.currentTimeMillis() - startTime < 3200L) {
@@ -1037,7 +1061,23 @@ class PlayerEngine(
         }
     }
 
-    private fun handleVulkanFailure(reason: String) {
+    private var glesCheckJob: Job? = null
+
+    private fun checkGlesInitialization() {
+        if (playbackConfig.renderer != Renderer.GLES) {
+            return
+        }
+        glesCheckJob?.cancel()
+        glesCheckJob = scope.launch {
+            if (BuildConfig.DEBUG && debugForceGlesFailureOnce) {
+                debugForceGlesFailureOnce = false
+                handleGlesFailure("Debug forced OpenGL ES failure")
+                return@launch
+            }
+        }
+    }
+
+    fun handleVulkanFailure(reason: String) {
         sessionVulkanFailed = true
         val errorLines = dumpMpvErrorLines()
         Log.e("VP", "VULKAN-FAIL: $reason")
@@ -1049,7 +1089,38 @@ class PlayerEngine(
         _state.update { it.copy(lastVulkanError = errSummary) }
         _onScreenMessage.tryEmit("Vulkan failed, using OpenGL ES")
         Log.w("VP", "Vulkan failed, falling back to OpenGL ES")
+        try {
+            onVulkanFailureListener?.invoke(currentFormat, reason)
+        } catch (t: Throwable) {
+            Log.w("VP", "Error notifying onVulkanFailureListener: ${t.message}")
+        }
         reconfigure(playbackConfig.copy(renderer = Renderer.GLES))
+    }
+
+    fun handleGlesFailure(reason: String) {
+        Log.e("VP", "GLES-FAIL: $reason")
+        _onScreenMessage.tryEmit("OpenGL ES failed, using software decoding")
+        Log.w("VP", "OpenGL ES failed, falling back to software decoding")
+        reconfigure(playbackConfig.copy(hwdecOverride = "no"))
+    }
+
+    fun setCurrentFormatProfile(config: ResolvedConfiguration) {
+        currentFormat = config.format
+        currentResolvedConfig = config
+        _state.update {
+            it.copy(
+                formatProfileRow = config.chosenRowDescription,
+                formatProfileReason = config.reason,
+                detectedFormat = config.format
+            )
+        }
+        _stats.update {
+            it.copy(
+                formatProfileRow = config.chosenRowDescription,
+                formatProfileReason = config.reason,
+                detectedFormat = config.format
+            )
+        }
     }
 
     private fun dumpMpvErrorLines(): List<String> {
@@ -1069,18 +1140,25 @@ class PlayerEngine(
         return lines.takeLast(10)
     }
 
-    fun togglePlaybackMode() {
+    fun togglePlaybackMode(userRendererSetting: RendererSetting = RendererSetting.AUTO) {
         executeCommand {
             assertCommandThread()
             val current = playbackConfig
             val newMode = if (current.mode == PlaybackMode.QUALITY) PlaybackMode.EFFICIENT else PlaybackMode.QUALITY
-            val resolvedRenderer = RendererResolver.resolveRenderer(
-                requestedRenderer = current.renderer,
+            val isVulkanAvailable = availableGpuApis.any { it.equals("vulkan", ignoreCase = true) } && !sessionVulkanFailed
+            val resolved = FormatProfileTable.resolve(
+                format = currentFormat,
                 mode = newMode,
-                gpuApiChoices = availableGpuApis.ifEmpty { listOf("opengl", "vulkan") },
-                sessionVulkanFailed = sessionVulkanFailed
+                rendererSetting = userRendererSetting,
+                isVulkanAvailableForFormat = isVulkanAvailable
             )
-            val newConfig = current.copy(mode = newMode, renderer = resolvedRenderer)
+            setCurrentFormatProfile(resolved)
+            val newConfig = current.copy(
+                mode = newMode,
+                renderer = resolved.renderer,
+                voOverride = resolved.vo,
+                hwdecOverride = resolved.decodeMode.hwdec
+            )
             reconfigure(newConfig)
         }
     }

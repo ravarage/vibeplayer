@@ -11,11 +11,17 @@ the project owner is porting a Vulkan 1.3 driver to it).
 - Hardware decoding through MediaCodec for H.264, HEVC (including 10-bit HEVC 4K in the test clips) and VP9.
 - AV1 is decoded in software with dav1d (the 778G has no AV1 hardware decoder). 10-bit H.264 (Hi10P) also
   falls back to software.
-- OpenGL ES 3.2 on the Adreno 642L is the default and reliable renderer.
+- Per-format configuration chosen before opening (P6-07):
+  - H.264 8-bit: MediaCodec copy-back (`mediacodec-copy`) with Vulkan (else GLES) to prevent zero-copy start stalls (B-08).
+  - HEVC 8/10-bit and VP9: MediaCodec zero-copy on OpenGL ES (0/20 stalls; lowest power consumption).
+  - AV1 (any): dav1d software decode on all cores with Vulkan `vo=gpu` (lowest dropped frames measured: 359 vs 517/565).
+  - 10-bit H.264 (Hi10P): software decode with Vulkan (else GLES).
+- Vulkan driver cache: availability is probed and remembered per driver build (keyed by `Build.FINGERPRINT` + `vulkan.adreno.so` mtime; never the 1.1 system feature flag). Format failures on this driver build are remembered so subsequent opens skip Vulkan.
+- Safety net fallback chain: Vulkan -> OpenGL ES -> software decoding, preserving playback position with on-screen message and `VULKAN-FAIL` / `GLES-FAIL` logging.
+- OpenGL ES 3.2 on the Adreno 642L is the reliable fallback and default renderer for HEVC/VP9.
 - Vulkan: the stock driver reports Vulkan 1.1, which is below libplacebo's 1.2 minimum, so the Vulkan
   renderer cannot start and the app falls back to OpenGL ES. The owner's experimental driver reports
-  Vulkan 1.3.295 (`vulkan.adreno.so`); with it the Vulkan renderer plays H.264 and AV1 in short tests, but
-  it is experimental and OpenGL ES stays the default.
+  Vulkan 1.3.295 (`vulkan.adreno.so`); with it the Vulkan renderer plays H.264 and AV1 in short tests.
 
 Software AV1 at 4K is the heaviest case. Measured on this phone in one 20-second test with the debug
 overlay's counters (`av1_4k.mp4`, dav1d, all cores, see `ARCHITECTURE.md`, section Vulkan status update):

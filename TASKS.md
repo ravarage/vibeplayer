@@ -483,6 +483,38 @@ log shows the Vulkan context and device; or the exact failure is recorded. If it
 build becomes the default libraries in `player/src/main/jniLibs` (default variant = with Vulkan), the
 P6 tasks compare Vulkan vs GLES as SPEC.md originally says, and the renderer setting offers both.
 
+**P6-07 Best configuration per format, chosen before opening** — **User decision (2026-10-14).** The app
+targets one phone, one OS, one GPU, so it does not guess at runtime: before `loadfile` it identifies
+the video format and picks the configuration measured as best for that format on this phone, from a
+table in the player module. Identify the format cheaply before the engine loads the file (Android
+`MediaExtractor` track MIME + profile/bit depth, or a header read; must cost well under 50 ms and run
+off the main thread, in parallel with engine init: see P7-02). Initial table from the measurements we
+have (docs/BENCHMARK.md, BLOCKERS.md B-08), to be refined by the P6 benchmark:
+
+| Format | Decode | Renderer | Why (measured) |
+|---|---|---|---|
+| H.264 8-bit | MediaCodec copy-back (`mediacodec-copy`) | Vulkan if available, else OpenGL ES | zero-copy stalled 12/40 and 5/60 opens; copy-back 0/80 on GLES, 5/80 on Vulkan |
+| H.264 10-bit (Hi10P) | software | Vulkan, else OpenGL ES | no hardware decoder on the 778G |
+| HEVC 8/10-bit | MediaCodec zero-copy (efficient) | OpenGL ES | 0/20 stalls zero-copy; lowest power path |
+| VP9 | MediaCodec zero-copy (efficient) | OpenGL ES | 0/20 stalls |
+| AV1 (any) | dav1d software, all cores | Vulkan `vo=gpu`, else OpenGL ES | fewest drops in the 4K test (359 vs 517/565) |
+| other | software | OpenGL ES | safe default |
+
+Quality mode overrides the renderer column with gpu-next on Vulkan (else GLES). "Vulkan if available"
+= libmpv has `vulkan` in `gpu-api` and the device's Vulkan driver started once on this driver build
+(cached per Build.FINGERPRINT + vulkan.adreno.so mtime; never the 1.1 feature flag).
+The fallback chain stays only as a safety net for when the driver changes or a file misbehaves:
+Vulkan -> OpenGL ES -> software, at the same position, one short message, VULKAN-FAIL log lines, and a
+failure for a format on this driver build is remembered so the table entry is skipped next time.
+Applies everywhere: every open path (player, mini player, auto-play next, previous/next,
+notification/MediaSession, re-attach after background audio, reconfigure on mode switch, the benchmark
+runner default) and the docs (ARCHITECTURE.md, README.md, docs/HARDWARE.md, docs/ROADMAP.md).
+Settings: Renderer = Auto (the table; default) / Vulkan / OpenGL ES; old default users move to Auto.
+The debug overlay shows the chosen row and the reason. *Accept*: on the phone each test clip opens
+with its table configuration (overlay + log), first frame time is not worse than before (VP-Perf),
+forced Vulkan failure lands on GLES, forced GLES failure on software; unit tests for the table lookup,
+format detection parsing and the chain.
+
 **P6-01 Quality mode** — Quality option table; mode setting and in-player toggle using
 `reconfigure()`. *Files*: PlaybackMode.kt, PlayerEngine.kt, ui/settings/*. *Accept*: overlay shows
 `gpu-next` and `mediacodec-copy`; switching mid-file keeps position and tracks.

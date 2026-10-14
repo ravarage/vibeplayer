@@ -61,8 +61,13 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
+import com.vibeplayer.playback.VideoFormatDetector
+import com.vibeplayer.playback.VulkanDriverCache
 import com.vibeplayer.player.EfficientPath
+import com.vibeplayer.player.FormatProfileTable
 import com.vibeplayer.player.PlaybackConfig
+import com.vibeplayer.player.RendererSetting
+import com.vibeplayer.player.VideoFormat
 import com.vibeplayer.player.PlaybackMode
 
 import android.content.BroadcastReceiver
@@ -164,13 +169,17 @@ class PlayerActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    private fun resolveConfig(appSettings: AppSettings): PlaybackConfig =
-        resolveConfig(appSettings.playbackMode, appSettings.renderer)
+    private fun resolveConfig(
+        appSettings: AppSettings,
+        format: VideoFormat? = null
+    ): PlaybackConfig =
+        resolveConfig(appSettings.playbackMode, appSettings.renderer, format)
 
     /** Null mode/renderer (no settings yet): keep what the service-owned engine runs. */
     private fun resolveConfig(
         modeSetting: com.vibeplayer.data.prefs.PlaybackModeOption? = null,
-        rendererSetting: com.vibeplayer.data.prefs.RendererOption? = null
+        rendererSetting: com.vibeplayer.data.prefs.RendererOption? = null,
+        format: VideoFormat? = null
     ): PlaybackConfig {
         val modeArg = intent.getStringExtra("mode") ?: intent.getStringExtra("playback_mode")
         val mode = when (modeArg?.lowercase()) {
@@ -186,22 +195,39 @@ class PlayerActivity : ComponentActivity() {
         }
 
         val rendererArg = intent.getStringExtra("renderer")
-        val requestedRenderer = when (rendererArg?.lowercase()) {
-            "vulkan" -> com.vibeplayer.player.Renderer.VULKAN
-            "gles", "opengl" -> com.vibeplayer.player.Renderer.GLES
-            else -> when {
-                rendererSetting == null -> playerEngine.playbackConfig.renderer
-                rendererSetting == com.vibeplayer.data.prefs.RendererOption.VULKAN -> com.vibeplayer.player.Renderer.VULKAN
-                else -> com.vibeplayer.player.Renderer.GLES
+        val targetRendererSetting = when (rendererArg?.lowercase()) {
+            "vulkan" -> RendererSetting.VULKAN
+            "gles", "opengl" -> RendererSetting.GLES
+            "auto" -> RendererSetting.AUTO
+            else -> when (rendererSetting) {
+                com.vibeplayer.data.prefs.RendererOption.VULKAN -> RendererSetting.VULKAN
+                com.vibeplayer.data.prefs.RendererOption.OPENGL -> RendererSetting.GLES
+                com.vibeplayer.data.prefs.RendererOption.AUTO -> RendererSetting.AUTO
+                null -> RendererSetting.AUTO
             }
         }
 
-        val resolvedRenderer = com.vibeplayer.player.RendererResolver.resolveRenderer(
-            requestedRenderer = requestedRenderer,
-            mode = mode,
-            gpuApiChoices = playerEngine.availableGpuApis.ifEmpty { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() },
-            sessionVulkanFailed = com.vibeplayer.player.PlayerEngine.sessionVulkanFailed
-        )
+        val libMpvChoices = playerEngine.availableGpuApis.ifEmpty {
+            com.vibeplayer.player.PlayerEngine.cachedGpuApis.ifEmpty {
+                com.vibeplayer.player.PlayerEngine.getGpuApiChoices()
+            }
+        }
+        val libMpvHasVulkan = libMpvChoices.any { it.equals("vulkan", ignoreCase = true) }
+        val effectiveFormat = format ?: VideoFormat.OTHER
+        val isVulkanAvailable = VulkanDriverCache.isVulkanAvailable(
+            context = applicationContext,
+            format = effectiveFormat,
+            libMpvHasVulkan = libMpvHasVulkan
+        ) && !com.vibeplayer.player.PlayerEngine.sessionVulkanFailed
+
+        val resolvedProfile = if (format != null) {
+            FormatProfileTable.resolve(
+                format = format,
+                mode = mode,
+                rendererSetting = targetRendererSetting,
+                isVulkanAvailableForFormat = isVulkanAvailable
+            )
+        } else null
 
         val pathArg = intent.getStringExtra("efficient_path") ?: intent.getStringExtra("path_mode")
         val path = when (pathArg?.lowercase()) {
@@ -225,6 +251,7 @@ class PlayerActivity : ComponentActivity() {
             "software", "sw", "no" -> "no"
             "auto" -> null
             else -> intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
+                ?: resolvedProfile?.decodeMode?.hwdec
         }
 
         if (com.vibeplayer.BuildConfig.DEBUG) {
@@ -239,18 +266,28 @@ class PlayerActivity : ComponentActivity() {
                     debugMsgLevel = debugMsgLevel,
                     shaderCacheDir = shaderCache,
                     fastProfile = fastProfile,
-                    hwdecOverride = hwdecOverride
+                    hwdecOverride = hwdecOverride,
+                    formatProfile = resolvedProfile
                 )
             }
         }
+
+        val effectiveRenderer = resolvedProfile?.renderer ?: when (targetRendererSetting) {
+            RendererSetting.VULKAN -> if (isVulkanAvailable) com.vibeplayer.player.Renderer.VULKAN else com.vibeplayer.player.Renderer.GLES
+            RendererSetting.GLES -> com.vibeplayer.player.Renderer.GLES
+            RendererSetting.AUTO -> if (mode == PlaybackMode.QUALITY && isVulkanAvailable) com.vibeplayer.player.Renderer.VULKAN else com.vibeplayer.player.Renderer.GLES
+        }
+
         return PlaybackConfig(
             mode = mode,
             efficientPath = path,
-            renderer = resolvedRenderer,
+            renderer = effectiveRenderer,
+            voOverride = resolvedProfile?.vo,
             debugMsgLevel = debugMsgLevel,
             shaderCacheDir = shaderCache,
             fastProfile = fastProfile,
-            hwdecOverride = hwdecOverride
+            hwdecOverride = hwdecOverride,
+            formatProfile = resolvedProfile
         )
     }
 
@@ -312,6 +349,7 @@ class PlayerActivity : ComponentActivity() {
             // The notification-permission dialog and its DataStore read are not needed for the first frame.
             if (!PlaybackService.benchmarkRun) checkNotificationPermission()
         }
+        resolveVideoPath(deferContent = true)
         startStartupWork(engine)
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -367,7 +405,6 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
-        resolveVideoPath(deferContent = true)
         checkPermissionAndProceed()
 
         if (intent.getStringExtra("test") == "p1_02") {
@@ -539,11 +576,16 @@ class PlayerActivity : ComponentActivity() {
             val rendererHint = startupHints.getString("renderer", null)?.let {
                 runCatching { com.vibeplayer.data.prefs.RendererOption.valueOf(it) }.getOrNull()
             }
-            val hinted = resolveConfig(modeHint, rendererHint)
+            val videoPath = currentVideoPath
+            val targetKey = currentIdentityKey
+            val detectedFormat = if (videoPath.isNotEmpty()) {
+                VideoFormatDetector.detect(applicationContext, videoPath, targetKey)
+            } else null
+            val hinted = resolveConfig(modeHint, rendererHint, detectedFormat)
             if (!engine.provideInitialConfig(hinted)) {
                 // The handle exists already (service-owned engine of a running session, or init did
                 // not wait): keep what the engine runs, as before, never the remembered setting.
-                val current = resolveConfig()
+                val current = resolveConfig(null, null, detectedFormat)
                 if (current != engine.playbackConfig) engine.reconfigure(current)
             }
             val settings = viewModel.appSettingsRepository.appSettingsFlow.first()
@@ -553,12 +595,12 @@ class PlayerActivity : ComponentActivity() {
                     .putString("renderer", settings.renderer.name)
                     .apply()
             }
-            computeStartup(settings)
+            computeStartup(settings, detectedFormat)
         }
         contentDeferred = lifecycleScope.async(Dispatchers.IO) { resolveContentOnIo() }
     }
 
-    private fun computeStartup(settings: AppSettings): Startup {
+    private fun computeStartup(settings: AppSettings, format: VideoFormat? = null): Startup {
         val shaderArg = intent.getStringExtra("shader") ?: intent.getStringExtra("shader_preset")
         val preset = when (shaderArg?.lowercase()) {
             "anime4k_a", "a" -> com.vibeplayer.player.ShaderPreset.ANIME4K_A
@@ -568,7 +610,7 @@ class PlayerActivity : ComponentActivity() {
             "none" -> com.vibeplayer.player.ShaderPreset.NONE
             else -> null
         }
-        return Startup(resolveConfig(settings), preset)
+        return Startup(resolveConfig(settings, format), preset)
     }
 
     private fun hideSystemBars() {
@@ -754,8 +796,22 @@ class PlayerActivity : ComponentActivity() {
         if (!forceHwdec.isNullOrEmpty()) {
             playerEngine.setHwdec(forceHwdec)
         }
-        if (com.vibeplayer.BuildConfig.DEBUG && intent.getBooleanExtra("debug_stall", false)) {
-            playerEngine.debugSimulateStallOnce = true
+        if (com.vibeplayer.BuildConfig.DEBUG) {
+            if (intent.getBooleanExtra("debug_stall", false)) {
+                playerEngine.debugSimulateStallOnce = true
+            }
+            if (intent.getBooleanExtra("force_vulkan_failure", false) ||
+                intent.getBooleanExtra("debug_force_vulkan_failure", false) ||
+                intent.getBooleanExtra("force_vk_fail", false)
+            ) {
+                playerEngine.debugForceVulkanFailureOnce = true
+            }
+            if (intent.getBooleanExtra("force_gles_failure", false) ||
+                intent.getBooleanExtra("debug_force_gles_failure", false) ||
+                intent.getBooleanExtra("force_gl_fail", false)
+            ) {
+                playerEngine.debugForceGlesFailureOnce = true
+            }
         }
         playbackStarted = true
         val noExplicitTarget = intent.getStringExtra("path").isNullOrEmpty() && intent.data == null
