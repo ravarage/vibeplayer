@@ -11,14 +11,13 @@ class StallPolicyTest {
         sameLoad: Boolean = true,
         restart: Boolean = false,
         surface: Boolean = true,
-        hwdec: String = "mediacodec",
+        recovered: Boolean = false,
         elapsed: Long = StallPolicy.FIRST_CHECK_MS
-    ) = StallPolicy.Facts(released, sameLoad, restart, surface, hwdec, elapsed)
+    ) = StallPolicy.Facts(released, sameLoad, restart, surface, recovered, elapsed)
 
     @Test
-    fun probesWhenHardwareDecodeHasNotStartedInTime() {
+    fun probesWhenPlaybackHasNotStartedInTime() {
         assertEquals(StallPolicy.Action.PROBE, StallPolicy.onTimer(facts()))
-        assertEquals(StallPolicy.Action.PROBE, StallPolicy.onTimer(facts(hwdec = "mediacodec-copy")))
     }
 
     @Test
@@ -43,9 +42,8 @@ class StallPolicyTest {
     }
 
     @Test
-    fun softwareDecodingIsNeverRecoveredAgain() {
-        assertEquals(StallPolicy.Action.NONE, StallPolicy.onTimer(facts(hwdec = "no")))
-        assertEquals(StallPolicy.Action.NONE, StallPolicy.onTimer(facts(hwdec = "")))
+    fun aFileIsRecoveredOnlyOnce() {
+        assertEquals(StallPolicy.Action.NONE, StallPolicy.onTimer(facts(recovered = true)))
     }
 
     @Test

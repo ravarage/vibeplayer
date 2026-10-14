@@ -2,7 +2,7 @@
 # B-08 comparison: count opens that never reach playback-restart.
 # usage: tools/stall_test.sh <label> <opens> <file in /sdcard/Movies/vibeplayer-test> [extra am-start args...]
 # example: tools/stall_test.sh C1 40 ichiban.mp4 --es probe_vo gpu-next --es probe_renderer vulkan
-# Each open: force-stop, start by intent, wait up to 8 s for "playback-restart" in logcat.
+# Each open: force-stop (or, with MODE=back, leave the player with BACK and stay in the same process), start by intent, wait up to 8 s for "playback-restart" in logcat.
 # Writes <label>.log (per open result) and <label>_stall_<n>.txt (last 40 mpv lines of each stall)
 # into $OUT (default /tmp/vp_stall). Does not send touch input. Run tools/wake.sh semantics inside.
 export PATH="$(cd "$(dirname "$0")" && pwd)/bin:$PATH"
@@ -19,7 +19,12 @@ for i in $(seq 1 "$n"); do
     case "$awake:$top" in 0:*|1:com.vibeplayer/*|1:ginlemon*|1:) break;; esac
     echo "open $i: waiting, $top is in front" >&2; sleep 20
   done
-  timeout 10 adb shell am force-stop com.vibeplayer
+  if [ "${MODE:-forcestop}" = back ]; then
+    # reopen inside the running process: leave the player with BACK (only when it is in front)
+    if [ "${top#com.vibeplayer/}" != "$top" ] && [ "${top%PlayerActivity}" != "$top" ]; then timeout 10 adb shell input keyevent KEYCODE_BACK; sleep 1.5; fi
+  else
+    timeout 10 adb shell am force-stop com.vibeplayer
+  fi
   timeout 10 adb logcat -c
   timeout 10 adb shell input keyevent KEYCODE_WAKEUP; timeout 10 adb shell wm dismiss-keyguard
   timeout 15 adb shell "am start -a android.intent.action.VIEW -d '$url' -t 'video/*' -n com.vibeplayer/.ui.player.PlayerActivity $*" >/dev/null

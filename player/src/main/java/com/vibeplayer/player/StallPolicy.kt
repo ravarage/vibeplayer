@@ -26,8 +26,11 @@ object StallPolicy {
         val sameLoad: Boolean,
         val playbackRestartSeen: Boolean,
         val surfaceAttached: Boolean,
-        /** Value of mpv's `hwdec-current` ("mediacodec", "mediacodec-copy", "no", ""). */
-        val hwdecCurrent: String,
+        /**
+         * This file was already reloaded with software decoding after a stall. The decoder can
+         * stall before mpv reports `hwdec-current`, so that property cannot be the condition.
+         */
+        val alreadyRecovered: Boolean,
         val elapsedSinceFileLoadedMs: Long
     )
 
@@ -35,9 +38,8 @@ object StallPolicy {
     fun onTimer(facts: Facts): Action = when {
         facts.released || !facts.sameLoad || facts.playbackRestartSeen -> Action.NONE
         !facts.surfaceAttached -> Action.NONE
-        // Only hardware decoding stalls this way; a software reload is the cure, so a load that
-        // already decodes in software is left alone (this also limits recovery to one attempt).
-        !facts.hwdecCurrent.startsWith("mediacodec") -> Action.NONE
+        // One software reload per file. A slow but healthy load is told apart by the probe.
+        facts.alreadyRecovered -> Action.NONE
         facts.elapsedSinceFileLoadedMs < FIRST_CHECK_MS -> Action.NONE
         facts.elapsedSinceFileLoadedMs > GIVE_UP_MS -> Action.NONE
         else -> Action.PROBE

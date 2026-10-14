@@ -285,7 +285,7 @@ class PlayerEngine(
             sameLoad = serial == loadSerial.get(),
             playbackRestartSeen = restartSeenSerial == serial,
             surfaceAttached = attachedSurface != null,
-            hwdecCurrent = _state.value.hwdecCurrent,
+            alreadyRecovered = softwareRecoveryPath != null && softwareRecoveryPath == lastLoad?.path,
             elapsedSinceFileLoadedMs = android.os.SystemClock.elapsedRealtime() - armedAt
         )
         if (StallPolicy.onTimer(facts) != StallPolicy.Action.PROBE) return
@@ -308,7 +308,7 @@ class PlayerEngine(
             return
         }
         val request = lastLoad ?: return
-        Log.e("VP", "B-08 watchdog: no playback-restart ${facts.elapsedSinceFileLoadedMs} ms after file-loaded and the mpv core does not answer (hwdec=${facts.hwdecCurrent}); abandoning the handle and reloading ${request.path} with software decoding at ${request.startPositionMs} ms")
+        Log.e("VP", "B-08 watchdog: no playback-restart ${facts.elapsedSinceFileLoadedMs} ms after file-loaded and the mpv core does not answer (hwdec-current=${_state.value.hwdecCurrent}); abandoning the handle and reloading ${request.path} with software decoding at ${request.startPositionMs} ms")
         abandonAndReloadInSoftware(request)
     }
 
