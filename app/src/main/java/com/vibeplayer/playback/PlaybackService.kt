@@ -274,6 +274,13 @@ class PlaybackService : Service() {
                 .collect { playerEngine.setShaderPreset(mapShaderPreset(it)) }
         }
 
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow
+                .map { it.subtitleStyle() }
+                .distinctUntilChanged()
+                .collect { playerEngine.setSubtitleStyle(it) }
+        }
+
         // Initialize Media3 SimpleBasePlayer adapter and MediaSession
         val adapter = VibePlayerAdapter(mainLooper, playerEngine, this)
         playerAdapter = adapter
@@ -791,6 +798,8 @@ class PlaybackService : Service() {
             val subEnabled = fileChoice?.subEnabled ?: true
             val speed = fileSettings?.speed?.toDouble() ?: 1.0
             val aspect = fileSettings?.aspect
+            val subDelayMs = fileSettings?.subDelayMs ?: 0
+            val audioDelayMs = fileSettings?.audioDelayMs ?: 0
 
             // Quality/efficient mode and renderer come from settings (or the launch intent) and are
             // applied here, the code path that opens every file: opens from the activity, auto-advance,
@@ -816,6 +825,7 @@ class PlaybackService : Service() {
             }
 
             playerEngine.setShaderPreset(shaderPreset ?: mapShaderPreset(appSettings.shaderPreset))
+            playerEngine.setSubtitleStyle(appSettings.subtitleStyle())
 
             playerEngine.load(
                 path = path,
@@ -825,7 +835,9 @@ class PlaybackService : Service() {
                 subTrackId = if (subEnabled) subTrackId else null,
                 subEnabled = subEnabled,
                 speed = speed,
-                aspect = aspect
+                aspect = aspect,
+                subDelayMs = subDelayMs,
+                audioDelayMs = audioDelayMs
             )
             currentKey = key
             if (playAfterLoad) playerEngine.play()
@@ -950,6 +962,27 @@ class PlaybackService : Service() {
             )
             dao.upsert(updated)
             Log.i("VP", "Persisted speed=$speed for key=$key")
+        }
+    }
+
+    fun setSubDelay(ms: Int) {
+        val v = com.vibeplayer.player.SyncDelay.clamp(ms)
+        playerEngine.setSubDelay(v)
+        persistDelays { it.copy(subDelayMs = v) }
+    }
+
+    fun setAudioDelay(ms: Int) {
+        val v = com.vibeplayer.player.SyncDelay.clamp(ms)
+        playerEngine.setAudioDelay(v)
+        persistDelays { it.copy(audioDelayMs = v) }
+    }
+
+    private fun persistDelays(change: (FileSettings) -> FileSettings) {
+        if (benchmarkRun) return
+        val key = currentKey ?: return
+        serviceScope.launch(Dispatchers.IO) {
+            val base = dao.getByKey(key) ?: FileSettings(key = key)
+            dao.upsert(change(base).copy(lastPlayedAt = System.currentTimeMillis()))
         }
     }
 

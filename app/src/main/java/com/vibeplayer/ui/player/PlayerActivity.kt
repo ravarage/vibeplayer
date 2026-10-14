@@ -451,6 +451,8 @@ class PlayerActivity : ComponentActivity() {
                                 onSelectSubTrack = { viewModel.setSubtitleTrack(it) },
                                 onSelectSpeed = { viewModel.setSpeed(it) },
                                 onPersistSpeed = { viewModel.persistSpeed(it) },
+                                onSetSubDelay = { viewModel.setSubDelay(it) },
+                                onSetAudioDelay = { viewModel.setAudioDelay(it) },
                                 onToggleMode = { viewModel.togglePlaybackMode() },
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
