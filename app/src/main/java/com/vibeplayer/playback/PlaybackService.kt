@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -285,6 +286,14 @@ class PlaybackService : Service() {
                     if (state.paused) scheduleStopCheck()
                 }
                 wasPaused = state.paused
+            }
+        }
+
+        serviceScope.launch {
+            // Title, file and folder neighbours feed the MediaSession playlist.
+            combine(currentPath, currentVideoTitle, neighbours) { _, _, _ -> }.collect {
+                adapter.notifyStateChanged()
+                updateNotification()
             }
         }
 

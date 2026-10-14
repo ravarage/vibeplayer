@@ -71,6 +71,16 @@ class VibePlayerAdapter(
             .setDurationUs(durationUs)
             .build()
 
+        // Media3 derives next/previous (headset buttons, system media controls) from the playlist, so
+        // the folder neighbours are represented as placeholder items around the current file.
+        val neighbours = service.neighbours.value
+        val playlist = buildList {
+            if (neighbours.previous) add(placeholder(PREVIOUS_UID))
+            add(mediaItemData)
+            if (neighbours.next) add(placeholder(NEXT_UID))
+        }
+        val currentIndex = if (neighbours.previous) 1 else 0
+
         val currentPos = engine.position.value.coerceAtLeast(0L)
 
         return State.Builder()
@@ -80,10 +90,21 @@ class VibePlayerAdapter(
             .setPlaybackParameters(PlaybackParameters(state.speed.toFloat()))
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(10_000L)
-            .setPlaylist(listOf(mediaItemData))
-            .setCurrentMediaItemIndex(0)
+            .setPlaylist(playlist)
+            .setCurrentMediaItemIndex(currentIndex)
             .setContentPositionMs(currentPos)
             .build()
+    }
+
+    private fun placeholder(uid: String): MediaItemData =
+        MediaItemData.Builder(uid)
+            .setMediaItem(MediaItem.Builder().setMediaId(uid).build())
+            .setIsSeekable(false)
+            .build()
+
+    private companion object {
+        const val PREVIOUS_UID = "vibeplayer_previous"
+        const val NEXT_UID = "vibeplayer_next"
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
@@ -96,11 +117,14 @@ class VibePlayerAdapter(
     }
 
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
-        when (seekCommand) {
-            Player.COMMAND_SEEK_BACK -> engine.seekRelative(-10.0, exact = true)
-            Player.COMMAND_SEEK_FORWARD -> engine.seekRelative(10.0, exact = true)
-            Player.COMMAND_SEEK_TO_NEXT -> service.skipToNeighbour(forward = true)
-            Player.COMMAND_SEEK_TO_PREVIOUS -> service.skipToNeighbour(forward = false)
+        val currentIndex = if (service.neighbours.value.previous) 1 else 0
+        when {
+            seekCommand == Player.COMMAND_SEEK_BACK -> engine.seekRelative(-10.0, exact = true)
+            seekCommand == Player.COMMAND_SEEK_FORWARD -> engine.seekRelative(10.0, exact = true)
+            // A different playlist index is a folder neighbour; the same index is a seek in this file
+            // (including "previous" pressed late in a file, which restarts it).
+            mediaItemIndex > currentIndex -> service.skipToNeighbour(forward = true)
+            mediaItemIndex < currentIndex -> service.skipToNeighbour(forward = false)
             else -> engine.seekTo(positionMs, exact = true)
         }
         return Futures.immediateVoidFuture()
