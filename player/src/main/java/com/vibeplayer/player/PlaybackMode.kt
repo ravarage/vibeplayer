@@ -27,7 +27,9 @@ data class PlaybackConfig(
     /** Optional extra for quality mode to add profile=fast (e.g. for AV1 attribution tests). */
     val fastProfile: Boolean = false,
     /** Optional hwdec override (e.g. "no" for software-only decoding). */
-    val hwdecOverride: String? = null
+    val hwdecOverride: String? = null,
+    /** Optional resolved format profile from FormatProfileTable. */
+    val formatProfile: ResolvedConfiguration? = null
 ) {
     companion object {
         /** Default shader cache directory used across all playback sessions if not overridden. */
@@ -71,9 +73,18 @@ data class PlaybackConfig(
                         options["hwdec"] = hwdecOverride ?: "mediacodec"
                     }
                     EfficientPath.PATH_B -> {
-                        options["gpu-context"] = "android"
                         options["hwdec"] = hwdecOverride ?: "mediacodec"
                         options["profile"] = "fast"
+                        when (renderer) {
+                            Renderer.GLES -> {
+                                options["gpu-api"] = "opengl"
+                                options["gpu-context"] = "android"
+                            }
+                            Renderer.VULKAN -> {
+                                options["gpu-api"] = "vulkan"
+                                options["gpu-context"] = "androidvk"
+                            }
+                        }
                     }
                 }
             }

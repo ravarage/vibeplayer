@@ -88,6 +88,14 @@ fun DebugOverlay(
             if (!vkErr.isNullOrEmpty()) {
                 DebugRow("VK ERR", vkErr)
             }
+            val chosenRow = stats.formatProfileRow
+            if (!chosenRow.isNullOrEmpty()) {
+                DebugRow("ROW", chosenRow)
+            }
+            val reason = stats.formatProfileReason
+            if (!reason.isNullOrEmpty()) {
+                DebugRow("REASON", reason)
+            }
         }
     }
 }
@@ -98,7 +106,8 @@ private fun DebugRow(label: String, value: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
     ) {
         Text(
             text = label,
@@ -113,7 +122,9 @@ private fun DebugRow(label: String, value: String) {
             color = Color.White,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f, fill = false),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End
         )
     }
 }

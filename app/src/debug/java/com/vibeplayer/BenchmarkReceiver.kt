@@ -13,7 +13,7 @@ class BenchmarkReceiver : BroadcastReceiver() {
         val path = intent.getStringExtra("path") ?: "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
         val seconds = intent.getIntExtra("seconds", 15).coerceAtLeast(1)
         val mode = intent.getStringExtra("mode") ?: "quality"
-        val renderer = intent.getStringExtra("renderer") ?: "gles"
+        val renderer = intent.getStringExtra("renderer") ?: "auto"
         val vo = intent.getStringExtra("vo")
         val shader = intent.getStringExtra("shader") ?: intent.getStringExtra("shader_preset") ?: "none"
         val cold = intent.getBooleanExtra("cold", false) ||

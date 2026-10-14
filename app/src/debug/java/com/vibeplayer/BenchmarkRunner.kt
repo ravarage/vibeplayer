@@ -251,9 +251,12 @@ object BenchmarkRunner {
             // 10. Final Battery State & Driver Info from logs
             val finalBatteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             val tempEnd = (finalBatteryIntent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10.0
-            val (vulkanApiVersion, vulkanDeviceName) = readVulkanLogIdentity(renderer)
+            val actualRenderer = if (renderer.equals("auto", ignoreCase = true)) {
+                activity?.playerEngine?.playbackConfig?.renderer?.name?.lowercase() ?: "auto"
+            } else renderer
+            val (vulkanApiVersion, vulkanDeviceName) = readVulkanLogIdentity(actualRenderer)
 
-            val resolvedVo = vo ?: if (mode.equals("quality", ignoreCase = true)) "gpu-next" else "gpu"
+            val resolvedVo = vo ?: if (mode.equals("quality", ignoreCase = true)) "gpu-next" else (activity?.playerEngine?.playbackConfig?.vo ?: "gpu")
             val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(Date())
             val fileName = File(path).name
 
@@ -265,7 +268,7 @@ object BenchmarkRunner {
                 file = fileName,
                 mode = mode,
                 vo = resolvedVo,
-                renderer = renderer,
+                renderer = actualRenderer,
                 profile = profile,
                 decoder = decoder,
                 shader = shader,

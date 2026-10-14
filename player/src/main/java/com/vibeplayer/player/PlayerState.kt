@@ -24,7 +24,10 @@ data class PlayerStats(
     val videoH: Int = 0,
     val fps: Double = 0.0,
     val frameDropCount: Long = 0L,
-    val decoderFrameDropCount: Long = 0L
+    val decoderFrameDropCount: Long = 0L,
+    val formatProfileRow: String? = null,
+    val formatProfileReason: String? = null,
+    val detectedFormat: VideoFormat? = null
 )
 
 data class PlayerState(
@@ -44,6 +47,9 @@ data class PlayerState(
     val fallback: Boolean = false,
     val aspect: String? = null,
     val rendererInUse: String = "GLES",
-    val lastVulkanError: String? = null
+    val lastVulkanError: String? = null,
+    val formatProfileRow: String? = null,
+    val formatProfileReason: String? = null,
+    val detectedFormat: VideoFormat? = null
 )
 

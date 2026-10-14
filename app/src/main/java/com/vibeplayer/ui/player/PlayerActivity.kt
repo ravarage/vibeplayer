@@ -649,8 +649,22 @@ class PlayerActivity : ComponentActivity() {
         if (!forceHwdec.isNullOrEmpty()) {
             playerEngine.setHwdec(forceHwdec)
         }
-        if (com.vibeplayer.BuildConfig.DEBUG && intent.getBooleanExtra("debug_stall", false)) {
-            playerEngine.debugSimulateStallOnce = true
+        if (com.vibeplayer.BuildConfig.DEBUG) {
+            if (intent.getBooleanExtra("debug_stall", false)) {
+                playerEngine.debugSimulateStallOnce = true
+            }
+            if (intent.getBooleanExtra("force_vulkan_failure", false) ||
+                intent.getBooleanExtra("debug_force_vulkan_failure", false) ||
+                intent.getBooleanExtra("force_vk_fail", false)
+            ) {
+                playerEngine.debugForceVulkanFailureOnce = true
+            }
+            if (intent.getBooleanExtra("force_gles_failure", false) ||
+                intent.getBooleanExtra("debug_force_gles_failure", false) ||
+                intent.getBooleanExtra("force_gl_fail", false)
+            ) {
+                playerEngine.debugForceGlesFailureOnce = true
+            }
         }
         playbackStarted = true
         val noExplicitTarget = intent.getStringExtra("path").isNullOrEmpty() && intent.data == null
