@@ -29,7 +29,9 @@ data class PlaybackConfig(
     /** Optional hwdec override (e.g. "no" for software-only decoding). */
     val hwdecOverride: String? = null,
     /** Optional resolved format profile from FormatProfileTable. */
-    val formatProfile: ResolvedConfiguration? = null
+    val formatProfile: ResolvedConfiguration? = null,
+    /** Debug builds only (intent extra `mpv_opts`, see [DebugMpvOptions]): applied after everything else. */
+    val debugMpvOptions: Map<String, String> = emptyMap()
 ) {
     companion object {
         /** Default shader cache directory used across all playback sessions if not overridden. */
@@ -105,6 +107,7 @@ data class PlaybackConfig(
                 }
             }
         }
+        options.putAll(debugMpvOptions)
         return options
     }
 }

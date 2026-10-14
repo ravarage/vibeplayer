@@ -246,6 +246,13 @@ class PlayerActivity : ComponentActivity() {
         val fastProfile = intent.getBooleanExtra("fast_profile", false) ||
             intent.getBooleanExtra("profile_fast", false) ||
             intent.getStringExtra("profile")?.lowercase() == "fast"
+        // Debug-only A/B hook (HEVC 10-bit 4K drop investigation, docs/BENCHMARK.md): extra mpv options.
+        val debugMpvOptions = if (com.vibeplayer.BuildConfig.DEBUG) {
+            com.vibeplayer.player.DebugMpvOptions.parse(intent.getStringExtra("mpv_opts")).also {
+                if (it.options.isNotEmpty()) Log.i("VP", "Debug mpv_opts: ${it.options}")
+                if (it.rejected.isNotEmpty()) Log.w("VP", "Debug mpv_opts rejected (not in the allowlist): ${it.rejected}")
+            }.options
+        } else emptyMap()
         val decoderExtra = intent.getStringExtra("decoder")?.lowercase()
         val hwdecOverride = when (decoderExtra) {
             "software", "sw", "no" -> "no"
@@ -267,7 +274,8 @@ class PlayerActivity : ComponentActivity() {
                     shaderCacheDir = shaderCache,
                     fastProfile = fastProfile,
                     hwdecOverride = hwdecOverride,
-                    formatProfile = resolvedProfile
+                    formatProfile = resolvedProfile,
+                    debugMpvOptions = debugMpvOptions
                 )
             }
         }
@@ -287,7 +295,8 @@ class PlayerActivity : ComponentActivity() {
             shaderCacheDir = shaderCache,
             fastProfile = fastProfile,
             hwdecOverride = hwdecOverride,
-            formatProfile = resolvedProfile
+            formatProfile = resolvedProfile,
+            debugMpvOptions = debugMpvOptions
         )
     }
 

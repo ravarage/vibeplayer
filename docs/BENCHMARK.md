@@ -108,8 +108,16 @@ adb shell am broadcast -a com.vibeplayer.BENCHMARK -n com.vibeplayer/.BenchmarkR
   [--ez cold true|false] \
   [--es profile fast|default] \
   [--es decoder auto|software] \
-  [--es driver_hash <16-hex>] [--es driver_mtime <mtime>]
+  [--es driver_hash <16-hex>] [--es driver_mtime <mtime>] \
+  [--es mpv_opts "'name=value;name=value'"]
 ```
+
+`mpv_opts` (debug builds only, also accepted by `PlayerActivity` directly and by `run_matrix.py --mpv-opts`)
+adds mpv options after the normal option table, for A/B tests; `;` separates entries, the first `=` splits
+name and value, and only the names in `DebugMpvOptions.ALLOWED` (checked against the mpv 0.41 and FFmpeg
+sources in `native/`) are applied, others are logged as rejected. The CSV `profile` column then reads
+`<profile>+<options>` (commas shown as `|`). Through `adb shell` keep the inner single quotes: the remote
+shell would otherwise split the list at `;`.
 
 Output CSV files are written to app external storage:
 - Summary: `/sdcard/Android/data/com.vibeplayer/files/benchmark.csv`
@@ -198,4 +206,64 @@ Steady dropped frames: delta in `frame-drop-count` after first 2 s. Decoder drop
 - **AV1 4K (`av1_4k.mp4`, dav1d)**: Vulkan `vo=gpu` is smoothest with only 362 drops (vs 918 on GLES and 385 on gpu-next), and Vulkan `vo=gpu-next` has lowest battery power (1340.0 mA vs 1668.0 mA on GLES). Winner: **Vulkan (`vo=gpu`)** on smoothness (lowest drops).
 - **VP9 1080p (`vp9_1080p.webm`)**: All configurations have 0 steady drops. OpenGL ES zero-copy draws drastically lower battery current (338.6 mA vs 794.2–1026.0 mA) and lowest CPU (40.4%). Winner: **OpenGL ES zero-copy (`vo=gpu`)**.
 - **Control**: H.264 GLES zero-copy repeated at the end of the 20-minute suite measured 643.2 mA vs 637.0 mA at the start (a negligible +0.97% drift despite battery warming from 32°C to 37°C), confirming battery current stability across the session.
+
+## HEVC 10-bit 4K drops: hypotheses
+
+_Code-side investigation without the phone (2026-10-14, CLAUDE-N1). Nothing here changes a default; the
+device pass has to confirm or reject each line._
+
+**What is known.** `hevc10_4k.mp4` is HEVC Main10, 3840x2160, 29 s long (PROGRESS P4-11). Its frame rate is
+not written anywhere in the repo (the runner records `container_fps` in `benchmark.csv` on the phone). P6-08
+measured 1207-1362 steady drops in about 58 s on all four configurations, 0 decoder drops, while app CPU went
+from 29% (GLES zero-copy) to 117% (Vulkan copy-back) and current from 605 to 1254 mA. The P6-08 runs were
+60 s, so the runner looped the 29 s clip (`loop-file=inf`, two restarts). P1-06 had recorded "0 drops" for
+this clip, but on the old last-stats-line method (possibly read after EOF, see the reviewer notes in
+TASKS.md P6-03) and while charging. `av1_4k.mp4` (4K 10-bit 60 fps, TASKS.md P6-03 notes) also drops on every renderer;
+`ichiban.mp4` (1080p 29.97 fps, ffprobe of the PC copy) and `vp9_1080p.webm` (fps not recorded) drop nothing.
+
+Relevant facts from the sources (mpv 0.41.0, FFmpeg in `native/mpv-android/buildscripts/deps`):
+- `framedrop=vo` is mpv's default: a frame that is late for its display time is dropped in the VO and
+  counted in `frame-drop-count`, also when the decoder delivered it late. `decoder-frame-drop-count` counts
+  only `framedrop=decoder`, so "0 decoder drops" does not clear the decoder.
+- FFmpeg's MediaCodec decoder sets neither `frame-rate` nor `operating-rate` in the codec format
+  (`operating_rate` AVOption, default 0, `mediacodecdec.c`), so the vendor codec picks its clocks itself.
+- mpv's Android GL/Vulkan contexts do not report the display refresh rate, so `display-fps` is unknown to
+  mpv and only `video-sync=audio` timing applies; the app never calls `Surface.setFrameRate`, so the 120 Hz
+  panel stays at whatever refresh rate the system picks.
+- The MediaCodec zero-copy interop (`hwdec_aimagereader`) works only with OpenGL; `hwdec-extra-frames`
+  defaults to 6 and the decoder queue (`vd-queue-enable`) is off.
+- Efficient mode sets `profile=fast`; interpolation and display-resample are not used anywhere.
+
+Drops nearly equal on four configurations whose GPU and CPU cost differ by a factor of four point away from
+rendering and towards something every configuration shares: the hardware decoder, the frame timing, or the
+clip itself.
+
+| # | Hypothesis (most likely first) | Why | Device test that confirms or rejects it |
+|---|---|---|---|
+| 1 | The clip is 60 fps and the HEVC Main10 4K MediaCodec path does not sustain 60 fps as mpv drives it (one frame in and out per playloop iteration, no frame-rate or operating-rate hint, so the codec runs at its default clocks); the late frames appear as VO drops. | If the clip is 60 fps, ~21 drops/s means ~38 fps reach the screen; identical across renderers; the 30 fps clip does not drop. | (a) Pull the P6-08 `benchmark_samples.csv`: `container_fps` 60 and `estimated_vf_fps` around 38 while `display_fps` is steady confirms the rate shortfall. (b) Decode-only speed: 25 s run with `mpv_opts 'video-sync=desync;untimed=yes;framedrop=no'` (video not paced by audio or display); `time-pos` advancing slower than wall time means the decoder is the limit. (c) A/B `mpv_opts 'vd-lavc-o=operating_rate=120'` (codec clock hint) and `'vd-queue-enable=yes'` (decode ahead on its own thread): drops falling to near 0 confirms and gives the fix. |
+| 2 | Display refresh vs 60 fps content: the panel runs at a rate (or switches rate) where 60 fps frames miss vsyncs, and mpv cannot compensate because it does not know the refresh rate. | The 4K clips that drop are (or may be) 60 fps; the 29.97 fps clip has slack. | During a run: `adb shell dumpsys SurfaceFlinger \| grep -i -E "refresh\|fps\|activeMode"` and the runner's `display_fps` column. A/B `mpv_opts 'display-fps-override=120'` and `'=60'`. If the HEVC 4K drops stay but a 1080p60 HEVC clip (make one from any source: `ffmpeg -i in -vf scale=1920:1080,fps=60 -c:v libx265 -pix_fmt yuv420p10le`) also drops, it is timing, not decode. |
+| 3 | Measurement artefact of looping: each `loop-file` restart seeks and flushes MediaCodec, and the frames around it are counted as drops. | The 60 s runs loop a 29 s clip twice. | Per-second samples of the P6-08 runs: drops in bursts at the loop points (time-pos wrap) instead of evenly. Rerun 25 s (no loop): `--ei seconds 25`. Unlikely to explain 1200 drops, but cheap to rule out. |
+| 4 | Too few decoder output surfaces for 4K 10-bit zero-copy: mpv holds frames for display, the codec waits for free buffers. | Zero-copy keeps codec buffers until the frame is shown. | A/B `mpv_opts 'hwdec-extra-frames=12'` and `'=2'` on GLES zero-copy. Copy-back drops just as much, so this is unlikely to be the main cause. |
+| 5 | Clip timestamps (variable or broken frame timing) or a bitrate peak beyond the decoder level. | Same drops everywhere is also what a bad clip looks like. | On the PC: `ffprobe -show_streams -show_frames -select_streams v hevc10_4k.mp4` (fps, level, bitrate, pts gaps); play the same file in another player on the phone (e.g. the stock gallery) and watch for stutter. |
+| 6 | Clocks on battery, thermal limits or the P7-07 demuxer budget. | P1-06 measured on charger and before P7-07. | Same 25 s run on charger (compare drops only, not current) and with `--ez legacy_cache true` on the PlayerActivity intent. Temperatures were 32-34 C, so thermal limits are unlikely. |
+
+**Safe fix candidates behind the debug extra** (no default changes until a device A/B shows a gain): the
+generic `mpv_opts` debug extra (above) carries `vd-queue-enable=yes`, `vd-lavc-o=operating_rate=120`,
+`hwdec-extra-frames=<n>`, `display-fps-override=<hz>`, `video-sync=desync`, `untimed=yes` and `framedrop=no`. If (1) is
+confirmed, the candidate default is `vd-lavc-o=operating_rate=<clip fps x 2>` or `vd-queue-enable=yes` for
+hardware-decoded clips above 30 fps, decided by measurement; if (2), calling `Surface.setFrameRate(<clip
+fps>)` on the video surface is the Android-side fix.
+
+Suggested device pass (about 10 minutes, unplugged, GLES zero-copy = the table row for HEVC):
+```bash
+B='am broadcast -a com.vibeplayer.BENCHMARK -n com.vibeplayer/.BenchmarkReceiver --es path /sdcard/Movies/vibeplayer-test/hevc10_4k.mp4 --ei seconds 25 --es mode efficient --es renderer gles'
+adb shell "$B"                                                      # baseline, no loop
+adb shell "$B --es mpv_opts 'video-sync=desync;untimed=yes;framedrop=no'"  # decoder speed (H1)
+adb shell "$B --es mpv_opts 'vd-lavc-o=operating_rate=120'"         # H1 fix candidate
+adb shell "$B --es mpv_opts 'vd-queue-enable=yes'"                  # H1 fix candidate
+adb shell "$B --es mpv_opts 'display-fps-override=120'"             # H2
+adb shell "$B --es mpv_opts 'hwdec-extra-frames=12'"                # H4
+```
+Wait for each row to appear in `benchmark.csv` before the next; compare `steady_drops`, `estimated_vf_fps`,
+`container_fps` and `display_fps`.
 

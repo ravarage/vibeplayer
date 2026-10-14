@@ -47,7 +47,9 @@ object BenchmarkRunner {
         decoder: String = "auto",
         driverHash: String? = null,
         driverMtime: String? = null,
-        runId: String? = null
+        runId: String? = null,
+        /** Debug A/B: extra mpv options (see DebugMpvOptions), recorded in the CSV profile column. */
+        mpvOpts: String? = null
     ) {
         activeJob?.cancel()
         activeJob = scope.launch {
@@ -124,6 +126,7 @@ object BenchmarkRunner {
                 putExtra("fast_profile", profile.equals("fast", ignoreCase = true))
                 putExtra("profile", profile)
                 putExtra("decoder", decoder)
+                if (!mpvOpts.isNullOrBlank()) putExtra("mpv_opts", mpvOpts)
             }
             context.startActivity(launchIntent)
 
@@ -271,7 +274,9 @@ object BenchmarkRunner {
                 mode = mode,
                 vo = resolvedVo,
                 renderer = actualRenderer,
-                profile = profile,
+                profile = com.vibeplayer.player.DebugMpvOptions.parse(mpvOpts).options
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { "$profile+${com.vibeplayer.player.DebugMpvOptions.label(it)}" } ?: profile,
                 decoder = decoder,
                 shader = shader,
                 shaderCache = cacheState,

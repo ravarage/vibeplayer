@@ -24,8 +24,9 @@ class BenchmarkReceiver : BroadcastReceiver() {
         val driverHash = intent.getStringExtra("driver_hash")
         val driverMtime = intent.getStringExtra("driver_mtime")
         val runId = intent.getStringExtra("run_id")
+        val mpvOpts = intent.getStringExtra("mpv_opts")
 
-        Log.i("VP", "BenchmarkReceiver: Starting benchmark path=$path seconds=$seconds mode=$mode renderer=$renderer vo=$vo shader=$shader cold=$cold profile=$profile decoder=$decoder")
+        Log.i("VP", "BenchmarkReceiver: Starting benchmark path=$path seconds=$seconds mode=$mode renderer=$renderer vo=$vo shader=$shader cold=$cold profile=$profile decoder=$decoder mpv_opts=$mpvOpts")
         BenchmarkRunner.runBenchmark(
             context = context.applicationContext,
             path = path,
@@ -39,7 +40,8 @@ class BenchmarkReceiver : BroadcastReceiver() {
             decoder = decoder,
             driverHash = driverHash,
             driverMtime = driverMtime,
-            runId = runId
+            runId = runId,
+            mpvOpts = mpvOpts
         )
     }
 }
