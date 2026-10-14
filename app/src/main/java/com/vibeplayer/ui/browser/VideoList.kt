@@ -41,6 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import com.vibeplayer.data.media.VideoItem
 import com.vibeplayer.data.prefs.VideoSortOrder
 import java.util.Locale
@@ -226,6 +229,10 @@ fun VideoItemRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = "video_${video.displayName}"
+                testTag = "video_${video.displayName}"
+            }
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -234,7 +241,11 @@ fun VideoItemRow(
             modifier = Modifier
                 .size(width = 96.dp, height = 54.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .semantics {
+                    contentDescription = "thumb_${video.displayName}"
+                    testTag = "thumb_${video.displayName}"
+                },
             contentAlignment = Alignment.Center
         ) {
             if (thumbnailCache != null) {

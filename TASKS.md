@@ -209,6 +209,16 @@ including `av1_4k.mp4`, `hevc10_4k.mp4`, Bocchi, Clevatess and Bad Girl; time pe
 logged under `VP-Perf`; `dumpsys gfxinfo` shows no jank spike while they generate; no leaked handles
 after 50 generations.
 
+**P2-11 Storage access scoping** — Restrict app storage access to video files only. Remove
+`MANAGE_EXTERNAL_STORAGE` (all-files access) from the manifest and any permission checking/requesting
+code; retain `READ_MEDIA_VIDEO` and `READ_EXTERNAL_STORAGE` (maxSdkVersion 32). Verify that the file
+browser and playlist only list video files (no audio or image files). Auto-loading external subtitle
+files (`.srt`/`.ass` next to a video, P4-04) relies on mpv's `sub-auto=fuzzy` which cannot read non-media
+files in arbitrary shared directories on Android 13+ without all-files access; record this limitation
+where applicable.
+*Files*: app/src/main/AndroidManifest.xml, PROGRESS.md, TASKS.md.
+*Accept*: builds without `MANAGE_EXTERNAL_STORAGE`, browser lists only videos, unit tests pass.
+
 ## P3 Gestures
 
 **P3-01 Gesture layer** — One `pointerInput` layer with zones (left half, right half, horizontal),

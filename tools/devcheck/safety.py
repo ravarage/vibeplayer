@@ -110,7 +110,7 @@ def _am(t):
         if t[2:] != [PKG]:
             raise Refused("force-stop only for " + PKG)
         return
-    if t[1] != "start":
+    if t[1] not in ("start", "broadcast"):
         raise Refused(f"am {t[1]} not allowed")
     comps, i = [], 2
     while i < len(t):
@@ -133,12 +133,12 @@ def _am(t):
                 raise Refused("missing value for " + a)
             i += 3
         elif a.startswith("-"):
-            raise Refused(f"am start option {a} not allowed")
+            raise Refused(f"am {t[1]} option {a} not allowed")
         else:
             comps.append(a)
             i += 1
     if not comps or not all(_pkg_ok(c) for c in comps):
-        raise Refused("am start must target " + PKG)
+        raise Refused(f"am {t[1]} must target " + PKG)
 
 
 def _dumpsys(t):

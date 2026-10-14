@@ -55,6 +55,9 @@ import kotlinx.coroutines.flow.map
 import java.io.File
 
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 
 @Composable
 fun PlayerControls(
@@ -153,6 +156,10 @@ fun PlayerControls(
                         .clip(RoundedCornerShape(24.dp))
                         .background(Color(0xCC1E1E1E))
                         .clickable { onToggleLock() }
+                        .semantics {
+                            contentDescription = "unlock"
+                            testTag = "unlock"
+                        }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -251,6 +258,10 @@ fun PlayerControls(
                                     interactionEvents.value = System.currentTimeMillis()
                                     onToggleMode?.invoke()
                                 }
+                                .semantics {
+                                    contentDescription = "quality_mode"
+                                    testTag = "quality_mode"
+                                }
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -271,6 +282,10 @@ fun PlayerControls(
                                 .clickable {
                                     interactionEvents.value = System.currentTimeMillis()
                                     showSpeedSheet = true
+                                }
+                                .semantics {
+                                    contentDescription = "speed"
+                                    testTag = "speed"
                                 }
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
@@ -295,7 +310,12 @@ fun PlayerControls(
                                 interactionEvents.value = System.currentTimeMillis()
                                 showAudioTrackSheet = true
                             },
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics {
+                                    contentDescription = "audio"
+                                    testTag = "audio"
+                                }
                         ) {
                             Text(
                                 text = "🎵",
@@ -311,7 +331,12 @@ fun PlayerControls(
                                 interactionEvents.value = System.currentTimeMillis()
                                 showSubTrackSheet = true
                             },
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics {
+                                    contentDescription = "sub"
+                                    testTag = "sub"
+                                }
                         ) {
                             Text(
                                 text = "💬",
@@ -327,11 +352,16 @@ fun PlayerControls(
                                 interactionEvents.value = System.currentTimeMillis()
                                 onCycleAspect?.invoke()
                             },
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics {
+                                    contentDescription = "aspect"
+                                    testTag = "aspect"
+                                }
                         ) {
                             androidx.compose.material3.Icon(
                                 painter = androidx.compose.ui.res.painterResource(id = com.vibeplayer.R.drawable.ic_aspect_ratio),
-                                contentDescription = "Aspect ratio",
+                                contentDescription = "aspect",
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp)
                             )
@@ -344,11 +374,16 @@ fun PlayerControls(
                                 interactionEvents.value = System.currentTimeMillis()
                                 onEnterPip()
                             },
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics {
+                                    contentDescription = "pip"
+                                    testTag = "pip"
+                                }
                         ) {
                             androidx.compose.material3.Icon(
                                 painter = androidx.compose.ui.res.painterResource(id = com.vibeplayer.R.drawable.ic_pip),
-                                contentDescription = "Mini player",
+                                contentDescription = "pip",
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp)
                             )
@@ -361,7 +396,12 @@ fun PlayerControls(
                                 interactionEvents.value = System.currentTimeMillis()
                                 onToggleLock()
                             },
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics {
+                                    contentDescription = "lock"
+                                    testTag = "lock"
+                                }
                         ) {
                             Text(
                                 text = "🔒",
@@ -386,6 +426,10 @@ fun PlayerControls(
                         modifier = Modifier
                             .size(56.dp)
                             .background(Color(0x88000000), shape = CircleShape)
+                            .semantics {
+                                contentDescription = "prev"
+                                testTag = "prev"
+                            }
                     ) {
                         Text("|◀", color = Color.White.copy(alpha = if (canSkipPrevious) 1f else 0.35f), fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
@@ -397,6 +441,10 @@ fun PlayerControls(
                             .clickable {
                                 interactionEvents.value = System.currentTimeMillis()
                                 playerEngine.togglePause()
+                            }
+                            .semantics {
+                                contentDescription = "play_pause"
+                                testTag = "play_pause"
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -417,6 +465,10 @@ fun PlayerControls(
                         modifier = Modifier
                             .size(56.dp)
                             .background(Color(0x88000000), shape = CircleShape)
+                            .semantics {
+                                contentDescription = "next"
+                                testTag = "next"
+                            }
                     ) {
                         Text("▶|", color = Color.White.copy(alpha = if (canSkipNext) 1f else 0.35f), fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
@@ -581,7 +633,12 @@ private fun SeekControls(
                 userSeeking = false
                 onScrubbingChanged(false)
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    contentDescription = "seek_bar"
+                    testTag = "seek_bar"
+                }
         )
     }
 }

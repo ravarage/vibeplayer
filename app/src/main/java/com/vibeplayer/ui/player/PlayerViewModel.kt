@@ -57,7 +57,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val playAfterLoad: Boolean,
         val title: String? = null,
         val playbackConfig: PlaybackConfig? = null,
-        val shaderPreset: ShaderPreset? = null
+        val shaderPreset: ShaderPreset? = null,
+        val startPositionOverride: Long? = null
     )
     @Volatile private var pendingOpen: PendingOpen? = null
 
@@ -87,7 +88,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 s.openVideo(
                     req.path, req.sizeBytes, req.identityKey, req.folderKey,
                     req.startFromBeginning, req.playAfterLoad, req.title,
-                    req.playbackConfig, req.shaderPreset
+                    req.playbackConfig, req.shaderPreset, req.startPositionOverride
                 )
             }
         }
@@ -144,14 +145,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         playAfterLoad: Boolean = false,
         title: String? = null,
         playbackConfig: PlaybackConfig? = null,
-        shaderPreset: ShaderPreset? = null
+        shaderPreset: ShaderPreset? = null,
+        startPositionOverride: Long? = null
     ) {
         _currentPath.value = path
         val active = service ?: PlaybackService.currentInstance
         if (active != null) {
-            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset)
+            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride)
         } else {
-            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset)
+            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride)
         }
     }
 

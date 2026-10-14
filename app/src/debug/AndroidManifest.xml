@@ -8,5 +8,15 @@
                 <action android:name="com.vibeplayer.BENCHMARK" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name="com.vibeplayer.DebugActionReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.vibeplayer.DEBUG_ACTION" />
+                <action android:name="com.vibeplayer.DEBUG_DOUBLE_TAP" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
