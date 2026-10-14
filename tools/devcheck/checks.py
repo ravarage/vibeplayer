@@ -706,7 +706,7 @@ def autoplay(ctx):
 # ---- browser and settings ---------------------------------------------------------------------------
 def _scroll_find(ctx, **kw):
     w, h = ctx.size()
-    for _ in range(4):
+    for _ in range(10):  # landscape shows few rows per screen
         ns = ctx.nodes()
         n = uix.find(ns, **kw)
         if n:
@@ -738,11 +738,18 @@ def browser(ctx):
         rows = [n for n in ns if (n.desc and n.desc.startswith("video_")) or (re.search(r"\.(mp4|mkv|webm|avi|mov)$", n.text) and n.bounds[0] > ctx.dpx(60))]
         need(rows, "no video rows in the folder list")
         good = total = 0
+        thumbs = [t for t in ns if t.desc and t.desc.startswith("thumb_")]
         for n in rows:
             cy = (n.bounds[1] + n.bounds[3]) // 2
             half = ctx.dpx(36)
+            # prefer the thumb_<name> hook (exact bounds; in landscape a left inset shifts the row)
+            th = [t for t in thumbs if t.bounds[1] < cy < t.bounds[3]]
             try:
-                crop = imgx.crop_box(img, (ctx.dpx(12), cy - half, n.bounds[0] - ctx.dpx(4), cy + half))
+                if th:
+                    b = th[0].bounds
+                    crop = imgx.crop_box(img, (b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4))
+                else:
+                    crop = imgx.crop_box(img, (ctx.dpx(12), cy - half, n.bounds[0] - ctx.dpx(4), cy + half))
             except ValueError:
                 continue
             mean, sd = imgx.luma_stats(crop)
@@ -757,7 +764,9 @@ def browser(ctx):
             break
         ctx.sleep(4)
     need(total and good >= max(1, int(total * 0.7)), f"thumbnails look black/blank: {good}/{total} rows have picture content")
-    target = uix.find(ctx.nodes(), desc=f"video_{H264}") or uix.find(ctx.nodes(), text=H264)
+    target, _ = _scroll_find(ctx, desc=f"video_{H264}")
+    if not target:
+        target, _ = _scroll_find(ctx, text=H264)
     need(target, f"{H264} row not visible")
     mark = ctx.log.mark()
     ctx.phone.tap(*uix.center(target))
@@ -775,7 +784,9 @@ def settings_version(ctx):
     ns = ctx.nodes()
     gear = uix.find(ns, text="⚙")
     need(gear, "settings gear not found on the folder list")
-    ctx.phone.tap(*uix.center(gear))
+    # tap the gear's left part: a system edge-panel handle overlaps its right half on this phone
+    g = gear.bounds
+    ctx.phone.tap(g[0] + (g[2] - g[0]) // 4, (g[1] + g[3]) // 2)
     ctx.sleep(1.5)
     n, ns = _scroll_find(ctx, regex=r"^Vibe Player \d")
     ctx.shot("settings")
