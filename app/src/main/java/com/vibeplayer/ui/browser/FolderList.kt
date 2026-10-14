@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -107,7 +109,18 @@ fun FolderListScreen(
                     }
                 }
                 else -> {
+                    val listState = rememberLazyListState()
+                    // The history arrives after the folder list; the list keeps the first folder row
+                    // anchored, which left "Continue Watching" scrolled off the top. Show it when the
+                    // user has not scrolled down.
+                    val hasContinueWatching = continueWatchingItems.isNotEmpty()
+                    LaunchedEffect(hasContinueWatching) {
+                        if (hasContinueWatching && listState.firstVisibleItemIndex <= 1) {
+                            listState.scrollToItem(0)
+                        }
+                    }
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize()
                     ) {
                         if (continueWatchingItems.isNotEmpty()) {
