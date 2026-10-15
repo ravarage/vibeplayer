@@ -258,6 +258,10 @@ class PlayerEngine(
     @Volatile var lastVulkanErrorText: String? = null
     @Volatile var availableGpuApis: List<String> = emptyList()
     @Volatile private var lastPlaybackRestartMs: Long = 0L
+    /** Wall clock at which hwdec-current last turned "no"/empty; 0 while a hardware decoder is reported. */
+    @Volatile private var hwdecNoSinceMs: Long = 0L
+    /** A seek (SEEK event) has not been followed by its PLAYBACK_RESTART yet: the decoder may be reinitialising. */
+    @Volatile private var seekPending: Boolean = false
     private var fallbackCheckJob: Job? = null
     @Volatile var currentFormat: VideoFormat = VideoFormat.OTHER
     @Volatile var currentResolvedConfig: ResolvedConfiguration? = null
@@ -275,10 +279,19 @@ class PlayerEngine(
         private const val INITIAL_CONFIG_WAIT_MS = 600L
         /** Position reads for skip/save: a stalled core never answers. */
         const val POSITION_READ_TIMEOUT_MS = 1_000L
-        const val FALLBACK_GRACE_PERIOD_MS = 1000L
+        /** hwdec-current must read "no" this long, and playback must have restarted this long ago, to count. */
+        const val FALLBACK_GRACE_PERIOD_MS = 1500L
         @Volatile var sessionVulkanFailed: Boolean = false
         @Volatile var cachedGpuApis: List<String> = emptyList()
 
+        /**
+         * Whether the "SW FALLBACK" badge shows: a hardware-decodable codec runs in software although
+         * hardware decoding was configured. mpv reports hwdec-current "no" transiently while a seek or a
+         * decoder reinit is in progress, so a "no" counts only once playback has restarted (no seek
+         * pending), at least [minTimeSinceRestartMs] after that restart, and after "no" has been reported
+         * continuously for that long ([hwdecNoSinceMs], 0 = unknown). A confirmed fallback stays while
+         * hwdec-current keeps reading "no" ([alreadyFallback]), so it does not flicker on seeks.
+         */
         fun computeFallback(
             hwdec: String,
             codec: String?,
@@ -289,7 +302,9 @@ class PlayerEngine(
             minTimeSinceRestartMs: Long = FALLBACK_GRACE_PERIOD_MS,
             alreadyFallback: Boolean = false,
             /** Software decoding was chosen (format table row such as H.264 10-bit, or decoder=software). */
-            softwareByDesign: Boolean = false
+            softwareByDesign: Boolean = false,
+            hwdecNoSinceMs: Long = 0L,
+            seekPending: Boolean = false
         ): Boolean {
             if (softwareByDesign) return false
             if (!hasFilePath || durationMs <= 0 || codec.isNullOrEmpty()) {
@@ -301,7 +316,8 @@ class PlayerEngine(
             val isNo = hwdec == "no" || hwdec.isEmpty()
             if (!isNo) return false
             if (alreadyFallback) return true
-            if (playbackRestartMs <= 0L) return false
+            if (playbackRestartMs <= 0L || seekPending) return false
+            if (hwdecNoSinceMs > 0L && (nowMs - hwdecNoSinceMs) < minTimeSinceRestartMs) return false
             return (nowMs - playbackRestartMs) >= minTimeSinceRestartMs
         }
 
@@ -402,6 +418,11 @@ class PlayerEngine(
                 }
                 "hwdec-current" -> {
                     val hwdec = (value as? String) ?: "no"
+                    if (hwdec == "no" || hwdec.isEmpty()) {
+                        if (hwdecNoSinceMs == 0L) hwdecNoSinceMs = System.currentTimeMillis()
+                    } else {
+                        hwdecNoSinceMs = 0L
+                    }
                     _state.update { current ->
                         val fallback = computeFallback(
                             hwdec = hwdec,
@@ -489,9 +510,14 @@ class PlayerEngine(
 
         override fun onEvent(id: Int) {
             when (id) {
+                MpvEvent.SEEK -> {
+                    // The decoder may reinit and report hwdec-current "no" until the matching restart.
+                    seekPending = true
+                }
                 MpvEvent.PLAYBACK_RESTART -> {
                     if (ignoreRestartSerial == loadSerial.get()) return
                     restartSeenSerial = loadSerial.get()
+                    seekPending = false
                     lastPlaybackRestartMs = System.currentTimeMillis()
                     PerfLog.mark("playback-restart")
                     _firstFrameReady.value = true
@@ -760,7 +786,12 @@ class PlayerEngine(
             playbackRestartMs = lastPlaybackRestartMs,
             nowMs = System.currentTimeMillis(),
             alreadyFallback = _state.value.fallback,
-            softwareByDesign = playbackConfig.hwdecOverride == "no"
+            // Configured hwdec=no (format row, decoder=software, debug setHwdec, and also the software step
+            // after a GLES failure, which announces itself with an on-screen message instead) shows no badge;
+            // a B-08 stall recovery (hwdecForcedSoftware) is a real fallback and keeps the badge.
+            softwareByDesign = playbackConfig.hwdecOverride == "no" || (handleHwdec == "no" && !hwdecForcedSoftware),
+            hwdecNoSinceMs = hwdecNoSinceMs,
+            seekPending = seekPending
         )
     }
 
@@ -1127,6 +1158,8 @@ class PlayerEngine(
             pendingSubtitle = null
         }
         lastPlaybackRestartMs = 0L
+        seekPending = false
+        hwdecNoSinceMs = 0L
         fallbackCheckJob?.cancel()
         fallbackCheckJob = null
         _zoomState.value = 0.0

@@ -1,8 +1,14 @@
 diff --git a/buildscripts/include/depinfo.sh b/buildscripts/include/depinfo.sh
-index 02b3d5e..29522ac 100755
+index 02b3d5e..8900894 100755
 --- a/buildscripts/include/depinfo.sh
 +++ b/buildscripts/include/depinfo.sh
-@@ -11,7 +11,7 @@ v_sdk_build_tools=36.0.0
+@@ -6,12 +6,12 @@
+ v_sdk=11076708_latest
+ v_ndk=r30
+ v_ndk_n=30.0.16248370
+-v_sdk_platform=36
++v_sdk_platform=37.0
+ v_sdk_build_tools=36.0.0
  
  v_lua=5.2.4
  v_unibreak=8.0
@@ -69,3 +75,25 @@ index b20e9d6..336def4 100755
 +[ ! -d mpv ] && git clone https://github.com/mpv-player/mpv mpv -b "$v_mpv" --depth=1
  
  cd ..
+diff --git a/buildscripts/include/download-sdk.sh b/buildscripts/include/download-sdk.sh
+index 7b59b8d..3e44aaf 100755
+--- a/buildscripts/include/download-sdk.sh
++++ b/buildscripts/include/download-sdk.sh
+@@ -61,7 +61,7 @@ sdkmanager () {
+ 	[ -x "$exe" ] || exe="./android-sdk-$os/cmdline-tools/bin/sdkmanager"
+ 	"$exe" --sdk_root="${ANDROID_HOME}" "$@"
+ }
+-echo y | sdkmanager \
++yes | sdkmanager \
+ 	"platforms;android-${v_sdk_platform}" "build-tools;${v_sdk_build_tools}" \
+ 	"extras;android;m2repository"
+ 
+@@ -73,7 +73,7 @@ elif [ -d "android-sdk-$os/ndk/${v_ndk_n}" ]; then
+ 	ln -s "android-sdk-$os/ndk/${v_ndk_n}" "android-ndk-${v_ndk}"
+ elif [ -z "${os_ndk}" ]; then
+ 	echo "Downloading NDK with sdkmanager."
+-	echo y | sdkmanager "ndk;${v_ndk_n}"
++	yes | sdkmanager "ndk;${v_ndk_n}"
+ 	ln -s "android-sdk-$os/ndk/${v_ndk_n}" "android-ndk-${v_ndk}"
+ else
+ 	echo "Downloading NDK."

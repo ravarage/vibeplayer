@@ -316,7 +316,7 @@ _Filled by P0-09 from the built libmpv (`decoder-list`, `demuxer-lavf-list`, `en
   encoders). Disk cache key = `path + size + mtime`, plus an in-memory LRU.
 
 ## Native build
-- mpv-android buildscripts download their own SDK (Android SDK cmdline-tools 11076708, platform 36, build-tools 36.0.0), NDK (r30 / 30.0.16248370) and all dependency sources into `native/mpv-android/buildscripts/{sdk,deps}` (confirmed by P0-04). The Gradle build uses that same SDK through `local.properties`.
+- mpv-android buildscripts download their own SDK (Android SDK cmdline-tools 11076708, platform 37.0 since native/patches/0001 was updated on 2026-10-15 (36 before), build-tools 36.0.0), NDK (r30 / 30.0.16248370) and all dependency sources into `native/mpv-android/buildscripts/{sdk,deps}` (confirmed by P0-04). The Gradle build uses that same SDK through `local.properties`.
 - Select the native build variant with environment variables:
   - `native/build.sh`: default `-O2`, no Vulkan, outputs to `player/src/main/jniLibs/arm64-v8a`.
   - `VULKAN=1 native/build.sh`: `-O2` plus the optional Vulkan/shaderc patch, outputs to `native/out/vulkan/arm64-v8a`.
