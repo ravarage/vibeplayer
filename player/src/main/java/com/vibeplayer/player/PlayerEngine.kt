@@ -22,6 +22,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
@@ -138,7 +139,8 @@ class PlayerEngine(
         val title: String,
         val select: Boolean = true
     )
-    @Volatile private var pendingSubtitle: PendingSubtitle? = null
+    /** Taken with getAndSet only: release() (main thread) and the command thread must not both close its fd. */
+    private val pendingSubtitle = AtomicReference<PendingSubtitle?>(null)
     private val loadSerial = AtomicInteger(0)
     /** Highest load serial whose loadfile command has been issued. */
     @Volatile private var loadIssuedSerial = 0
@@ -583,9 +585,8 @@ class PlayerEngine(
                     // selection leaves that choice alone.
                     executeCommand {
                         assertCommandThread()
-                        val pending = pendingSubtitle
+                        val pending = pendingSubtitle.getAndSet(null)
                         if (pending != null) {
-                            pendingSubtitle = null
                             if (handle != 0L) {
                                 val cmd = SubtitleCommands.buildSubAddArgs(pending.fdPath, pending.title, pending.select)
                                 val res = MpvNative.command(handle, cmd)
@@ -1190,10 +1191,7 @@ class PlayerEngine(
             Log.i("VP", "B-08 recovery over: $identity is another file, hardware decoding allowed again")
         }
         fileLoaded = false
-        pendingSubtitle?.let {
-            closeFdPath(it.fdPath)
-            pendingSubtitle = null
-        }
+        pendingSubtitle.getAndSet(null)?.let { closeFdPath(it.fdPath) }
         lastPlaybackRestartMs = 0L
         seekPending = false
         hwdecNoSinceMs = 0L
@@ -1933,8 +1931,9 @@ class PlayerEngine(
                 Log.i("VP", "sub-add: path=$fdPath, title=$title, select=$select, res=$res")
                 updateTracks()
             } else {
-                pendingSubtitle?.let { closeFdPath(it.fdPath) }
-                pendingSubtitle = PendingSubtitle(fdPath, title, select)
+                pendingSubtitle.getAndSet(PendingSubtitle(fdPath, title, select))?.let { closeFdPath(it.fdPath) }
+                // release() may have taken (an empty) pendingSubtitle meanwhile: nobody else closes this one.
+                if (released) pendingSubtitle.getAndSet(null)?.let { closeFdPath(it.fdPath) }
                 Log.i("VP", "Queued pending subtitle: path=$fdPath, title=$title, select=$select")
             }
         }
@@ -2212,10 +2211,7 @@ class PlayerEngine(
         savedVid = null
         isDucked = false
         preDuckVolume = null
-        pendingSubtitle?.let {
-            closeFdPath(it.fdPath)
-            pendingSubtitle = null
-        }
+        pendingSubtitle.getAndSet(null)?.let { closeFdPath(it.fdPath) }
         watchdog.shutdownNow()
         fallbackCheckJob?.cancel()
         fallbackCheckJob = null
