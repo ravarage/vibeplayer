@@ -24,26 +24,45 @@ Features marked **beta** are merged but not yet verified on the device.
   hold for 2x speed (**beta**)
 - Hardware decoding of H.264, HEVC and VP9 through MediaCodec; AV1 with dav1d on all cores
 - Styled ASS subtitles with embedded fonts (libass); audio and subtitle track pickers
+- Subtitle and audio sync adjustment (-/+ 50 ms) (**beta**)
+- Global subtitle styling: size, position, and ASS style override toggle (**beta**)
 - Speed 0.25x to 4x with pitch correction; aspect modes (fit, crop, stretch, 16:9, 4:3)
-- Per-file memory of position, tracks, speed and aspect; per-folder track memory and default languages
+- Per-file memory of position, tracks, speed, aspect, and sync delays; per-folder track memory and default languages
 - Auto-play of the next file in the folder; previous / next
 - Picture-in-picture mini player
 - Background playback with a media notification (**beta**)
 - Folder browser with thumbnails (software thumbnails for AV1 and 10-bit video) and a continue-watching row
 - Quality mode with an OpenGL ES renderer or an experimental Vulkan renderer, with automatic fallback to OpenGL ES (**beta**)
-- Best configuration per format chosen before opening: Auto renderer mode detects format (MediaExtractor, <50 ms) and selects the measured best decoder and renderer from a data table keyed by the Vulkan driver build (copy-back on Vulkan `gpu-next` for H.264, zero-copy on GLES for HEVC/VP9, Vulkan for AV1) with safety fallback chain (Vulkan -> GLES -> software) (**beta**)
+- Best configuration per format chosen before opening: Auto renderer mode detects format (MediaExtractor, <50 ms) and selects the measured best decoder and renderer from a data table keyed by the Vulkan driver build (**beta**)
 - Anime4K and Snapdragon GSR shader presets (**beta**)
 - Efficient mode for battery
 
+### Format and renderer matrix
+
+Auto renderer mode selects the measured optimal configuration per format before opening from a data table keyed by the Vulkan driver build hash:
+
+| Format | Renderer | Video Output (`vo`) | Decoder | Notes |
+|---|---|---|---|---|
+| **H.264 (8-bit)** | Vulkan | `gpu-next` | MediaCodec copy-back | Lowest power draw; falls back to OpenGL ES `gpu` copy-back |
+| **HEVC (8/10-bit)** | OpenGL ES | `gpu` | MediaCodec zero-copy | Optimal efficiency and lowest battery consumption |
+| **VP9** | OpenGL ES | `gpu` | MediaCodec zero-copy | Optimal efficiency and 0 dropped frames |
+| **AV1** | Vulkan | `gpu` | Software (`dav1d`) | Smoothest multi-core software decode; falls back to OpenGL ES `gpu` |
+| **H.264 (10-bit / Hi10P)** | Vulkan | `gpu` | Software | No hardware decoder on chipset; falls back to OpenGL ES `gpu` |
+
+**Fallback chain**: If Vulkan is unavailable or fails at runtime, playback automatically falls back to OpenGL ES. If hardware decoding fails on OpenGL ES, playback falls back to software decoding, preserving current playback position with an on-screen notice.
 
 ## Requirements and compatibility
 
 Android 17 on an arm64-v8a device (minSdk is 37). Tested on one phone only. See
 [docs/HARDWARE.md](docs/HARDWARE.md) for the reference device, what might work elsewhere and what will not.
 
+## Download
+
+Releases and pre-built APKs will be made available on the [GitHub Releases](https://github.com/ravarage/vibeplayer/releases) page.
+
 ## Install
 
-Download the APK from the GitHub release **v0.5.0** and install it. It works only on Android 17, arm64.
+Download the APK from the [GitHub Releases](https://github.com/ravarage/vibeplayer/releases) page (**v0.5.0**) and install it. It works only on Android 17, arm64.
 The APK is signed with the developer's debug key, so it updates in place only over builds signed with the
 same key; builds from source signed with your own key must be uninstalled first (this deletes app data).
 

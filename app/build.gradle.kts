@@ -15,8 +15,8 @@ android {
         applicationId = "com.vibeplayer"
         minSdk = 37
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.4.0"
+        versionCode = 3
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
