@@ -108,8 +108,10 @@ class PlayerEngine(
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var attachedSurface: Surface? = null
     @Volatile private var shaderDirectory: String = ""
-    @Volatile private var currentShaderPreset: ShaderPreset = ShaderPreset.NONE
+    @Volatile var currentShaderPreset: ShaderPreset = ShaderPreset.NONE
+        private set
     @Volatile private var savedVid: String? = null
+
     /** P4-13 global subtitle appearance; applied to every loadfile and live when changed. */
     @Volatile private var subtitleStyle = SubtitleStyle()
 
@@ -183,7 +185,21 @@ class PlayerEngine(
     private val _onScreenMessage = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
     val onScreenMessage: kotlinx.coroutines.flow.SharedFlow<String> = _onScreenMessage
 
+    fun showOnScreenMessage(message: String) {
+        _onScreenMessage.tryEmit(message)
+    }
+
+    private val _thermalStatus = MutableStateFlow("none")
+    val thermalStatus: StateFlow<String> = _thermalStatus.asStateFlow()
+
+    fun setThermalStatus(status: String) {
+        _thermalStatus.value = status
+        _state.update { it.copy(thermalStatus = status) }
+        _stats.update { it.copy(thermalStatus = status) }
+    }
+
     private val _isInPip = MutableStateFlow(false)
+
     val isInPip: StateFlow<Boolean> = _isInPip.asStateFlow()
 
     fun setIsInPip(inPip: Boolean) {
@@ -804,8 +820,10 @@ class PlayerEngine(
                     formatProfileRow = currentResolvedConfig?.chosenRowDescription ?: _state.value.formatProfileRow,
                     formatProfileReason = currentResolvedConfig?.reason ?: _state.value.formatProfileReason,
                     detectedFormat = currentFormat,
-                    containerFps = _state.value.containerFps
+                    containerFps = _state.value.containerFps,
+                    thermalStatus = _thermalStatus.value
                 )
+
 
                 Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec mode=$modeStr gpuApi=$gpuApi gpuContext=$gpuContext drops=$drops decDrops=$decDrops fps=$fps")
             }

@@ -80,7 +80,9 @@ fun DebugOverlay(
             DebugRow("GPU CTX", stats.gpuContext.ifEmpty { "unknown" })
             DebugRow("HWDEC", stats.hwdecCurrent.ifEmpty { "unknown" })
             DebugRow("MODE", stats.mode.ifEmpty { "unknown" })
+            DebugRow("THERMAL", stats.thermalStatus ?: "none")
             val fpsText = if (stats.containerFps != null) {
+
                 String.format(Locale.US, "%.2f (container: %.3f)", stats.fps, stats.containerFps)
             } else {
                 String.format(Locale.US, "%.2f", stats.fps)

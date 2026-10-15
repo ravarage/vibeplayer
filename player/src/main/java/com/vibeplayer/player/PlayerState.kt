@@ -28,7 +28,8 @@ data class PlayerStats(
     val formatProfileRow: String? = null,
     val formatProfileReason: String? = null,
     val detectedFormat: VideoFormat? = null,
-    val containerFps: Double? = null
+    val containerFps: Double? = null,
+    val thermalStatus: String? = null
 )
 
 data class PlayerState(
@@ -54,7 +55,9 @@ data class PlayerState(
     val formatProfileRow: String? = null,
     val formatProfileReason: String? = null,
     val detectedFormat: VideoFormat? = null,
-    val containerFps: Double? = null
+    val containerFps: Double? = null,
+    val thermalStatus: String? = null
 )
+
 
 

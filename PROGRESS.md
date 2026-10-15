@@ -125,7 +125,8 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P9-02 | Tuned vs baseline | IN PROGRESS | CLAUDE-V3 | pending | AV1 4K software decode, 60 s, Vulkan gpu, interleaved tuned/default/tuned/default (charging, drops+CPU only): steady drops 918/937/770/951, app CPU 382/406/415/410 % -> tuned mean 844 vs default 944 drops at equal CPU (docs/BENCHMARK.md P9). Recommendation: tuned is stable and not slower (about 11 % fewer drops, within run spread); keeping it is acceptable, but not worth it on this evidence alone. Left: 30 min stability run with tuned libraries, a battery (unplugged) pair. |
 | P10-01 | Surface.setFrameRate | IN PROGRESS | AGY-1 | pending | Code done, unit tests pass. Device check open: log line shows call, dumpsys SurfaceFlinger frame rate vote. |
 
-| P10-02 | Thermal adaptation | TODO | | | |
+| P10-02 | Thermal adaptation | IN PROGRESS | AGY-1 | pending | Code done, unit tests pass. Device check open: PowerManager thermal listener registration, stats overlay THERMAL row, quality step-down at MODERATE+. |
+
 | P10-03 | Display cutout | TODO | | | |
 | P10-04 | Back handling audit | TODO | | | |
 | P10-05 | Exit diagnostics | TODO | | | |
