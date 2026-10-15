@@ -8,6 +8,8 @@ VIDEO, then read logcat (epoch timestamps, device clock) and compute
   total_time_ms        = `am start -W` TotalTime (activity launch only, not playback)
 Prints every run and the median of intent_to_restart_ms; exits 1 if that median is above the
 threshold (or if any run produced no playback-restart), 2 when there is no usable data.
+--clip NAME picks another file in /sdcard/Movies/vibeplayer-test (default ichiban.mp4; the P7-02
+acceptance clip is h264_1080p.mp4). Each run also prints the VP-Perf marks relative to the intent.
 Never clears app data. Needs the phone connected (plain adb, /home/rava/vibeplayer/tools/bin first
 in PATH) and the test video on the phone.
 """
@@ -49,6 +51,7 @@ def one_run():
     m = re.search(r"TotalTime:\s*(\d+)", r.stdout)
     total = int(m.group(1)) if m else None
     start_ts = restart_ts = None
+    marks = {}
     deadline = time.time() + 15
     while time.time() < deadline and restart_ts is None:
         time.sleep(0.5)
@@ -60,21 +63,35 @@ def one_run():
             ts, tag, msg = float(m.group(1)), m.group(3), m.group(4)
             if start_ts is None and "START u0" in msg and "PlayerActivity" in msg:
                 start_ts = ts
-            if "VP-Perf" in tag and msg.startswith("playback-restart") and restart_ts is None:
-                restart_ts = ts
+            if "VP-Perf" in tag:
+                key = msg.split()[0].rstrip(":") if msg.split() else "?"
+                marks.setdefault(key, ts)
+                if msg.startswith("playback-restart") and restart_ts is None:
+                    restart_ts = ts
     if restart_ts is None:
         return total, None, "no playback-restart in logcat within 15 s"
     if start_ts is None:
         return total, None, "no ActivityTaskManager START line in logcat (cannot time the intent)"
-    return total, round((restart_ts - start_ts) * 1000), ""
+    breakdown = " ".join(f"{k}={round((t - start_ts) * 1000)}" for k, t in sorted(marks.items(), key=lambda kv: kv[1]))
+    return total, round((restart_ts - start_ts) * 1000), "| " + breakdown
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    global VIDEO
+    argv = sys.argv[1:]
+    if "--clip" in argv:
+        i = argv.index("--clip")
+        VIDEO = "file:///sdcard/Movies/vibeplayer-test/" + argv[i + 1]
+        del argv[i:i + 2]
+    if "--threshold-ms" in argv:
+        i = argv.index("--threshold-ms")
+        threshold = int(argv[i + 1])
+        del argv[i:i + 2]
+    else:
+        threshold = 1000
+    args = [a for a in argv if not a.startswith("--")]
     n = int(args[0]) if args else 10
-    threshold = 1000
-    if "--threshold-ms" in sys.argv:
-        threshold = int(sys.argv[sys.argv.index("--threshold-ms") + 1])
+    print("clip:", VIDEO)
     wake()
     results, bad = [], 0
     for i in range(1, n + 1):
