@@ -141,6 +141,16 @@ class PlayerEngine(
     )
     /** Taken with getAndSet only: release() (main thread) and the command thread must not both close its fd. */
     private val pendingSubtitle = AtomicReference<PendingSubtitle?>(null)
+    /**
+     * External subtitles added to the current file with their content URI: a reload on a new handle
+     * (reconfigure, thermal step-down, Vulkan/GLES fallback, B-08) loses them, and their fdclose://
+     * descriptor is gone, so they are reopened through [pathReopener] at that reload's file-loaded.
+     */
+    private data class ExternalSubSource(val fileIdentity: String, val uri: String, val title: String, val select: Boolean)
+    private val externalSubSources = java.util.concurrent.CopyOnWriteArrayList<ExternalSubSource>()
+    /** The reload (load serial) whose file-loaded re-adds the external subtitles, and whether each (by URI) is selected. */
+    private class SubRestore(val serial: Int, val selectByUri: Map<String, Boolean>)
+    @Volatile private var subRestore: SubRestore? = null
     private val loadSerial = AtomicInteger(0)
     /** Highest load serial whose loadfile command has been issued. */
     @Volatile private var loadIssuedSerial = 0
@@ -595,6 +605,10 @@ class PlayerEngine(
                                 closeFdPath(pending.fdPath)
                             }
                         }
+                    }
+                    subRestore?.takeIf { it.serial == loadSerial.get() }?.let {
+                        subRestore = null
+                        restoreExternalSubtitles(it)
                     }
                     checkVulkanVoInitialization()
                     checkGlesInitialization()
@@ -1184,6 +1198,7 @@ class PlayerEngine(
         loadInternalCount++
         currentFilePath = path
         currentFileIdentity = identity
+        externalSubSources.removeAll { it.fileIdentity != identity }
         // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
         val wasRecovering = softwareRecoveryIdentity
         softwareRecoveryIdentity = StallPolicy.recoveryAfterLoad(softwareRecoveryIdentity, identity)
@@ -1393,6 +1408,14 @@ class PlayerEngine(
         reuseOpenFd: Boolean = false
     ) {
         assertCommandThread()
+        // Tracks of the old handle are still in the state here (only load() clears them).
+        val tracks = _state.value.tracks
+        val selectedSubTitle = tracks.firstOrNull { it.type == "sub" && it.id == _state.value.selectedSubTrackId }?.title
+        subRestore = SubRestore(serial, externalSubSources.filter { it.fileIdentity == request.identity }.associate { src ->
+            src.uri to SubtitleCommands.selectOnRestore(
+                src.title, src.select, tracks.any { it.type == "sub" && it.external && it.title == src.title }, selectedSubTitle
+            )
+        })
         val plan = ReloadPolicy.plan(request.path, request.identity, pathReopener != null)
         when {
             plan == ReloadPolicy.Plan.Same || (plan == ReloadPolicy.Plan.Impossible && reuseOpenFd) -> {
@@ -1914,7 +1937,7 @@ class PlayerEngine(
      * Otherwise, queues as [pendingSubtitle] to be applied once FILE_LOADED fires.
      * Uses [FdOwningTask] so descriptor in [fdPath] is closed if the executor drops it.
      */
-    fun addSubtitleTrack(fdPath: String, title: String, select: Boolean = true) {
+    fun addSubtitleTrack(fdPath: String, title: String, select: Boolean = true, sourceUri: String? = null) {
         if (released) {
             closeFdPath(fdPath)
             return
@@ -1924,6 +1947,10 @@ class PlayerEngine(
             if (released || handle == 0L) {
                 closeFdPath(fdPath)
                 return@FdOwningTask
+            }
+            if (sourceUri != null) {
+                externalSubSources.removeAll { it.uri == sourceUri }
+                externalSubSources.add(ExternalSubSource(currentFileIdentity, sourceUri, title, select))
             }
             if (fileLoaded) {
                 val cmd = SubtitleCommands.buildSubAddArgs(fdPath, title, select)
@@ -1941,6 +1968,27 @@ class PlayerEngine(
             if (released) closeFdPath(fdPath) else commandExecutor.execute(task)
         } catch (_: RejectedExecutionException) {
             closeFdPath(fdPath)
+        }
+    }
+
+    /** Re-adds the external subtitles of the current file after a reload on a new handle ([subRestore]). */
+    private fun restoreExternalSubtitles(restore: SubRestore) {
+        val reopener = pathReopener ?: return
+        val identity = currentFileIdentity
+        for (src in externalSubSources.filter { it.fileIdentity == identity }) {
+            val select = restore.selectByUri[src.uri] ?: continue
+            ioScope.launch {
+                val fresh = try { reopener(src.uri) } catch (t: Throwable) { null } ?: run {
+                    Log.w("VP", "Re-adding external subtitle ${src.uri} after reload failed: no descriptor")
+                    return@launch
+                }
+                if (released || loadSerial.get() != restore.serial) {
+                    closeFdPath(fresh)
+                    return@launch
+                }
+                Log.i("VP", "Re-adding external subtitle ${src.title} after reload on a new handle (select=$select)")
+                addSubtitleTrack(fresh, src.title, select, src.uri)
+            }
         }
     }
 

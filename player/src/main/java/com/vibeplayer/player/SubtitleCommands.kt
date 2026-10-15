@@ -33,4 +33,13 @@ object SubtitleCommands {
             arrayOf("sub-add", fdPath, flag)
         }
     }
+
+    /**
+     * Whether an external subtitle re-added after a reload on a new mpv handle is selected. When its
+     * track was on the old handle, it is selected only if it was the selected subtitle then
+     * ([selectedSubTitle], the title of the selected sub track, null when none); when it was still
+     * pending (never added), its requested selection stands.
+     */
+    fun selectOnRestore(sourceTitle: String, requestedSelect: Boolean, trackWasPresent: Boolean, selectedSubTitle: String?): Boolean =
+        if (trackWasPresent) selectedSubTitle == sourceTitle else requestedSelect
 }

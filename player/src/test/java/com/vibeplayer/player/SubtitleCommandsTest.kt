@@ -1,6 +1,7 @@
 package com.vibeplayer.player
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,5 +45,18 @@ class SubtitleCommandsTest {
 
         val argsEmpty = SubtitleCommands.buildSubAddArgs("fdclose://42", "", select = false)
         assertArrayEquals(arrayOf("sub-add", "fdclose://42", "auto"), argsEmpty)
+    }
+
+    @Test
+    fun selectOnRestoreFollowsTheSelectionOnTheOldHandle() {
+        assertTrue(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = false, trackWasPresent = true, selectedSubTitle = "a.srt"))
+        assertFalse(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = true, trackWasPresent = true, selectedSubTitle = "English"))
+        assertFalse(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = true, trackWasPresent = true, selectedSubTitle = null))
+    }
+
+    @Test
+    fun selectOnRestoreKeepsTheRequestWhenTheTrackWasStillPending() {
+        assertTrue(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = true, trackWasPresent = false, selectedSubTitle = null))
+        assertFalse(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = false, trackWasPresent = false, selectedSubTitle = "a.srt"))
     }
 }
