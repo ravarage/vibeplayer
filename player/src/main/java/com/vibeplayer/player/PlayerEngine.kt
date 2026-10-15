@@ -601,7 +601,7 @@ class PlayerEngine(
             oldScope.coroutineContext[Job]?.cancel()
             // Drops everything queued behind the stuck task; the caller's latest wishes are in
             // requestedConfig / requestedTrackSelection and the load requests.
-            stuck.shutdownNow()
+            stuck.shutdownNowClosingFds(::closeFdPath)
             statsJob = null
         }
         return true
@@ -1239,11 +1239,12 @@ class PlayerEngine(
                         Log.w("VP", "$why: ${plan.identity} could not be reopened; reopen the file to continue")
                         return@launch
                     }
-                    val task = Runnable {
+                    // Dropped unrun when this thread is abandoned meanwhile: the descriptor is closed then.
+                    val task = FdOwningTask(fresh) {
                         if (released || serial != loadSerial.get() || loadInternalCount != loadsBefore || handle == 0L) {
                             Log.i("VP", "$why: reopened descriptor not used (newer load or no handle); closing it")
                             closeFdPath(fresh)
-                            return@Runnable
+                            return@FdOwningTask
                         }
                         val reopened = request.copy(path = fresh)
                         lastLoad = reopened

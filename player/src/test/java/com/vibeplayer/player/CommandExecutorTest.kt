@@ -1,5 +1,6 @@
 package com.vibeplayer.player
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -51,6 +52,26 @@ class CommandExecutorTest {
             release.countDown()
             old.shutdownNow()
             fresh.shutdownNow()
+        }
+    }
+
+    @Test(timeout = 5_000L)
+    fun abandoningClosesTheDescriptorOfADroppedReopenTask() {
+        val executor = CommandExecutor("VP-Command-stuck") { 0L }
+        val blocker = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val closed = mutableListOf<String>()
+        try {
+            executor.execute { started.countDown(); blocker.await() } // the stalled task
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            executor.execute { } // a plain queued command: dropped, nothing to close
+            executor.execute(FdOwningTask("fdclose://42") { error("must not run") })
+            val dropped = executor.shutdownNowClosingFds { closed.add(it) }
+            assertEquals(2, dropped.size)
+            assertEquals(listOf("fdclose://42"), closed)
+        } finally {
+            blocker.countDown()
+            executor.shutdownNow()
         }
     }
 }
