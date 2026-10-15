@@ -200,11 +200,8 @@ class PlayerEngine(
             else -> "idle"
         }
         val hwdec = s.hwdecCurrent
-        val vo = _stats.value.vo.ifEmpty {
-            if (playbackConfig.mode == PlaybackMode.QUALITY) "gpu-next"
-            else if (playbackConfig.efficientPath == EfficientPath.PATH_A) "mediacodec_embed"
-            else "gpu"
-        }
+        // playbackConfig.vo includes the per-format voOverride (P6-07: H.264 runs gpu-next in Efficient mode)
+        val vo = _stats.value.vo.ifEmpty { playbackConfig.vo }
         val speed = s.speed
         val aspect = s.aspect ?: "fit"
         val aid = s.selectedAudioTrackId?.toString() ?: "no"
@@ -1263,12 +1260,15 @@ class PlayerEngine(
             assertCommandThread()
             if (playbackConfig == newConfig) return@executeCommand
             Log.i("VP", "Reconfiguring engine: ${playbackConfig.mode}/${playbackConfig.renderer} -> ${newConfig.mode}/${newConfig.renderer}")
-            val curPos = if (handle != 0L) {
+            val curPath = currentFilePath
+            // Before file-loaded (e.g. a Vulkan failure at VO init) time-pos is unset and the position
+            // flow still reads 0: keep the pending load's start position (resume point) instead.
+            val pendingStart = lastLoad?.takeIf { !fileLoaded && it.path == curPath }?.startPositionMs
+            val curPos = pendingStart ?: if (handle != 0L) {
                 MpvNative.getPropertyDouble(handle, "time-pos")?.let { (it * 1000.0).toLong() } ?: _position.value
             } else {
                 _position.value
             }
-            val curPath = currentFilePath
             val curIdentity = currentFileIdentity.ifEmpty { curPath }
             val wasPaused = _state.value.paused
             val curAid = _state.value.selectedAudioTrackId
