@@ -144,3 +144,26 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 - App finding (minor, unconfirmed severity): "SW FALLBACK" badge shown on ichiban.mp4 after a swipe seek because hwdec-current transiently reads "no"; computeFallback in PlayerEngine.kt should ignore transient "no" during seeks/reinit.
 - B-08: see BLOCKERS.md (60 opens, 5 stalls, 5 recovered, 0 black, 0 ANR) -> RESOLVED.
 - NOT DONE (phone became unreachable at ~20:10, adb to 192.168.1.3 "No route to host", USB not attached): background playback, hold for fast playback, quality-mode toggle, Vulkan renderer, Anime4K shader. Next step: reconnect phone, run each feature check from the brief; re-run `python3 tools/devcheck/run.py --out /tmp/vp_devcheck_7` and fix the remaining check bugs listed above (use /tmp/vp_devcheck_6 screenshots/uiautomator dumps of the speed and aspect sheets). Rows P5-02/P5-03, quality/renderer/shader/hold tasks stay NOT DONE (no evidence).
+
+## CLAUDE-V2 overnight device pass 2026-10-14/15 (driver c0b92d25178c8b21, phone charging, media volume 0 all night)
+- Step 0: debug build of 879bcd9 installed in place over the 21:11 build (no uninstall); app starts, Continue Watching kept its entries (before /tmp/vp_n_hist_before.png, after /tmp/vp_n_hist_after.png: Clevatess 08:05 34 %, Clevatess 23:40 99 %, ichiban 04:30 87 %). Found: the after screenshot opened with the "Continue Watching" header scrolled off the top -> fixed eb659f7 (scroll to the section when it appears and the list is at the top; /tmp/vp_n_browser.png). Note: the app setting was QUALITY mode when I started (left by an earlier session?), so devcheck hwdec reports mediacodec-copy for HEVC/VP9.
+- App fixes: a00dacd player sheets (tracks, subtitles, speed, sync) open fully expanded: in landscape the half-expanded sheet showed only "Mute / Off" and the first track (/tmp/vp_n_audiosheet.png); eb659f7 browser header. d729d56 debug action `clear_vulkan_cache` (a forced Vulkan failure is remembered per format and had no undo).
+- devcheck fixes: a72da5a, b1f18d3, 71995a1, 265c2a7 + this commit (top-bar taps via contentDescription hooks: the QUALITY chip moved the speed chip off its fixed dp position; sheet rows read after the sheet stops sliding; folder-memory regex for FileTrackChoice(...) with spaces; thumbnails via thumb_ bounds and scrolling in landscape; settings gear tapped clear of the system edge-panel handle; swipe_seek starts at 5 s; prev_next title retry).
+- devcheck result (/tmp/vp_devcheck_night/f1, f2, f3 + reruns; f1/f2 on b1f18d3 build, f3 and reruns on ca6d35e+ build): every check PASS except: brightness_volume NOT RUN (it must raise media volume, which stays 0 tonight), folder_track_memory SKIP (every sibling with the chosen language has its own per-file choice: inconclusive, not a failure). Flaky before the fixes: swipe_seek (-2 s when the random resume point reached the clip end), track_memory (sheet still sliding), prev_next (title dump during 4K HEVC load); each passed 2-3 times in a row after its fix. Known weak spot: track_memory's "original restored" is not verified (the remembered id alternates between runs on test clips).
+
+| check | result | evidence |
+|---|---|---|
+| open_h264 / hevc10 / vp9 / av1_4k / av1_ass | PASS | restart 4.1 / 4.2 / 4.4 / 6.1 / 5.4 s, moving picture |
+| hwdec | PASS | H.264, HEVC, VP9 = mediacodec-copy (Quality mode) |
+| controls_tap, play_pause, double_tap, lock_unlock | PASS | |
+| swipe_seek | PASS (after fix) | +19..20 s / -12 s, 3 runs |
+| orientation_home, pip, pip_autoadvance, resume | PASS | PiP bounds aspect ok, auto-advance inside PiP |
+| track_memory | PASS (after fix) | multi_track + Case Closed audio/sub after force-stop |
+| folder_track_memory | SKIP | no conclusive sibling |
+| speed, aspect | PASS | 1.5x kept after force-stop, reset; cycle ends on fit |
+| prev_next | PASS (after fix) | 2 runs |
+| autoplay | PASS | last file stops |
+| browser, settings_version | PASS (after app fix + check fixes) | 10/10 thumbnails, "Vibe Player 0.4.0" |
+| stall | PASS | 0/5 |
+| brightness_volume | NOT RUN | volume must stay 0 |
+| no_fatal | PASS | in every chunk |
