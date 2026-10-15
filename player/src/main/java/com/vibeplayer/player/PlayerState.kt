@@ -31,7 +31,9 @@ data class PlayerStats(
     val containerFps: Double? = null,
     val thermalStatus: String? = null,
     /** P10-06 ADPF hint session status for the overlay ("off", "on (n threads)", ...). */
-    val adpfStatus: String? = null
+    val adpfStatus: String? = null,
+    /** P10-09 HDR output decision for the overlay ("off (setting off)", "on (PQ)"). */
+    val hdrStatus: String? = null
 )
 
 data class PlayerState(

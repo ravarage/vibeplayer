@@ -27,7 +27,9 @@ data class ClipInfo(
     val width: Int? = null,
     val height: Int? = null,
     /** 10 bits or more per sample (bit-depth key or a Main10/Profile2 codec profile). */
-    val tenBit: Boolean = false
+    val tenBit: Boolean = false,
+    /** PQ or HLG transfer stated by the container/codec (KEY_COLOR_TRANSFER), null for SDR or unknown (P10-09). */
+    val hdrTransfer: HdrTransfer? = null
 )
 
 /**

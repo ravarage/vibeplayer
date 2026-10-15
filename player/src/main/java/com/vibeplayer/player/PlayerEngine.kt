@@ -253,6 +253,48 @@ class PlayerEngine(
         }
     }
 
+    // P10-09: HDR output. The setting comes from the service; the content transfer from the format
+    // detection (before the open) and from mpv's video-params/gamma (authoritative once known).
+    @Volatile private var hdrSettingEnabled = false
+    @Volatile private var hdrClipTransfer: HdrTransfer? = null
+    @Volatile private var hdrMpvGamma: String? = null
+    private var hdrHintApplied = false // command thread; reset with every new handle
+    private val _hdrDecision = MutableStateFlow(HdrDecision.OFF)
+    /** What HDR output is doing now; the activity maps it to the window colour mode and HDR headroom. */
+    val hdrDecision: StateFlow<HdrDecision> = _hdrDecision.asStateFlow()
+
+    /** P10-09: the "HDR output (experimental)" setting changed (or was first read). */
+    fun setHdrOutputEnabled(enabled: Boolean) {
+        if (hdrSettingEnabled == enabled) return
+        hdrSettingEnabled = enabled
+        executeCommand { evaluateHdr() }
+    }
+
+    /**
+     * Command thread. Decides HDR output from the setting, the content transfer and the effective config
+     * and sets mpv's `target-colorspace-hint` (yes when active, back to its default auto otherwise).
+     * Conditions not met: nothing is changed, mpv tone-maps to SDR as before. A failing option set
+     * only logs: the Vulkan -> GLES -> software fallback chain is not involved.
+     */
+    private fun evaluateHdr() {
+        assertCommandThread()
+        val gamma = hdrMpvGamma
+        val transfer = if (!gamma.isNullOrBlank()) HdrOutputPolicy.transferFromMpvGamma(gamma) else hdrClipTransfer
+        val d = HdrOutputPolicy.decide(hdrSettingEnabled, transfer, playbackConfig.renderer, playbackConfig.vo)
+        if (handle != 0L && d.active != hdrHintApplied) {
+            try {
+                val res = MpvNative.setPropertyString(handle, "target-colorspace-hint", if (d.active) "yes" else "auto")
+                if (res >= 0) hdrHintApplied = d.active
+                else Log.w("VP-HDR", "target-colorspace-hint=${if (d.active) "yes" else "auto"} rejected by mpv ($res)")
+            } catch (e: Throwable) {
+                Log.w("VP-HDR", "target-colorspace-hint not set: ${e.message}")
+            }
+        }
+        if (_hdrDecision.value != d) Log.i("VP-HDR", "HDR output ${d.overlayText} (gamma=$gamma clip=$hdrClipTransfer)")
+        _hdrDecision.value = d
+        _stats.update { it.copy(hdrStatus = d.overlayText) }
+    }
+
     private val _isInPip = MutableStateFlow(false)
 
     val isInPip: StateFlow<Boolean> = _isInPip.asStateFlow()
@@ -421,6 +463,7 @@ class PlayerEngine(
         const val REPLY_AID = 12L
         const val REPLY_SID = 13L
         const val REPLY_CONTAINER_FPS = 14L
+        const val REPLY_HDR_GAMMA = 15L
     }
 
 
@@ -547,6 +590,10 @@ class PlayerEngine(
                     }
                     _state.update { it.copy(selectedSubTrackId = sid) }
                     updateTracks()
+                }
+                "video-params/gamma" -> {
+                    hdrMpvGamma = value as? String
+                    executeCommand { evaluateHdr() }
                 }
                 "container-fps" -> {
                     val f = (value as? Number)?.toDouble() ?: (value as? String)?.toDoubleOrNull()
@@ -929,7 +976,8 @@ class PlayerEngine(
                     detectedFormat = currentFormat,
                     containerFps = _state.value.containerFps,
                     thermalStatus = _thermalStatus.value,
-                    adpfStatus = adpfStatus
+                    adpfStatus = adpfStatus,
+                    hdrStatus = _hdrDecision.value.overlayText
                 )
 
 
@@ -986,6 +1034,7 @@ class PlayerEngine(
         }
         handleCreatedAtMs = System.currentTimeMillis()
         hwdecForcedSoftware = false
+        hdrHintApplied = false
         if (handle == 0L) {
             Log.e("VP", "Failed to create mpv handle")
             return true
@@ -1043,6 +1092,7 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_AID, "aid", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_SID, "sid", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_CONTAINER_FPS, "container-fps", MpvFormat.DOUBLE)
+        MpvNative.observeProperty(handle, REPLY_HDR_GAMMA, "video-params/gamma", MpvFormat.STRING)
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -1356,6 +1406,11 @@ class PlayerEngine(
             if (clip != null) {
                 Log.i("VP", "Operating rate for ${clip.format.formatKey} fps=${clip.fps} ${clip.width}x${clip.height} tenBit=${clip.tenBit} hwdec=$hwdecForFile hwdec-codecs=${handleOptions["hwdec-codecs"]} gpu-api=${handleOptions["gpu-api"]} policy=${ratePolicy.token} -> ${rate ?: "none"}")
             }
+
+            // P10-09: HDR output for this file (the previous file's mpv gamma no longer applies).
+            hdrClipTransfer = clip?.hdrTransfer
+            hdrMpvGamma = null
+            evaluateHdr()
 
             val cmd = if (options.isNotEmpty()) {
                 val optStr = options.joinToString(",")

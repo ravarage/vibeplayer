@@ -80,6 +80,14 @@ reports HALs expect, so a vendor HAL may treat the session as stale between repo
 from this scheme rather than from ADPF itself. Unsupported (no service, null session, 3 throws in a row):
 logged once per process (`VP-ADPF`), overlay "unsupported".
 
+**HDR output (P10-09, setting "HDR output (experimental)", default off).** `HdrOutputPolicy.decide(setting, transfer,
+renderer, vo)` (pure) is evaluated by `PlayerEngine.evaluateHdr` on the command thread at every load, setting change and
+change of mpv `video-params/gamma` (which overrides the MediaExtractor hint in `ClipInfo.hdrTransfer`). Active only for
+PQ/HLG on Vulkan + vo=gpu-next (docs/HDR.md); then mpv `target-colorspace-hint=yes`, else `auto` (mpv's default, so nothing
+changes). `PlayerEngine.hdrDecision` drives `PlayerActivity.applyHdrWindowMode`: `Window.colorMode` HDR plus
+`desiredHdrHeadroom`; SDR/0 when inactive, in PiP and in onDestroy. A Vulkan -> GLES fallback reloads the file, which
+re-evaluates to off (renderer GLES). Overlay row `HDR`; logcat tag `VP-HDR`.
+
 ## Player state to Compose
 - `PlayerEngine.state: StateFlow<PlayerState>` for values that change rarely: paused, duration,
   tracks, selected track ids, video size, speed, `hwdecCurrent`, buffering, error, end of file.
