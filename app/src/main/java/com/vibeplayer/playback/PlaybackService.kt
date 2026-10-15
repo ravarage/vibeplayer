@@ -792,6 +792,9 @@ class PlaybackService : Service() {
                 if (currentVideoPath == path) _neighbours.value = updated
             }
         }
+        // An fdclose://N path is owned by this open until it is handed to the engine; a superseded or
+        // cancelled open closes it (unless a newer open uses the same path string).
+        var handedToEngine = false
         loadJob = serviceScope.launch {
             val resolvedFolderKey = folderKey ?: (File(path).parent ?: "")
             // P7-02: key (File.exists/length), per-file row, folder row, app settings, and format detection in parallel,
@@ -971,8 +974,12 @@ class PlaybackService : Service() {
                 audioDelayMs = audioDelayMs,
                 identity = identityKey ?: path
             )
+            handedToEngine = true
             currentKey = key
             if (playAfterLoad) playerEngine.play()
+        }
+        loadJob?.invokeOnCompletion {
+            if (!handedToEngine && currentVideoPath != path) PlayerEngine.closeFdPath(path)
         }
     }
 
