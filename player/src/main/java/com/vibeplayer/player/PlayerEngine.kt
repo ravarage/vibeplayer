@@ -571,6 +571,16 @@ class PlayerEngine(
                         debugSimulateStallOnce = false
                         simulateStall()
                     }
+                    if (_state.value.containerFps == null) {
+                        val mpvFps = MpvNative.getPropertyDouble(handle, "container-fps")
+                        if (SurfaceFrameRateHelper.isValidFps(mpvFps)) {
+                            _state.update { it.copy(containerFps = mpvFps) }
+                        }
+                    }
+                    updateTracks(allowPendingSelection = true)
+                    // After the remembered-track selection (queued just above): a pending external subtitle
+                    // added with "select" then wins over a stale remembered sid, and one added without
+                    // selection leaves that choice alone.
                     executeCommand {
                         assertCommandThread()
                         val pending = pendingSubtitle
@@ -585,13 +595,6 @@ class PlayerEngine(
                             }
                         }
                     }
-                    if (_state.value.containerFps == null) {
-                        val mpvFps = MpvNative.getPropertyDouble(handle, "container-fps")
-                        if (SurfaceFrameRateHelper.isValidFps(mpvFps)) {
-                            _state.update { it.copy(containerFps = mpvFps) }
-                        }
-                    }
-                    updateTracks(allowPendingSelection = true)
                     checkVulkanVoInitialization()
                     checkGlesInitialization()
                 }
