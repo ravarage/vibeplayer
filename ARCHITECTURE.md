@@ -74,6 +74,11 @@ each mpv file-loaded event, also after reconfigure reloads, and each surface att
 or 1.5x the target when `frame-drop-count` + `decoder-frame-drop-count` rose (read bounded on the command
 executor; no report when mpv does not answer). `setPreferPowerEfficiency(true)` only for zero-copy
 `hwdec-current=mediacodec` (HEVC, VP9 rows), false for software (AV1) and copy-back. Overlay row `ADPF`.
+Limits of this reporting (prescribed, kept simple): it never reports below the target, so a boost after a drop
+second has no "work got cheaper" signal to decay on; and one report per second is far slower than the per-frame
+reports HALs expect, so a vendor HAL may treat the session as stale between reports. A null A/B result may come
+from this scheme rather than from ADPF itself. Unsupported (no service, null session, 3 throws in a row):
+logged once per process (`VP-ADPF`), overlay "unsupported".
 
 ## Player state to Compose
 - `PlayerEngine.state: StateFlow<PlayerState>` for values that change rarely: paused, duration,

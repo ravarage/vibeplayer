@@ -45,9 +45,6 @@ class PerformanceHintController(
             null
         }
 
-    /** Set once a session could not be created at all (no service or a null session); not retried. */
-    @Volatile private var unsupported = false
-    @Volatile private var loggedUnsupported = false
 
     fun start(scope: CoroutineScope) {
         scope.launch(Dispatchers.IO) {
@@ -78,6 +75,12 @@ class PerformanceHintController(
         val manager = hintManager ?: return markUnsupported("no PerformanceHintManager service")
         var session: PerformanceHintManager.Session? = null
         var tids = IntArray(0)
+        // Each failing call kind is logged once per session, not every second.
+        val warned = HashSet<String>()
+        fun warnOnce(kind: String, e: Exception) {
+            if (warned.add(kind)) Log.w(TAG, "$kind failed: ${e.message}")
+        }
+        var createFailures = 0
         try {
             var lastLoadSerial = -1
             var lastSurfaceEpoch = -1
@@ -107,8 +110,12 @@ class PerformanceHintController(
                             val created = try {
                                 manager.createHintSession(found, wantedTarget)
                             } catch (e: Exception) {
-                                // A thread can exit between the scan and the call; retry next second.
-                                Log.w(TAG, "createHintSession failed: ${e.message}")
+                                // A thread can exit between the scan and the call; retry next second,
+                                // but a call that keeps throwing means no ADPF on this device.
+                                warnOnce("createHintSession", e)
+                                if (++createFailures >= MAX_CREATE_FAILURES) {
+                                    return markUnsupported("createHintSession threw $createFailures times: ${e.message}")
+                                }
                                 delay(TICK_MS)
                                 secondsSinceLoad++
                                 continue
@@ -124,7 +131,7 @@ class PerformanceHintController(
                                 Log.i(TAG, "session threads: ${tids.size} -> ${found.size}")
                                 tids = found
                             } catch (e: Exception) {
-                                Log.w(TAG, "setThreads failed, keeping ${tids.size} threads: ${e.message}")
+                                warnOnce("setThreads (keeping the previous threads)", e)
                             }
                         }
                     }
@@ -137,7 +144,7 @@ class PerformanceHintController(
                             active.updateTargetWorkDuration(wantedTarget)
                             target = wantedTarget
                         } catch (e: Exception) {
-                            Log.w(TAG, "updateTargetWorkDuration failed: ${e.message}")
+                            warnOnce("updateTargetWorkDuration", e)
                         }
                     }
                     val wantPower = AdpfHintPolicy.preferPowerEfficiency(state.hwdecCurrent)
@@ -147,7 +154,7 @@ class PerformanceHintController(
                             powerEfficient = wantPower
                             Log.i(TAG, "preferPowerEfficiency=$wantPower (hwdec=${state.hwdecCurrent})")
                         } catch (e: Exception) {
-                            Log.w(TAG, "setPreferPowerEfficiency failed: ${e.message}")
+                            warnOnce("setPreferPowerEfficiency", e)
                         }
                     }
                     val drops = engine.readTotalDropCount()
@@ -156,7 +163,7 @@ class PerformanceHintController(
                         try {
                             active.reportActualWorkDuration(reported)
                         } catch (e: Exception) {
-                            Log.w(TAG, "reportActualWorkDuration failed: ${e.message}")
+                            warnOnce("reportActualWorkDuration", e)
                         }
                         previousDrops = drops
                     }
@@ -199,5 +206,10 @@ class PerformanceHintController(
     companion object {
         private const val TAG = "VP-ADPF"
         private const val TICK_MS = 1_000L
+        private const val MAX_CREATE_FAILURES = 3
+
+        /** Set once a session cannot be created at all (no service, null session, repeated throws); per process. */
+        @Volatile private var unsupported = false
+        @Volatile private var loggedUnsupported = false
     }
 }
