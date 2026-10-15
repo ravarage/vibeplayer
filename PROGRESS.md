@@ -129,7 +129,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 
 | P10-03 | Display cutout | IN PROGRESS | AGY-1 | pending | Code done, builds cleanly, unit tests pass. Window layoutInDisplayCutoutMode = ALWAYS in PlayerActivity; controls layer padded by WindowInsets.displayCutout, video extends into punch-hole. Device check open: punch-hole area used in zoom/fill aspect modes, controls clear of notch. |
 | P10-04 | Back handling audit | IN PROGRESS | AGY-1 | pending | Code done, builds cleanly, unit tests pass. Added enableOnBackInvokedCallback="true" to manifest; audited all back paths (lock state, open sheets, PiP, settings, browser); zero KEYCODE_BACK dependencies; BackHandler handles open sheets dismiss, lock state, and settings/browser. Device check open: predictive back gestures and transitions. |
-| P10-05 | Exit diagnostics | TODO | | | |
+| P10-05 | Exit diagnostics | IN PROGRESS | AGY-1 | pending | Code done, builds cleanly, unit tests pass. ExitDiagnostics queries ActivityManager.getHistoricalProcessExitReasons on app start off main thread (IO dispatcher), logs reason, description, pss/rss, timestamp to logcat with tag VibeExit for exits newer than last check, and shows recent exits in Settings screen About section. Device check open: VibeExit logcat line after system exit / kill. |
 
 
 ### P4-11 review item dispositions

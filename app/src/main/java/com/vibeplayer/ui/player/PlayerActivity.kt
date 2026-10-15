@@ -367,6 +367,9 @@ class PlayerActivity : ComponentActivity() {
         }
         resolveVideoPath(deferContent = true)
         startStartupWork(engine)
+        lifecycleScope.launch(Dispatchers.IO) {
+            com.vibeplayer.diagnostics.ExitDiagnostics.checkAndLog(this@PlayerActivity)
+        }
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeControlStream = AudioManager.STREAM_MUSIC
