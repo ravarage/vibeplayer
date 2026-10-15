@@ -23,6 +23,19 @@ resets it. Observed limit text: `ERROR: You've hit your usage limit ... try agai
 - Output is one JSON object: `{"status":"SUCCESS","response":"...","denied_actions":[...],"usage":{...}}`.
   Continue a thread with `--conversation <id>`.
 
+### cline (DeepSeek) — `/home/rava/.bun/bin/cline`
+
+User's choice for faster responses than agy (2026-10-15): DeepSeek V4.1 Flash via Cline CLI 2.17.
+
+```sh
+cline -y --json --auto-condense -c <dir> "<task>" < /dev/null > <scratchpad>/cline_<task>_<n>.json 2>&1
+```
+
+- Cline labels the model `deepseek-chat`; the DeepSeek API serves that id with `deepseek-flash`
+  (checked 2026-10-15), so no `-m` is needed. API models: `deepseek-flash`, `deepseek-v4-pro`.
+- 128K context: give it small, single-goal tasks; `--auto-condense` for longer ones.
+- Same rules as agy: AGENT_RULES.md and tools/agents/standing_rules.txt in the prompt; review its commits.
+
 ## Usage limits: stop and tell the user
 
 The user has 3 Antigravity accounts and switches between them manually. Accounts are managed with
