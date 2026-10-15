@@ -53,8 +53,8 @@ Details and methods in [BENCHMARK.md](BENCHMARK.md).
   | VP9 1080p | GLES zero-copy | 339 mA | 0 | GLES copy-back 794 mA |
   | AV1 4K (dav1d) | Vulkan `gpu` | 1563 mA | 362 | Vulkan `gpu-next` 1340 mA, 385 drops; GLES 1668 mA, 918 drops |
 
-  Zero-copy (GLES only) uses the least CPU and power wherever it does not stall; copy-back on Vulkan costs
-  more for HEVC and VP9. The HEVC 4K drops come from the decoder running below real time without an
+  For HEVC and VP9, zero-copy on OpenGL ES uses far less power and CPU than any copy-back path; for H.264,
+  Vulkan `gpu-next` copy-back measured lowest (and zero-copy stalls at start more often, B-08). The HEVC 4K drops come from the decoder running below real time without an
   operating-rate hint (device A/B: `operating_rate=120` gave 0 drops); that fix is pending its device check.
 
 ## Best OS
