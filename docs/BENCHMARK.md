@@ -318,3 +318,25 @@ deliver far fewer than 60 frames/s as mpv drives it; `operating_rate=120` brings
 decodes), then re-run P6-08 for HEVC 4K and AV1-free rows. Picture visible was not re-checked per row (benchmark
 runs), and current was not comparable (charging).
 
+
+## Shader presets on OpenGL ES: known issues (P8-02, 2026-10-15)
+
+- **Anime4K_Clamp_Highlights does not compile on the phone's GLES driver (gpu-next).** Device check
+  (PROGRESS P8-02): presets A, B and C log `'MAINPRESUB_texOff' : no matching overloaded function found` /
+  `'get_luma' : no matching overloaded function` for the stage's first pass (`//!HOOK MAIN`, `//!BIND HOOKED`,
+  `MAIN_texOff(vec2(i - KERNELHALFSIZE, 0))`). libplacebo binds a `MAIN` hook under the name `MAINPRESUB` and
+  emits `#define MAIN_texOff MAINPRESUB_texOff` plus the function-like `MAINPRESUB_texOff(off)`
+  (`src/shaders/custom_mpv.c`, `bind_pass_tex`), so the error says the Adreno GLSL front end left
+  `MAINPRESUB_texOff` unexpanded. The same pass, rebuilt with exactly those defines, compiles with
+  `glslangValidator` for `#version 300 es`, `310 es` and `320 es`, and it compiles on Vulkan (shaderc); the
+  CNN stages use the same `MAIN_texOff` alias (inside their own `go_0` macro) and compile on GLES. The
+  cause is therefore the driver's preprocessor, not invalid GLSL, and a shader edit could not be verified
+  without the phone. Because the failed first pass never saves `STATSMAX`, the stage's later passes had no
+  input either; libplacebo then disables that one hook (`rr->disabled_hooks` in `src/renderer.c`, per user-shader
+file) and the other stages keep running, so on GLES the stage never ran. Fix (P8-02 fix): `ShaderPreset.getShaderFiles(mode,
+  renderer)` leaves `Anime4K_Clamp_Highlights.glsl` out of A, B and C when the handle's renderer is OpenGL
+  ES; Vulkan keeps the full chain and GSR is unchanged. The picture on GLES is the same as before; only the
+  compile error in the log goes away.
+- **GLES gpu-next logs `Can't generate LUT: no compatible methods!` / `Failed generating/uploading block
+  offsets LUT!` with no shader loaded at all.** This is libplacebo on the GLES backend (a LUT format or
+  method the driver does not offer), not caused by the presets and not fixable in the app; known, left as is.

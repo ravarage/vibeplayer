@@ -1290,9 +1290,12 @@ class PlayerEngine(
     private fun applyShaderPresetInternal() {
         assertCommandThread()
         if (handle == 0L) return
-        val glslShadersValue = currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory)
+        // The renderer of the current handle: a Vulkan -> GLES fallback creates a new handle and applies
+        // the preset again, so the GLES chain (without Clamp_Highlights, P8-02) is picked up there.
+        val renderer = playbackConfig.renderer
+        val glslShadersValue = currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory, renderer)
         MpvNative.setPropertyString(handle, "glsl-shaders", glslShadersValue)
-        Log.i("VP", "Applied shader preset $currentShaderPreset (mode=${playbackConfig.mode}): $glslShadersValue")
+        Log.i("VP", "Applied shader preset $currentShaderPreset (mode=${playbackConfig.mode}, renderer=$renderer): $glslShadersValue")
     }
 
     fun setHwdec(hwdec: String) {

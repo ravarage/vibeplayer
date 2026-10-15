@@ -15,13 +15,24 @@ enum class ShaderPreset(val displayName: String) {
     /**
      * Returns the ordered list of shader file names for this preset.
      * Empty if [mode] is not [PlaybackMode.QUALITY] or if preset is [NONE].
+     *
+     * On OpenGL ES ([renderer] = [Renderer.GLES]) the Anime4K chains leave out [CLAMP_HIGHLIGHTS]: its
+     * first pass fails to compile on the phone's GLES driver under gpu-next (P8-02 device check:
+     * "'MAINPRESUB_texOff' : no matching overloaded function found"), which also leaves its two later
+     * passes without their STATSMAX input, so the stage never ran on GLES anyway. The same source
+     * compiles with glslang and on Vulkan, where the stage stays.
      */
-    fun getShaderFiles(mode: PlaybackMode): List<String> {
+    fun getShaderFiles(mode: PlaybackMode, renderer: Renderer = Renderer.VULKAN): List<String> {
+        val files = chain(mode)
+        return if (renderer == Renderer.GLES) files.filter { it != CLAMP_HIGHLIGHTS } else files
+    }
+
+    private fun chain(mode: PlaybackMode): List<String> {
         if (mode != PlaybackMode.QUALITY) return emptyList()
         return when (this) {
             NONE -> emptyList()
             ANIME4K_A -> listOf(
-                "Anime4K_Clamp_Highlights.glsl",
+                CLAMP_HIGHLIGHTS,
                 "Anime4K_Restore_CNN_M.glsl",
                 "Anime4K_Upscale_CNN_x2_M.glsl",
                 "Anime4K_AutoDownscalePre_x2.glsl",
@@ -29,7 +40,7 @@ enum class ShaderPreset(val displayName: String) {
                 "Anime4K_Upscale_CNN_x2_S.glsl"
             )
             ANIME4K_B -> listOf(
-                "Anime4K_Clamp_Highlights.glsl",
+                CLAMP_HIGHLIGHTS,
                 "Anime4K_Restore_CNN_Soft_M.glsl",
                 "Anime4K_Upscale_CNN_x2_M.glsl",
                 "Anime4K_AutoDownscalePre_x2.glsl",
@@ -37,7 +48,7 @@ enum class ShaderPreset(val displayName: String) {
                 "Anime4K_Upscale_CNN_x2_S.glsl"
             )
             ANIME4K_C -> listOf(
-                "Anime4K_Clamp_Highlights.glsl",
+                CLAMP_HIGHLIGHTS,
                 "Anime4K_Upscale_Denoise_CNN_x2_M.glsl",
                 "Anime4K_AutoDownscalePre_x2.glsl",
                 "Anime4K_AutoDownscalePre_x4.glsl",
@@ -53,8 +64,8 @@ enum class ShaderPreset(val displayName: String) {
      * Returns the absolute paths of shaders in this preset by prepending [baseDir].
      * Empty if [mode] is not [PlaybackMode.QUALITY] or if preset is [NONE].
      */
-    fun getShaderPaths(mode: PlaybackMode, baseDir: String): List<String> {
-        val files = getShaderFiles(mode)
+    fun getShaderPaths(mode: PlaybackMode, baseDir: String, renderer: Renderer = Renderer.VULKAN): List<String> {
+        val files = getShaderFiles(mode, renderer)
         if (files.isEmpty()) return emptyList()
         val dir = baseDir.trimEnd('/')
         return if (dir.isEmpty()) files else files.map { "$dir/$it" }
@@ -64,8 +75,13 @@ enum class ShaderPreset(val displayName: String) {
      * Formats the shader file paths as a colon-separated string suitable for mpv's
      * `glsl-shaders` property/option, or empty string if no shaders are active.
      */
-    fun toGlslShadersProperty(mode: PlaybackMode, baseDir: String): String {
-        val paths = getShaderPaths(mode, baseDir)
+    fun toGlslShadersProperty(mode: PlaybackMode, baseDir: String, renderer: Renderer = Renderer.VULKAN): String {
+        val paths = getShaderPaths(mode, baseDir, renderer)
         return if (paths.isEmpty()) "" else paths.joinToString(":")
+    }
+
+    companion object {
+        /** Anime4K de-ring stage (hooks MAIN and PREKERNEL); left out on OpenGL ES, see [getShaderFiles]. */
+        const val CLAMP_HIGHLIGHTS = "Anime4K_Clamp_Highlights.glsl"
     }
 }
