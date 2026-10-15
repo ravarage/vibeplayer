@@ -164,10 +164,60 @@ Dalvik 6 MB.
 "After" = release build of main cb2abcf+ (CLAUDE-V2, 2026-10-15 04:44-04:48, phone charging, Efficient mode,
 Renderer Auto: H.264 copy-back on Vulkan gpu-next, AV1 software on Vulkan gpu). Raw rows in docs/meminfo.csv.
 
+### Re-measurement on main 0a5cfaf (CLAUDE-A, 2026-10-16 00:13-00:21, release build, phone on battery)
+
+Same method (`tools/meminfo.py`), release build installed in place over the debug build. Playback started with
+`am start -a android.intent.action.VIEW -d file:///sdcard/Movies/vibeplayer-test/<file> -t 'video/*' --el start_ms 0`
+(no `-n`, so PlayerActivity handles the VIEW intent). "Browser after closing the player" = play 1080p, press
+BACK (the process stays alive), then open the browser; a `force-stop` instead kills the process and there is no
+PSS to read. Raw rows in docs/meminfo.csv.
+
+| State | TOTAL PSS | Native heap | Graphics | Dalvik | Target |
+|---|---|---|---|---|---|
+| Browser idle after cold start | 81 MB | 13 MB | 43 MB | 7 MB | |
+| 1080p H.264 playing 2 min (QUALITY/Vulkan gpu-next) | 218 MB | 122 MB | 55 MB | 4 MB | <= 220 MB: met |
+| 1080p H.264 playing 2 min (Efficient, table row) | 210 MB | 118 MB | 55 MB | 2 MB | <= 220 MB: met |
+| 4K AV1 playing 2 min (av1_4k.mp4, software dav1d) | 551 MB | 456 MB | 60 MB | 3 MB | (record only) |
+| Mini player (PiP, 1080p H.264) | 164 MB | 119 MB | 8 MB | 2 MB | |
+| Browser after closing the player (BACK, then browser) | 70 MB | 33 MB | 1 MB | 2 MB | <= 150 MB: met |
+
+Both 1080p rows are at or under the 220 MB budget and the browser-after-player row is well under 150 MB. The
+4K AV1 row is dominated by the dav1d software decoder's frame buffers (native heap 456 MB) and is recorded
+only, as in the earlier run. Not measured: double-tap seek-back latency and dropped frames across the new vs
+legacy cache (no VP-Perf mark after a seek; the -10 s seek was issued in both runs without errors).
+
 A/B on the debug build (same file, 2 min from 5 s): new 32/16 MiB cache 260 MB PSS (native 121 MB) vs
 `legacy_cache=true` (150/50 MiB) 419 MB (native 289 MB): the demuxer cache accounts for ~160 MB. The debug build
 is ~45 MB above release. Not measured: double-tap seek-back latency (no VP-Perf mark after a seek; the -10 s
 seek was issued in both runs without errors) and dropped frames across the A/B.
+
+## Idle cost (P7-06)
+
+Method (CLAUDE-A, 2026-10-16 00:21-00:26, release build of main 0a5cfaf, phone on battery): open
+`ichiban.mp4` (H.264 1080p, Efficient table row), pause with `KEYCODE_MEDIA_PAUSE`, read the app's CPU time
+and context switches from `/proc/<pid>/stat` and `/proc/<pid>/status`, turn the screen off with
+`KEYCODE_POWER` (`mWakefulness=Dozing`), wait 5 min, read the same counters again. The app process stayed
+alive throughout (same pid).
+
+| Counter | Paused, screen on (t=0) | After 5 min, screen off | Delta |
+|---|---|---|---|
+| utime (jiffies) | 300 | 392 | +92 |
+| stime (jiffies) | 119 | 169 | +50 |
+| utime+stime | 419 | 561 | **+142 jiffies = 1.42 s CPU over 300 s = 0.47 % of one core** |
+| voluntary_ctxt_switches | 592 | 736 | +144 (0.48 /s) |
+| nonvoluntary_ctxt_switches | 224 | 268 | +44 |
+
+Wakeups: `dumpsys power` shows no wakelock held by `com.vibeplayer` during the window (the only partial
+wakelocks are `com.truecaller`'s job and the doze dream), and `dumpsys alarm` lists no alarm for the package.
+The last app wakelock in the log is the `*launch*`/notification pair from starting playback at 00:13, before
+the test. So while paused with the screen off the app neither holds a wakelock nor schedules a wakeup, and it
+uses about half a percent of one core.
+
+Note: the P7-06 acceptance in TASKS.md asks for a power figure ("efficient-mode power for a 10 min clip is not
+higher than the P1-06 figure"), but P1-06 has no power figure (the phone was charging then, see the P1-06
+section above), so the acceptance cannot be evaluated as written. The CPU-time and wakeup numbers above are
+the measurable part of "no position/stat updates or recomposition while controls are hidden"; the earlier
+gfxinfo run (P7-03/P7-05/P7-06 section) already showed 0 UI frames drawn in 60 s of hidden-controls playback.
 
 ## B-08 stall recovery (2026-10-14, build 1cc3d61, default path, tools/stall_test.sh, ichiban.mp4, cold start each open)
 | run | opens | stalls | recovered by watchdog | permanent black | ANR |
