@@ -163,6 +163,13 @@ class PlayerEngine(
      * tasks are dropped with the queue when a stuck handle is abandoned, and the new handle needs them.
      */
     @Volatile private var requestedConfig: PlaybackConfig? = null
+    /**
+     * The newest configuration asked for: [playbackConfig] until a queued [reconfigure] (e.g. a Vulkan ->
+     * GLES or GLES -> software fallback) has run. A caller deriving a new configuration from the current
+     * one (P10-02 thermal step-down) must start from this, or its reconfigure, queued behind the fallback,
+     * would bring the failed renderer or decoder back.
+     */
+    val latestRequestedConfig: PlaybackConfig get() = requestedConfig ?: playbackConfig
     @Volatile private var requestedTrackSelection: PendingTrackSelection? = null
     @Volatile private var restartSeenSerial = -1
     /** Events from an abandoned handle carry an old token and are dropped. */
