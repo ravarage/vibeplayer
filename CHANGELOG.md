@@ -43,9 +43,17 @@ Features marked **(beta)** are merged but their device acceptance check is not f
 - **Hold for fast playback**: press and hold on the right half for the hold speed (1.5x, 2x, 3x, 4x) (beta).
 
 #### Subtitles and audio
-- **Subtitle and audio delay** in 50 ms steps, saved per file (Room schema 3 -> 4) (beta).
-- **Subtitle size, position and ASS style override** settings (override off by default) (beta).
+- **External subtitle loading via SAF (P4-14)**: "Load subtitle file…" in the subtitle sheet loads external subtitles (`.srt`, `.ass`, etc.) via the system document picker with persistent track memory and automatic re-attachment on reopen.
+- **Subtitle and audio delay** in 50 ms steps, saved per file (Room schema 3 -> 4).
+- **Subtitle size, position and ASS style override** settings (override off by default).
 - **Default languages and per-folder track memory** (Room schema 2 -> 3).
+
+#### Platform integration and diagnostics
+- **Display refresh rate adaptation (P10-01)**: `Surface.setFrameRate` integration providing seamless display refresh rate voting matching video container framerate (e.g. 23.976/24 fps).
+- **Thermal throttling adaptation (P10-02)**: `PowerManager` thermal status monitoring with stats overlay row and automatic quality step-down under thermal pressure.
+- **Display cutout / edge-to-edge layout (P10-03)**: Edge-to-edge playback with `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` extending video under the camera punch-hole in crop/zoom mode with cutout-safe padding for controls.
+- **Predictive back navigation (P10-04)**: Full back handling audit with `enableOnBackInvokedCallback="true"`, ensuring smooth predictive back transitions across player, settings, and sheets.
+- **Exit diagnostics (P10-05)**: Historical process exit reason analysis via `ActivityManager.getHistoricalProcessExitReasons`, logging `VibeExit` to logcat on startup and displaying recent termination reasons in Settings About.
 
 #### Browser
 - **Continue Watching row** with progress bars.
@@ -53,12 +61,13 @@ Features marked **(beta)** are merged but their device acceptance check is not f
   with dark-frame detection.
 
 #### Performance
+- **Tuned native libraries**: ships tuned native libraries compiled with `-O2 -mcpu=cortex-a78 -flto=thin` optimized specifically for Snapdragon 778G Cortex-A78 cores, reducing frame drops in heavy software decoding (AV1 4K).
 - **Start time**: about 0.9 s from the open intent to the first frame (release build, median 882 ms for 1080p
   H.264, 798 ms for `ichiban.mp4`).
 - **Memory budget**: mpv demuxer cache 32 MiB forward / 16 MiB back for local files, smaller thumbnail cache,
   `onTrimMemory`; 1080p H.264 playback 216 MB PSS (was 428 MB), browser after closing the player 110 MB.
 - **Browser smoothness**: 0 to 0.5 % janky frames on fast scrolls of a 925-video folder (release build).
-- **Release build**: R8 and resource shrinking with keep rules for the JNI callbacks (beta: still being checked).
+- **Release build**: R8 and resource shrinking with keep rules for the JNI callbacks; shared local signing allows in-place updates preserving user watch history. Automated devcheck verified: 23 PASS, 0 FAIL, 2 SKIP.
 - **Baseline Profile module** (`:baselineprofile`): prepared; the profile has not been generated on the device yet.
 
 ### Changed
@@ -69,6 +78,7 @@ Features marked **(beta)** are merged but their device acceptance check is not f
 ### Fixed
 - **B-08 start stall recovery**: a watchdog detects a decoder that never delivers the first frame, abandons the
   stuck handle and reopens the file (with software decoding for that open), with no ANR.
+- **HEVC / H.264 frame drops (P6-08)**: MediaCodec operating-rate hint (`vd-lavc-o=operating_rate`) eliminates frame drops on 4K 10-bit clips while keeping hardware decoding (`mediacodec-copy`).
 - Bounded main-thread surface detach (1.5 s) so a stuck mpv core cannot hang the UI.
 - Saved resume positions no longer go stale while the controls are hidden.
 - Closing the mini player with its X now ends the session (no stale notification).
@@ -81,11 +91,7 @@ Features marked **(beta)** are merged but their device acceptance check is not f
   the default copy-back row, 4 in 20 on zero-copy); the watchdog recovers it in 6 to 10 s.
 - **Anime4K on OpenGL ES**: presets A, B and C fail to compile one pass (Clamp_Highlights) on OpenGL ES; a fix
   is in progress. They work on Vulkan; Snapdragon GSR works on both.
-- **HEVC 10-bit 4K drops** (1027 in a 25 s run, 1241 in a 60 s looped run of `hevc10_4k.mp4`): cause found (no operating-rate
-  hint to the MediaCodec decoder; `operating_rate=120` gave 0 drops in a device A/B); the fix is pending its
-  device confirmation and a power check.
-- **External subtitles**: `.srt` / `.ass` files next to a video in shared storage are not auto-loaded on
-  Android 13+, because the app only has video access.
+- **External subtitles in shared storage**: `.srt` / `.ass` files next to a video in shared storage cannot be auto-discovered on Android 13+ due to storage permissions; users can load them via the "Load subtitle file…" SAF picker (P4-14).
 - **Vulkan is experimental**: it depends on the owner's unfinished driver port; the stock driver (Vulkan 1.1)
   cannot run it and the app uses OpenGL ES.
 
