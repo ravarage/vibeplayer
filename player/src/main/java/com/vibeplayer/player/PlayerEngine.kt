@@ -132,6 +132,8 @@ class PlayerEngine(
     private val loadSerial = AtomicInteger(0)
     /** Highest load serial whose loadfile command has been issued. */
     @Volatile private var loadIssuedSerial = 0
+    /** Serial of the newest [load] call (reloads by reconfigure and B-08 take serials too). */
+    @Volatile private var latestOpenSerial = 0
     /** Load serial for which a stuck handle was abandoned by [pendingLoadCheck]. */
     @Volatile private var abandonedForSerial = -1
     /**
@@ -993,13 +995,18 @@ class PlayerEngine(
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
-        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity)
+        val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity)
+        lastLoad = request
         val serial = loadSerial.incrementAndGet()
+        latestOpenSerial = serial
         // B-08: if the command thread is stuck in a stalled decoder, this load never runs; the
         // watchdog then abandons the stuck handle (next/previous during a stall).
         schedulePendingLoadCheck(serial, android.os.SystemClock.elapsedRealtime(), StallPolicy.LOAD_START_CHECK_MS)
         scope.launch {
             if (hadOverride && handle != 0L) MpvNative.setPropertyDouble(handle, "speed", 1.0)
+            // A reconfigure queued before this open reloads the previous file when it runs and sets
+            // lastLoad to it; the newest open takes it back so a stall recovery or a save uses this file.
+            if (latestOpenSerial == serial && !isStaleCommandThread()) lastLoad = request
             loadInternal(
                 path = path,
                 startPositionMs = startPositionMs,
