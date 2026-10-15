@@ -1159,6 +1159,7 @@ class PlayerEngine(
         }
         lastPlaybackRestartMs = 0L
         seekPending = false
+        hwdecNoSinceMs = 0L
         fallbackCheckJob?.cancel()
         fallbackCheckJob = null
         _zoomState.value = 0.0
