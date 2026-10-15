@@ -40,21 +40,25 @@ class MediaMetadataRetrieverFrameExtractor : FrameExtractor {
             retriever.setDataSource(path)
             val durationUs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull()?.times(1_000L)
-            val times = durationUs?.takeIf { it > 0L }
-                ?.let { listOf(10L, 25L, 50L, 75L).map { percent -> it * percent / 100L }.distinct() }
-                ?: listOf(timeUs)
+            val sync = MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+            val exact = MediaMetadataRetriever.OPTION_CLOSEST
+            // Keyframes first (cheap). A clip whose few keyframes all fall on dark frames (long GOP,
+            // fade from black) gives only black that way, so then decode the exact frame at 50% and
+            // 25%: slower, but it runs only after every keyframe candidate was rejected.
+            val candidates = durationUs?.takeIf { it > 0L }
+                ?.let { d ->
+                    listOf(10L, 25L, 50L, 75L).map { d * it / 100L }.distinct().map { it to sync } +
+                        listOf(50L, 25L).map { (d * it / 100L) to exact }
+                }
+                ?: listOf(timeUs to sync)
             var best: Bitmap? = null
             var bestDetail = 0
-            for (candidateUs in times) {
+            for ((candidateUs, option) in candidates) {
                 val rawBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    retriever.getScaledFrameAtTime(
-                        candidateUs,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                        targetWidth,
-                        targetHeight
-                    ) ?: retriever.getFrameAtTime(candidateUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    retriever.getScaledFrameAtTime(candidateUs, option, targetWidth, targetHeight)
+                        ?: retriever.getFrameAtTime(candidateUs, option)
                 } else {
-                    retriever.getFrameAtTime(candidateUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    retriever.getFrameAtTime(candidateUs, option)
                 } ?: continue
                 val scaled = if (rawBitmap.width > targetWidth * 2 || rawBitmap.height > targetHeight * 2) {
                     val scale = minOf(targetWidth.toFloat() / rawBitmap.width, targetHeight.toFloat() / rawBitmap.height)
@@ -68,7 +72,7 @@ class MediaMetadataRetrieverFrameExtractor : FrameExtractor {
                     best?.recycle()
                     return@withContext scaled
                 }
-                Log.d("VP", "Thumbnail candidate rejected (near-black, detail=$detail) at ${candidateUs / 1000} ms via MediaMetadataRetriever: $path")
+                Log.d("VP", "Thumbnail candidate rejected (near-black, detail=$detail) at ${candidateUs / 1000} ms${if (option == exact) " (exact)" else ""} via MediaMetadataRetriever: $path")
                 if (detail > bestDetail) {
                     best?.recycle()
                     best = scaled

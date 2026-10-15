@@ -41,7 +41,7 @@ class ThumbnailCache(
     private val inFlight = ConcurrentHashMap<String, Deferred<Bitmap?>>()
 
     companion object {
-        const val NEGATIVE_CACHE_VERSION = 4
+        const val NEGATIVE_CACHE_VERSION = 5
 
         /**
          * P7-07: fixed memory budget. Bitmap pixels live in the native heap (counted in PSS), so the old
