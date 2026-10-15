@@ -34,7 +34,8 @@ Variants (see `ARCHITECTURE.md`):
 |---|---|---|
 | `native/build.sh` | default: Vulkan-enabled (libplacebo + shaderc), `-O2` | `player/src/main/jniLibs/arm64-v8a` |
 | `VULKAN=0 native/build.sh` | OpenGL ES only | `native/out/gles/arm64-v8a` |
-| `TUNED=1 native/build.sh` | `-O2 -mcpu=cortex-a78 -flto=thin` plus Vulkan (script default VULKAN=1) | `native/out/tuned/arm64-v8a` |
+| `native/build.sh` (default since 2026-10-15) | tuned `-O2 -mcpu=cortex-a78 -flto=thin` plus Vulkan | `player/src/main/jniLibs/arm64-v8a` |
+| `TUNED=0 native/build.sh` | generic `-O2` plus Vulkan | `native/out/generic/arm64-v8a` |
 | `TUNED=1 VULKAN=0 native/build.sh` | tuned, OpenGL ES only | `native/out/tuned-gles/arm64-v8a` |
 
 The tuned variants are experimental (P9 is not finished). `native/build.sh` is authoritative for output paths (ARCHITECTURE.md lists older names). Each build cleans the shared prefix first.

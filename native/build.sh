@@ -55,15 +55,16 @@ fi
 select_vulkan_patch
 
 tuned=0
-[[ "${TUNED:-0}" == "1" ]] && tuned=1
+[[ "${TUNED:-1}" == "1" ]] && tuned=1
 vulkan=0
 [[ "${VULKAN:-1}" == "1" ]] && vulkan=1
 # Since 2026-10-13 (phone has a Vulkan 1.3 driver) the default libraries include Vulkan.
-# VULKAN=0 builds the GLES-only variant; TUNED=1 adds the P9 flags.
+# Since 2026-10-15 the default is also tuned (P9 flags; user decision): TUNED=0 builds the generic
+# -O2 libraries into native/out/generic. VULKAN=0 builds the GLES-only variants.
 variant=default
-if (( tuned && vulkan )); then variant=tuned
-elif (( tuned )); then variant=tuned-gles
-elif (( ! vulkan )); then variant=gles
+if (( tuned && ! vulkan )); then variant=tuned-gles
+elif (( ! tuned && vulkan )); then variant=generic
+elif (( ! tuned )); then variant=gles
 fi
 
 if (( tuned )); then export NATIVE_TUNED=1; else export NATIVE_TUNED=0; fi
