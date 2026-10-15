@@ -22,10 +22,11 @@ object SubtitleCommands {
      *
      * @param fdPath The descriptor URL, e.g. `fdclose://<fd>`.
      * @param title The track title to display in mpv (e.g. file display name).
-     * @param select If true, selects the track immediately ("select"); otherwise adds it without selecting ("cached").
+     * @param select If true, selects the track immediately ("select"); otherwise adds it without selecting
+     *   ("auto"). Not "cached": mpv's `cached` flag also selects the track.
      */
     fun buildSubAddArgs(fdPath: String, title: String? = null, select: Boolean = true): Array<String> {
-        val flag = if (select) "select" else "cached"
+        val flag = if (select) "select" else "auto"
         return if (!title.isNullOrEmpty()) {
             arrayOf("sub-add", fdPath, flag, title)
         } else {
