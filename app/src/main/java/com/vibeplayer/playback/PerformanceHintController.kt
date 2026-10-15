@@ -40,7 +40,7 @@ class PerformanceHintController(
 ) {
     private val hintManager: PerformanceHintManager? =
         try {
-            context.getSystemService(Context.PERFORMANCE_HINT_SERVICE) as? PerformanceHintManager
+            context.getSystemService(PerformanceHintManager::class.java)
         } catch (e: Exception) {
             null
         }

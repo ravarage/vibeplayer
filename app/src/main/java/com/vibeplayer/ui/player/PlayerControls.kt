@@ -608,9 +608,8 @@ private fun SeekControls(
     onScrubbingChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val positionSeconds by remember(positionFlow) {
-        positionFlow.map { it / 1000 }.distinctUntilChanged()
-    }.collectAsState(initial = positionFlow.value / 1000)
+    val positionMs by positionFlow.collectAsState()
+    val positionSeconds = positionMs / 1000
     var userSeeking by remember { mutableStateOf(false) }
     var seekProgress by remember { mutableFloatStateOf(0f) }
 
