@@ -295,3 +295,26 @@ on (`onPropertyChange: hwdec-current = mediacodec`): an option that breaks Media
 mpv fall back to software decoding, and the CSV has no hwdec column, so discard such rows. Then compare
 `steady_drops`, `estimated_vf_fps`, `container_fps` and `display_fps`.
 
+### Device result (2026-10-15 05:20-05:31, CLAUDE-V2, debug cb2abcf+, driver c0b92d25178c8b21, charging, 25 s, no loop, GLES zero-copy)
+
+The broadcast only plays when Vibe Player is in front: from the home screen Android blocks the runner's
+activity start ("Background activity launch blocked", goo.gle/android-bal) and the run samples time-pos 0. Start
+`com.vibeplayer/.MainActivity` first (and add `-f 32` after a force-stop). Every row below logged the options as
+applied and `hwdec-current = mediacodec`.
+
+| mpv_opts | steady drops / 25 s | time-pos at 24 s | app CPU | note |
+|---|---|---|---|---|
+| none (baseline) | 1027, repeat 1025 | 23.4 | 18 % | clip is 60 fps (container_fps 60): ~41 of 60 frames/s dropped |
+| video-sync=desync;untimed=yes;framedrop=no | 0 (drops disabled) | 23.3 | 25 % | unpaced decode still only keeps real time |
+| **vd-lavc-o=operating_rate=120** | **0, repeat 0** | 24.3 | 27 % | H1 confirmed: codec clock hint removes the drops |
+| vd-queue-enable=yes | 1006 | | 19 % | no effect |
+| display-fps-override=120 | 1032 | | 18 % | no effect (H2 rejected) |
+| hwdec-extra-frames=12 | 1027 | | 18 % | no effect (H4 rejected) |
+
+Conclusion: hypothesis 1. Without a frame-rate / operating-rate hint the HEVC Main10 4K decoder runs at clocks that
+deliver far fewer than 60 frames/s as mpv drives it; `operating_rate=120` brings it to real time with 0 drops at
++9 points app CPU. Candidate default (not applied, needs a reviewer decision and a power check on battery): pass
+`vd-lavc-o=operating_rate=<2 x container fps>` for MediaCodec-decoded clips above 30 fps (or for all hardware
+decodes), then re-run P6-08 for HEVC 4K and AV1-free rows. Picture visible was not re-checked per row (benchmark
+runs), and current was not comparable (charging).
+
