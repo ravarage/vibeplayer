@@ -14,30 +14,47 @@ It is developed for one phone (POCO X5 Pro 5G) and published as is.
 
 ## Screenshots
 
-Screenshots will be added later.
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/library.png" width="160" alt="Library"><br>Library</td>
+    <td align="center"><img src="docs/screenshots/player.png" width="160" alt="Player"><br>Player</td>
+    <td align="center"><img src="docs/screenshots/subtitles.png" width="160" alt="Subtitles"><br>Subtitles</td>
+    <td align="center"><img src="docs/screenshots/settings.png" width="160" alt="Settings"><br>Settings</td>
+    <td align="center"><img src="docs/screenshots/pip.png" width="160" alt="Picture-in-picture"><br>Picture-in-Picture</td>
+  </tr>
+</table>
 
 ## Features
 
 Features marked **beta** are merged but their device check is not finished (see [PROGRESS.md](PROGRESS.md)).
 
-- Gestures: brightness, volume, swipe to seek, double-tap skip, pinch zoom and pan, lock, haptics;
-  hold for fast playback (**beta**)
+- Gestures: brightness (left vertical swipe), volume (right vertical swipe), horizontal swipe seek with position preview, double-tap skip, pinch zoom and pan, lock, haptics; hold for fast playback (**beta**)
 - Hardware decoding of H.264, HEVC and VP9 through MediaCodec; AV1 with dav1d on all cores
 - Styled ASS subtitles with embedded fonts (libass); audio and subtitle track pickers
-- Subtitle and audio delay in 50 ms steps, saved per file (**beta**)
-- Subtitle size, position and ASS style override settings (**beta**)
+- External subtitle loading via Storage Access Framework (SAF) document picker with persistent track memory and automatic re-attachment on reopen
+- Subtitle and audio delay in 50 ms steps, saved per file
+- Subtitle size, position and ASS style override settings
 - Speed 0.25x to 4x with pitch correction; aspect modes (fit, crop, stretch, 16:9, 4:3)
 - Per-file memory of position, tracks, speed and aspect; per-folder track memory and default languages
 - Auto-play of the next file in the folder; previous / next
-- Picture-in-picture mini player
+- Picture-in-picture mini player with aspect-ratio clamping, auto-enter on home, and auto-advance inside the mini player
 - Background playback in a foreground service with a media notification (**beta**)
-- Folder browser with thumbnails (software thumbnails for AV1 and 10-bit video) and a Continue Watching row
-- Best configuration per format chosen before opening (Auto renderer, the default), from a table measured on the
-  reference phone and keyed by the Vulkan driver build, with a Vulkan -> OpenGL ES -> software fallback chain
+- Folder browser with thumbnails (software thumbnails for AV1 and 10-bit video with dark-frame detection) and a Continue Watching row with progress bars
+- Best configuration per format chosen before opening (Auto renderer, the default), from a table measured on the reference phone and keyed by the Vulkan driver build, with a Vulkan -> OpenGL ES -> software fallback chain
 - Renderer setting: Auto, OpenGL ES, or Vulkan (experimental: needs the owner's driver port)
 - Quality mode (`gpu-next`, MediaCodec copy-back) next to the Efficient mode (**beta**)
 - Anime4K (A, B, C) and Snapdragon GSR shader presets in Quality mode (**beta**)
-- Starts playing in about 0.9 s; about 216 MB of memory while playing 1080p H.264 (release build)
+- Platform integration (Android 17):
+  - Display refresh rate adaptation via `Surface.setFrameRate` matching video container framerate
+  - Thermal throttling adaptation (`PowerManager` monitoring with automatic quality step-down) (**beta**)
+  - Edge-to-edge layout with display cutout support (`LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS`)
+  - Predictive back navigation (`enableOnBackInvokedCallback="true"`) (**beta**)
+  - Historical process exit diagnostics (`ActivityManager.getHistoricalProcessExitReasons`, logged as `VibeExit` and displayed in Settings)
+- Performance:
+  - Tuned native libraries compiled with `-O2 -mcpu=cortex-a78 -flto=thin` optimized for Snapdragon 778G Cortex-A78 cores
+  - Starts playing in about 0.9 s (median 882 ms for 1080p H.264, 798 ms for `ichiban.mp4`)
+  - About 216 MB of memory while playing 1080p H.264, about 110 MB for browser after closing the player (release build)
+  - 0 to 0.5% janky frames on fast folder scrolls (release build)
 
 ### Format and renderer table
 
@@ -71,23 +88,27 @@ what will not.
   20 cold opens on the default row). A watchdog recovers it within 6 to 10 seconds; it never stays black.
 - **Anime4K on OpenGL ES**: presets A, B and C fail to compile one pass on OpenGL ES; a fix is in progress. They
   work on Vulkan; Snapdragon GSR works on both.
-- **HEVC 10-bit 4K drops**: the 60 fps 4K HEVC test clip drops many frames (1027 in a 25 s run, 1241
-  in a 60 s looped run). The cause is known (no
-  operating-rate hint to the decoder; a device test with the hint dropped none); the fix still needs its device
-  confirmation.
 - **External subtitles**: `.srt` / `.ass` files next to a video in shared storage are not auto-loaded on
-  Android 13 and later, because the app only asks for access to videos.
+  Android 13 and later, because the app only asks for access to videos; users can load them via the "Load subtitle file…" SAF picker.
 - **Vulkan is experimental**: it depends on the owner's unfinished Vulkan 1.3 driver port.
 
 ## Download
 
-Releases and pre-built APKs will be made available on the [GitHub Releases](https://github.com/ravarage/vibeplayer/releases) page.
+Releases and pre-built APKs are available on the [GitHub Releases](https://github.com/ravarage/vibeplayer/releases) page.
 
 ## Install
 
-Download the APK from the [GitHub Releases](https://github.com/ravarage/vibeplayer/releases) page (**v0.5.0**) and install it. It works only on Android 17, arm64.
-The APK is signed with the developer's debug key, so it updates in place only over builds signed with the
-same key; builds from source signed with your own key must be uninstalled first (this deletes app data).
+1. Download `VibePlayer-0.5.0-arm64.apk` and `SHA256SUMS` from the [GitHub Releases](https://github.com/ravarage/vibeplayer/releases/tag/v0.5.0) page.
+2. Verify the SHA-256 checksum:
+   ```sh
+   sha256sum -c SHA256SUMS
+   ```
+3. Install the APK via adb:
+   ```sh
+   adb install -r VibePlayer-0.5.0-arm64.apk
+   ```
+
+Requirements: Android 17 (arm64-v8a) on the reference device (POCO X5 Pro 5G). The APK is signed with the developer's debug key, so it updates in place only over builds signed with the same key; builds from source signed with your own key must be uninstalled first (this deletes app data).
 
 ## Building from source
 
