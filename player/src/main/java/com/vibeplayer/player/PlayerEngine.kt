@@ -1330,7 +1330,12 @@ class PlayerEngine(
             val curAudioDelay = _state.value.audioDelayMs
             val surface = attachedSurface
 
-            val old = handle
+            // The time-pos read above blocks on a stuck core; if it returned only after an abandon,
+            // handle is the new thread's and must not be destroyed from here.
+            val old = synchronized(this) {
+                if (isStaleCommandThread()) return@executeCommand
+                handle
+            }
             if (old != 0L) {
                 MpvNative.detachSurface(old)
                 MpvNative.destroy(old)
