@@ -638,9 +638,14 @@ class PlayerEngine(
                         simulateStall()
                     }
                     if (_state.value.containerFps == null) {
-                        val mpvFps = MpvNative.getPropertyDouble(handle, "container-fps")
-                        if (SurfaceFrameRateHelper.isValidFps(mpvFps)) {
-                            _state.update { it.copy(containerFps = mpvFps) }
+                        executeCommand {
+                            assertCommandThread()
+                            if (handle != 0L) {
+                                val mpvFps = MpvNative.getPropertyDouble(handle, "container-fps")
+                                if (SurfaceFrameRateHelper.isValidFps(mpvFps)) {
+                                    _state.update { it.copy(containerFps = mpvFps) }
+                                }
+                            }
                         }
                     }
                     updateTracks(allowPendingSelection = true)
@@ -685,11 +690,11 @@ class PlayerEngine(
 
     private inner class GatedCallback(private val token: Int) : MpvNative.EventCallback {
         override fun onPropertyChange(name: String, value: Any?) {
-            if (token == handleToken) eventCallback.onPropertyChange(name, value)
+            if (!released && token == handleToken) eventCallback.onPropertyChange(name, value)
         }
 
         override fun onEvent(id: Int) {
-            if (token == handleToken) eventCallback.onEvent(id)
+            if (!released && token == handleToken) eventCallback.onEvent(id)
         }
     }
 
@@ -2323,12 +2328,17 @@ class PlayerEngine(
         preDuckVolume = null
         pendingSubtitle.getAndSet(null)?.let { closeFdPath(it.fdPath) }
         watchdog.shutdownNow()
+        vulkanCheckJob?.cancel()
+        vulkanCheckJob = null
+        glesCheckJob?.cancel()
+        glesCheckJob = null
         fallbackCheckJob?.cancel()
         fallbackCheckJob = null
         statsJob?.cancel()
         statsJob = null
         checkScope.cancel()
         ioScope.cancel()
+        scope.cancel()
         val task = Runnable {
             assertCommandThread()
             if (handle != 0L) {

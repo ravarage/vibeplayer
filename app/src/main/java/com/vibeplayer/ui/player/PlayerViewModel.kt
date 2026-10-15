@@ -18,6 +18,7 @@ import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.PlaybackConfig
 import com.vibeplayer.player.ShaderPreset
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
@@ -86,17 +87,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val playerEngine: PlayerEngine
         get() = service?.playerEngine ?: PlaybackService.getOrCreateEngine()
 
+    private var serviceObservationJob: Job? = null
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val s = (binder as? PlaybackService.LocalBinder)?.service ?: return
             service = s
             Log.i("VP", "PlayerViewModel onServiceConnected")
             PerfLog.mark("service-connected")
-            viewModelScope.launch {
-                s.currentPath.collect { _currentPath.value = it }
-            }
-            viewModelScope.launch {
-                s.neighbours.collect { _neighbours.value = Neighbours(it.previous, it.next) }
+            serviceObservationJob?.cancel()
+            serviceObservationJob = viewModelScope.launch {
+                launch {
+                    s.currentPath.collect { _currentPath.value = it }
+                }
+                launch {
+                    s.neighbours.collect { _neighbours.value = Neighbours(it.previous, it.next) }
+                }
             }
             pendingOpen?.let { req ->
                 pendingOpen = null
@@ -110,6 +116,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         override fun onServiceDisconnected(name: ComponentName?) {
             Log.i("VP", "PlayerViewModel onServiceDisconnected")
+            serviceObservationJob?.cancel()
+            serviceObservationJob = null
             service = null
         }
     }
@@ -234,8 +242,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     override fun onCleared() {
-        super.onCleared()
         Log.i("VP", "PlayerViewModel onCleared")
+        serviceObservationJob?.cancel()
+        serviceObservationJob = null
         if (isBound) {
             try {
                 getApplication<Application>().unbindService(serviceConnection)
