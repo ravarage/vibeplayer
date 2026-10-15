@@ -54,7 +54,9 @@ data class AppSettings(
     val subtitleAssOverride: Boolean = false,
     val matchDisplayRefreshRate: Boolean = true,
     /** P10-06: ADPF performance hint session while playing (experimental, default off). */
-    val performanceHints: Boolean = false
+    val performanceHints: Boolean = false,
+    /** P10-07: Collect system profiles via ProfilingManager triggers (default off). */
+    val collectSystemProfiles: Boolean = false
 ) {
 
     fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
@@ -113,6 +115,7 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_NOTIFICATION_PERMISSION_DENIED = booleanPreferencesKey("notification_permission_denied")
         private val KEY_MATCH_DISPLAY_REFRESH_RATE = booleanPreferencesKey("match_display_refresh_rate")
         private val KEY_PERFORMANCE_HINTS = booleanPreferencesKey("performance_hints")
+        private val KEY_COLLECT_SYSTEM_PROFILES = booleanPreferencesKey("collect_system_profiles")
     }
 
 
@@ -189,7 +192,8 @@ class AppSettingsRepository(private val context: Context) {
             subtitlePos = com.vibeplayer.player.SubtitleStyle.normalizePos(prefs[KEY_SUB_POS] ?: 100),
             subtitleAssOverride = prefs[KEY_SUB_ASS_OVERRIDE] ?: false,
             matchDisplayRefreshRate = prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] ?: true,
-            performanceHints = prefs[KEY_PERFORMANCE_HINTS] ?: false
+            performanceHints = prefs[KEY_PERFORMANCE_HINTS] ?: false,
+            collectSystemProfiles = prefs[KEY_COLLECT_SYSTEM_PROFILES] ?: false
         )
     }
 
@@ -264,7 +268,12 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_SUB_ASS_OVERRIDE] = settings.subtitleAssOverride
             prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] = settings.matchDisplayRefreshRate
             prefs[KEY_PERFORMANCE_HINTS] = settings.performanceHints
+            prefs[KEY_COLLECT_SYSTEM_PROFILES] = settings.collectSystemProfiles
         }
+    }
+
+    suspend fun setCollectSystemProfiles(enabled: Boolean) {
+        context.settingsDataStore.edit { it[KEY_COLLECT_SYSTEM_PROFILES] = enabled }
     }
 }
 

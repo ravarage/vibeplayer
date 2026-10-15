@@ -16,6 +16,7 @@
             <intent-filter>
                 <action android:name="com.vibeplayer.DEBUG_ACTION" />
                 <action android:name="com.vibeplayer.DEBUG_DOUBLE_TAP" />
+                <action android:name="com.vibeplayer.REQUEST_PROFILING" />
             </intent-filter>
         </receiver>
     </application>

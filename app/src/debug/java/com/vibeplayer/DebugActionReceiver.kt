@@ -24,6 +24,14 @@ class DebugActionReceiver : BroadcastReceiver() {
             Log.i("VP", "DebugActionReceiver: cleared Vulkan driver cache (remembered failures)")
             return
         }
+        if (action == "system_trace" || action == "trace" || action == "request_profiling" || intent.action == "com.vibeplayer.REQUEST_PROFILING") {
+            // P10-07: adb broadcast action to request a 10 s system trace for stall investigations
+            val durationMs = intent.getIntExtra("duration_ms", com.vibeplayer.profiling.ProfilingManagerHelper.DEFAULT_DURATION_MS)
+            val tag = intent.getStringExtra("tag") ?: com.vibeplayer.profiling.ProfilingManagerHelper.DEFAULT_TAG
+            val ok = com.vibeplayer.profiling.ProfilingController.requestSystemTrace(context, durationMs = durationMs, tag = tag)
+            Log.i("VP-Prof", "DebugActionReceiver: requestProfiling system trace (ok=$ok, durationMs=$durationMs, tag=$tag)")
+            return
+        }
         // Only act on a running session: creating an engine here would leave one behind that no
         // service owns and nothing ever releases.
         val service = PlaybackService.currentInstance
