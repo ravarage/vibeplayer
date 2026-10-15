@@ -50,6 +50,9 @@ The user has 3 Antigravity accounts and switches between them manually. Accounts
 - **Permission granted 2026-10-14 for the overnight run (until 06:45 on 2026-10-15):** when an agy account
   hits its limit, Claude may switch between the user's "arvid" and "sarbast" Antigravity accounts as
   often as needed (`aisw use antigravity <profile>`), using profiles the user stored in aisw.
+- **Permission granted 2026-10-15 for the overnight run (until the user is back on 2026-10-16, a day off):**
+  same as above, Claude may switch between "arvid" and "sarbast" as often as needed, and use Cline too.
+  Keep the phone at 10% battery or more (stop phone work below that).
 - When that happens: stop delegating to agy, tell the user it hit the limit and the
   reset time if one was printed, and wait for them to switch accounts. Do not switch accounts, add
   profiles, change models, or retry in a loop to get around it.
