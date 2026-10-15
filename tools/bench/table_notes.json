@@ -31,5 +31,10 @@
       "vo": "gpu",
       "reason": "safe default"
     }
+  },
+  "operatingRate": {
+    "comment": "P6-08 fix: MediaCodec operating-rate hint per row. auto = about 2 x the clip fps (60..240; 120 when the fps is unknown and the clip is >= 4K or 10-bit HEVC), off = none. Software-only rows always get off. Device A/B 2026-10-15 (docs/BENCHMARK.md): HEVC 10-bit 4K 60 fps 1027 -> 0 drops with operating_rate=120; battery cost not measured yet (TASKS.md P6-08).",
+    "default": "auto",
+    "formats": {}
   }
 }

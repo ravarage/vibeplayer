@@ -20,6 +20,11 @@ the lower-power option. Concretely, per format:
 A Vulkan winner also gets a "gles" block: the same rule over the OpenGL ES rows, used when Vulkan is not
 available on the phone.
 
+Every row also gets an "operatingRate" policy (P6-08 fix): "auto" = the app passes MediaCodec an operating
+rate of about 2 x the clip's frame rate (OperatingRate.kt), "off" = no hint. Rows that never decode with
+MediaCodec (hwdec "no", also in their "gles" block) get "off"; the others get the policy from
+table_notes.json "operatingRate" (per format, else its "default").
+
 Usage:
   tools/bench/make_table.py --markdown docs/BENCHMARK.md --out player/src/main/assets/format_table.json
 """
@@ -253,7 +258,24 @@ def build_rows(measurements, notes, tag):
         rows[fmt] = row
     for fmt, fixed in notes.get("fixedRows", {}).items():
         rows.setdefault(fmt, dict(fixed))
+    for fmt, row in rows.items():
+        row.setdefault("operatingRate", operating_rate_policy(fmt, row, notes))
     return rows
+
+
+POLICIES = ("auto", "off")
+
+
+def operating_rate_policy(fmt, row, notes):
+    """The row's "operatingRate" token: "off" for software-only rows, else the notes' policy."""
+    hwdecs = {row.get("hwdec"), (row.get("gles") or {}).get("hwdec", row.get("hwdec"))}
+    if hwdecs <= {"no"}:
+        return "off"
+    cfg = notes.get("operatingRate", {})
+    policy = cfg.get("formats", {}).get(fmt, cfg.get("default", "auto"))
+    if policy not in POLICIES:
+        raise ValueError(f"operatingRate policy {policy!r} for {fmt}: expected one of {POLICIES}")
+    return policy
 
 
 def make_table(driver_hash, measurements, notes, source, existing=None):

@@ -53,6 +53,30 @@ class FormatTableDataTest {
     }
 
     @Test
+    fun `operating rate policy is read per row`() {
+        val file = FormatProfileTable.parse(shipped)
+        for (rows in file.tables.values + listOf(file.default)) {
+            assertEquals(OperatingRatePolicy.AUTO, rows.getValue(VideoFormat.HEVC).operatingRate)
+            assertEquals(OperatingRatePolicy.AUTO, rows.getValue(VideoFormat.H264_8BIT).operatingRate)
+            assertEquals(OperatingRatePolicy.AUTO, rows.getValue(VideoFormat.VP9).operatingRate)
+            assertEquals(OperatingRatePolicy.OFF, rows.getValue(VideoFormat.AV1).operatingRate)
+            assertEquals(OperatingRatePolicy.OFF, rows.getValue(VideoFormat.H264_10BIT).operatingRate)
+            assertEquals(OperatingRatePolicy.OFF, rows.getValue(VideoFormat.OTHER).operatingRate)
+        }
+        // Built-in fallback rows mirror the shipped table.
+        for (format in VideoFormat.entries) {
+            assertEquals(format.name, FormatProfileTable.BUILT_IN_PROFILES.getValue(format).operatingRate,
+                file.default.getValue(format).operatingRate)
+        }
+        val json = """{"version":1,"default":{"rows":{
+            "hevc":{"hwdec":"mediacodec","renderer":"gles","vo":"gpu","operatingRate":"off"},
+            "vp9":{"hwdec":"mediacodec","renderer":"gles","vo":"gpu"}}}}"""
+        val rows = FormatProfileTable.parse(json).default
+        assertEquals(OperatingRatePolicy.OFF, rows.getValue(VideoFormat.HEVC).operatingRate)
+        assertEquals(OperatingRatePolicy.AUTO, rows.getValue(VideoFormat.VP9).operatingRate) // missing field
+    }
+
+    @Test
     fun `unknown or missing driver hash falls back to the default rows`() {
         assertEquals(FormatProfileTable.SOURCE_DEFAULT, FormatProfileTable.install(shipped, "ffffffffffffffff"))
         assertEquals(FormatProfileTable.SOURCE_DEFAULT, FormatProfileTable.install(shipped, null))

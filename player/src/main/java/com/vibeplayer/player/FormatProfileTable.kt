@@ -54,7 +54,8 @@ object FormatProfileTable {
         reason = "no hardware decoder on the 778G",
         glesDecodeMode = DecodeMode.SOFTWARE,
         glesVo = "gpu",
-        glesReason = "no hardware decoder on the 778G"
+        glesReason = "no hardware decoder on the 778G",
+        operatingRate = OperatingRatePolicy.OFF
     )
 
     val HEVC_PROFILE = FormatProfile(
@@ -81,7 +82,8 @@ object FormatProfileTable {
         reason = "P6-08: fewest drops, 362 vs 385 gpu-next and 918 GLES",
         glesDecodeMode = DecodeMode.SOFTWARE,
         glesVo = "gpu",
-        glesReason = "P6-08 GLES: 918 drops"
+        glesReason = "P6-08 GLES: 918 drops",
+        operatingRate = OperatingRatePolicy.OFF
     )
 
     val OTHER_PROFILE = FormatProfile(
@@ -89,7 +91,8 @@ object FormatProfileTable {
         decodeMode = DecodeMode.SOFTWARE,
         preferredRenderer = Renderer.GLES,
         vo = "gpu",
-        reason = "safe default"
+        reason = "safe default",
+        operatingRate = OperatingRatePolicy.OFF
     )
 
     val BUILT_IN_PROFILES: Map<VideoFormat, FormatProfile> = mapOf(
@@ -160,7 +163,8 @@ object FormatProfileTable {
                 reason = row["reason"] as? String ?: "",
                 glesDecodeMode = (gles?.get("hwdec") as? String)?.let(DecodeMode::fromHwdec),
                 glesVo = (gles?.get("vo") as? String)?.takeIf { it == "gpu" || it == "gpu-next" },
-                glesReason = gles?.get("reason") as? String
+                glesReason = gles?.get("reason") as? String,
+                operatingRate = OperatingRatePolicy.fromToken(row["operatingRate"] as? String)
             )
         }
         return out

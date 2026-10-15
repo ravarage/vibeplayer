@@ -1,6 +1,7 @@
 package com.vibeplayer.player
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -98,5 +99,34 @@ class ShaderPresetTest {
             "/shaders/Anime4K_Upscale_CNN_x2_S.glsl"
         ).joinToString(":")
         assertEquals(expectedA, propA)
+    }
+
+    @Test
+    fun glesLeavesOutClampHighlightsFromAnime4kChains() {
+        for (preset in listOf(ShaderPreset.ANIME4K_A, ShaderPreset.ANIME4K_B, ShaderPreset.ANIME4K_C)) {
+            val vulkan = preset.getShaderFiles(PlaybackMode.QUALITY, Renderer.VULKAN)
+            val gles = preset.getShaderFiles(PlaybackMode.QUALITY, Renderer.GLES)
+            assertEquals(ShaderPreset.CLAMP_HIGHLIGHTS, vulkan.first())
+            assertEquals(vulkan.drop(1), gles)
+            assertFalse(ShaderPreset.CLAMP_HIGHLIGHTS in gles)
+            // The default (no renderer given) is the full chain.
+            assertEquals(vulkan, preset.getShaderFiles(PlaybackMode.QUALITY))
+        }
+    }
+
+    @Test
+    fun glesKeepsGsrAndEfficientStaysEmpty() {
+        assertEquals(listOf("SGSR.glsl"), ShaderPreset.SNAPDRAGON_GSR.getShaderFiles(PlaybackMode.QUALITY, Renderer.GLES))
+        for (preset in ShaderPreset.entries) {
+            assertTrue(preset.getShaderFiles(PlaybackMode.EFFICIENT, Renderer.GLES).isEmpty())
+        }
+        assertEquals("", ShaderPreset.NONE.toGlslShadersProperty(PlaybackMode.QUALITY, "/shaders", Renderer.GLES))
+    }
+
+    @Test
+    fun glesPropertyStartsWithRestoreStage() {
+        val prop = ShaderPreset.ANIME4K_A.toGlslShadersProperty(PlaybackMode.QUALITY, "/shaders", Renderer.GLES)
+        assertTrue(prop.startsWith("/shaders/Anime4K_Restore_CNN_M.glsl:"))
+        assertFalse(prop.contains("Clamp_Highlights"))
     }
 }

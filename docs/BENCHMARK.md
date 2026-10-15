@@ -341,3 +341,35 @@ av1_4k, Bocchi (AV1 10-bit + ASS), multi_track.mkv, Kelly Clarkson (VP8): all VI
 throughout. Not done: the 30 min stability run with the tuned libraries (P9-02 second half), runs on battery.
 Reading: the tuned libraries are not slower; about 11 % fewer drops at equal CPU over only two pairs with the
 temperature rising 34 -> 38 C, so the gain is within run-to-run spread (770-918 for the same build).
+
+**Applied (P6-08 fix, 2026-10-15, CLAUDE-D1, not yet checked on the device):** every MediaCodec-decoded file now
+gets `vd-lavc-o=operating_rate=<2 x container fps, 60..240>` as a loadfile option (120 when the fps is unknown and
+the clip is >= 4K or 10-bit HEVC); rule and table field in ARCHITECTURE.md ("MediaCodec operating-rate hint").
+The logcat line `Operating rate for <format> fps=... -> <n>` and the `Loading ... with options:` line show it.
+A/B baseline without the hint: `--es mpv_opts 'vd-lavc-o=operating_rate=0'` (a debug `vd-lavc-o` disables the
+per-file hint). Battery cost still to be measured (TASKS.md P6-08).
+
+
+## Shader presets on OpenGL ES: known issues (P8-02, 2026-10-15)
+
+- **Anime4K_Clamp_Highlights does not compile on the phone's GLES driver (gpu-next).** Device check
+  (PROGRESS P8-02): presets A, B and C log `'MAINPRESUB_texOff' : no matching overloaded function found` /
+  `'get_luma' : no matching overloaded function` for the stage's first pass (`//!HOOK MAIN`, `//!BIND HOOKED`,
+  `MAIN_texOff(vec2(i - KERNELHALFSIZE, 0))`). libplacebo binds a `MAIN` hook under the name `MAINPRESUB` and
+  emits `#define MAIN_texOff MAINPRESUB_texOff` plus the function-like `MAINPRESUB_texOff(off)`
+  (`src/shaders/custom_mpv.c`, `bind_pass_tex`), so the error says the Adreno GLSL front end left
+  `MAINPRESUB_texOff` unexpanded. The same pass, rebuilt with exactly those defines, compiles with
+  `glslangValidator` for `#version 300 es`, `310 es` and `320 es`, and it compiles on Vulkan (shaderc); the
+  CNN stages use the same `MAIN_texOff` alias (inside their own `go_0` macro) and SGSR uses the same
+  object-to-function alias directly (`HOOKED_texOff(0)`), and both compile on GLES. So the failure is on the
+  driver side (the GLSL is valid), but the exact trigger was not identified (a guess: the alias called
+  directly with an argument that itself contains a comma, `vec2(i - KERNELHALFSIZE, 0)`), and a shader edit
+  could not be verified without the phone. Because the failed first pass never saves `STATSMAX`, the stage's later passes had no
+  input either; libplacebo then disables that one hook (`rr->disabled_hooks` in `src/renderer.c`, per user-shader
+file) and the other stages keep running, so on GLES the stage never ran. Fix (P8-02 fix): `ShaderPreset.getShaderFiles(mode,
+  renderer)` leaves `Anime4K_Clamp_Highlights.glsl` out of A, B and C when the handle's renderer is OpenGL
+  ES; Vulkan keeps the full chain and GSR is unchanged. The picture on GLES is the same as before; only the
+  compile error in the log goes away.
+- **GLES gpu-next logs `Can't generate LUT: no compatible methods!` / `Failed generating/uploading block
+  offsets LUT!` with no shader loaded at all.** This is libplacebo on the GLES backend (a LUT format or
+  method the driver does not offer), not caused by the presets and not fixable in the app; known, left as is.

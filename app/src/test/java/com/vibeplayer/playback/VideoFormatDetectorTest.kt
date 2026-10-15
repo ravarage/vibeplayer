@@ -54,4 +54,22 @@ class VideoFormatDetectorTest {
         assertEquals(VideoFormat.OTHER, VideoFormatDetector.parseFormat(null))
         assertEquals(VideoFormat.OTHER, VideoFormatDetector.parseFormat(""))
     }
+
+    @Test
+    fun tenBitFromProfileOrBitDepth() {
+        val main10 = android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10
+        val main = android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain
+        org.junit.Assert.assertTrue(VideoFormatDetector.isTenBit("video/hevc", main10, null))
+        org.junit.Assert.assertTrue(VideoFormatDetector.isTenBit("video/hevc", main, 10))
+        org.junit.Assert.assertFalse(VideoFormatDetector.isTenBit("video/hevc", main, null))
+        org.junit.Assert.assertFalse(VideoFormatDetector.isTenBit("video/hevc", null, null))
+        org.junit.Assert.assertTrue(VideoFormatDetector.isTenBit("video/x-vnd.on2.vp9",
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile2, null))
+        org.junit.Assert.assertFalse(VideoFormatDetector.isTenBit("video/x-vnd.on2.vp9",
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile0, null))
+        org.junit.Assert.assertTrue(VideoFormatDetector.isTenBit("video/av01",
+            android.media.MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10, null))
+        // H.264 10-bit is its own format (parseFormat); an H.264 profile number alone is not read here.
+        org.junit.Assert.assertFalse(VideoFormatDetector.isTenBit("video/avc", main10, null))
+    }
 }

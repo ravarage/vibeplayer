@@ -7,6 +7,8 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
+import com.vibeplayer.player.ClipInfo
+import com.vibeplayer.player.OperatingRate
 import com.vibeplayer.player.VideoFormat
 import java.io.File
 
@@ -50,10 +52,46 @@ object VideoFormatDetector {
     }
 
     /**
+     * True when the track carries 10 or more bits per sample: an explicit bit depth, or a 10-bit
+     * profile of HEVC (Main10, Main10 HDR10/HDR10+), VP9 (Profile 2/3) or AV1 (Main10 / HDR10 / HDR10+).
+     * Pure, for host unit tests.
+     */
+    fun isTenBit(mime: String?, profile: Int?, bitDepth: Int?): Boolean {
+        if (bitDepth != null && bitDepth >= 10) return true
+        if (profile == null || mime == null) return false
+        val m = mime.lowercase()
+        return when {
+            m.contains("hevc") || m.contains("h265") -> profile in setOf(
+                MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10,
+                MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10,
+                MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10Plus
+            )
+            m.contains("vp9") -> profile in setOf(
+                MediaCodecInfo.CodecProfileLevel.VP9Profile2, MediaCodecInfo.CodecProfileLevel.VP9Profile3,
+                MediaCodecInfo.CodecProfileLevel.VP9Profile2HDR, MediaCodecInfo.CodecProfileLevel.VP9Profile3HDR,
+                MediaCodecInfo.CodecProfileLevel.VP9Profile2HDR10Plus, MediaCodecInfo.CodecProfileLevel.VP9Profile3HDR10Plus
+            )
+            m.contains("av01") || m.contains("av1") -> profile in setOf(
+                MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10,
+                MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10HDR10,
+                MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10HDR10Plus
+            )
+            else -> false
+        }
+    }
+
+    /**
      * Detects [VideoFormat] for the given file or content URI using [MediaExtractor].
      * Must be called off the main thread.
      */
-    fun detect(context: Context, pathOrUri: String, identityKey: String? = null): VideoFormat {
+    fun detect(context: Context, pathOrUri: String, identityKey: String? = null): VideoFormat =
+        detectClip(context, pathOrUri, identityKey).format
+
+    /**
+     * [detect] plus the track's frame rate (KEY_FRAME_RATE, null when absent or implausible), size and
+     * bit depth, for the MediaCodec operating-rate hint (P6-08 fix). Must be called off the main thread.
+     */
+    fun detectClip(context: Context, pathOrUri: String, identityKey: String? = null): ClipInfo {
         val startMs = SystemClock.elapsedRealtime()
         val extractor = MediaExtractor()
         try {
@@ -89,9 +127,21 @@ object VideoFormatDetector {
                     }
 
                     val detected = parseFormat(mime, profile, bitDepth)
+                    val fps = if (format.containsKey(MediaFormat.KEY_FRAME_RATE)) {
+                        try { format.getNumber(MediaFormat.KEY_FRAME_RATE)?.toDouble() } catch (_: Throwable) { null }
+                    } else null
+                    val width = intOrNull(format, MediaFormat.KEY_WIDTH)
+                    val height = intOrNull(format, MediaFormat.KEY_HEIGHT)
+                    val clip = ClipInfo(
+                        format = detected,
+                        fps = OperatingRate.sanitizeFps(fps),
+                        width = width,
+                        height = height,
+                        tenBit = isTenBit(mime, profile, bitDepth)
+                    )
                     val costMs = SystemClock.elapsedRealtime() - startMs
-                    Log.i("VP-Perf", "Format detection for $pathOrUri took ${costMs} ms: mime=$mime profile=$profile bitDepth=$bitDepth -> $detected")
-                    return detected
+                    Log.i("VP-Perf", "Format detection for $pathOrUri took ${costMs} ms: mime=$mime profile=$profile bitDepth=$bitDepth fps=$fps ${width}x$height -> $detected")
+                    return clip
                 }
             }
         } catch (e: Throwable) {
@@ -103,6 +153,9 @@ object VideoFormatDetector {
         }
         val costMs = SystemClock.elapsedRealtime() - startMs
         Log.i("VP-Perf", "Format detection for $pathOrUri took ${costMs} ms -> OTHER (fallback)")
-        return VideoFormat.OTHER
+        return ClipInfo(VideoFormat.OTHER)
     }
+
+    private fun intOrNull(format: MediaFormat, key: String): Int? =
+        if (format.containsKey(key)) try { format.getInteger(key) } catch (_: Throwable) { null } else null
 }

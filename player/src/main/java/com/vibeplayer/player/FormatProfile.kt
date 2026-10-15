@@ -46,7 +46,9 @@ data class FormatProfile(
     /** Used instead of [decodeMode]/[vo]/[reason] when the row prefers Vulkan but runs on OpenGL ES. */
     val glesDecodeMode: DecodeMode? = null,
     val glesVo: String? = null,
-    val glesReason: String? = null
+    val glesReason: String? = null,
+    /** MediaCodec clock hint policy (format_table.json "operatingRate", see [OperatingRate]). */
+    val operatingRate: OperatingRatePolicy = OperatingRatePolicy.AUTO
 )
 
 /**

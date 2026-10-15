@@ -138,6 +138,26 @@ Shipped table (driver `c0b92d25178c8b21`, P6-08, unplugged, 60 s per row):
 | AV1 (any) | dav1d software, all cores (`no`) | Vulkan | `gpu` | GLES `gpu`, software | Fewest drops: 362 vs 385 (gpu-next) and 918 (GLES) |
 | other | software (`no`) | OpenGL ES | `gpu` | (same) | Safe default (not measured) |
 
+**MediaCodec operating-rate hint (P6-08 fix, decision 2026-10-15).** FFmpeg's MediaCodec wrapper sets neither
+`frame-rate` nor `operating-rate`, so the vendor codec chooses its own clocks; for HEVC Main10 4K 60 fps that
+was far below real time as mpv drives it (1027 VO drops in 25 s), and `vd-lavc-o=operating_rate=120` removed
+every drop (docs/BENCHMARK.md, "HEVC 10-bit 4K drops", device A/B). Every row of the table carries an
+`operatingRate` policy (`auto` or `off`; `make_table.py` writes `off` for rows that never decode with
+MediaCodec, otherwise the policy from `table_notes.json`). With `auto`, every file decoded with
+`mediacodec` or `mediacodec-copy` gets the loadfile option `vd-lavc-o=operating_rate=<n>`, file-local, so
+the next file never inherits it. The rule is the pure `OperatingRate.hint` (player): n = 2 x the container
+frame rate (`MediaExtractor` `KEY_FRAME_RATE`, read by `VideoFormatDetector.detectClip` with the format
+detection; rates <= 0 or above 480, i.e. VFR timebases, count as unknown), rounded up and clamped to 60..240;
+with an unknown frame rate n = 120 for clips >= 4K (longest side >= 3840) or 10-bit HEVC, otherwise no hint.
+The detection result travels with the load request, so reconfigure, Vulkan -> GLES fallback and stall
+reloads keep it. The engine decides at loadfile time from the hwdec that file is actually loaded with, so
+software loads (row `no`, B-08 software recovery, `hwdec=no` overrides) never get the option (FFmpeg's
+software decoders do not know it and mpv would log `AVOption 'operating_rate' not found`); only mpv's own
+in-file fallback from a MediaCodec init failure to software can still log that once. A debug `mpv_opts`
+that sets `vd-lavc-o` disables the per-file hint (device A/B baseline: `vd-lavc-o=operating_rate=0`, which
+FFmpeg treats as unspecified). Cost: the hint raises decoder clocks (+9 points app CPU in the A/B); the
+battery cost on battery power is not measured yet (TASKS.md P6-08).
+
 Zero-copy needs OpenGL ES (mpv's `hwdec_aimagereader` refuses a non-GL renderer), so a zero-copy row forced onto Vulkan (renderer setting Vulkan) uses copy-back. The P6-08 section does not record the runner mode; copy-back rows most likely ran with the runner's default `mode=quality` (no `profile=fast`). Efficient mode keeps `profile=fast`, so the H.264 Vulkan row in efficient mode is that configuration plus `profile=fast` (cheaper; to be confirmed by the device pass).
 
 - **Quality mode override**: Overrides the renderer column with `gpu-next` on Vulkan (else GLES) and copy-back for hardware formats; the table only drives efficient mode.
