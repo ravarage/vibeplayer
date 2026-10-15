@@ -7,52 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0] - 2026-10-15
 
-Features marked **(beta)** are merged but not yet fully verified on the physical device.
+Features marked **(beta)** are merged but their device acceptance check is not finished
+(status per task in `PROGRESS.md`, reviewed up to commit c32a50b).
 
 ### Added
 
-#### Video Rendering and Formats
-- **Format profile table & Auto renderer mode**: Chooses the measured optimal decoder and renderer before opening based on video format and Vulkan driver build hash (H.264 -> Vulkan `gpu-next` copy-back, HEVC -> OpenGL ES zero-copy, VP9 -> OpenGL ES zero-copy, AV1 -> Vulkan `gpu` software dav1d) (beta).
-- **Vulkan renderer**: Experimental Vulkan video output (`vo=gpu-next` / `vo=gpu`) with automatic fallback to OpenGL ES on failure (beta).
-- **Safety fallback chain**: Automatic runtime fallback chain (Vulkan -> OpenGL ES -> software decoding) preserving playback position, with on-screen alerts and failure logging (beta).
-- **Quality and Efficient modes**: In-player and settings toggle between Quality mode (Vulkan/`gpu-next`, copy-back) and Efficient mode (OpenGL ES, zero-copy) (beta).
-- **Shader presets**: GLSL shader support featuring Anime4K v4.0.1 (Fast Modes A, B, C) and Qualcomm Snapdragon Game Super Resolution (Snapdragon GSR v1) spatial upscaler (beta).
+#### Video rendering and formats
+- **Best configuration per format, chosen before opening (Auto renderer, the default)**: the format is detected
+  before the file opens and the decoder and renderer come from a data table measured on the reference phone and
+  keyed by the Vulkan driver build (`player/src/main/assets/format_table.json`): H.264 8-bit -> MediaCodec
+  copy-back on Vulkan `gpu-next`; HEVC and VP9 -> MediaCodec zero-copy on OpenGL ES `gpu`; AV1 -> dav1d on
+  Vulkan `gpu`; Hi10P -> software on Vulkan `gpu`.
+- **Renderer setting**: Auto (default) / Vulkan (experimental) / OpenGL ES; the Vulkan renderer is offered only
+  when a runtime probe succeeds and libmpv lists `vulkan`.
+- **Fallback chain**: Vulkan -> OpenGL ES -> software decoding at runtime, keeping the playback position, with an
+  on-screen notice and `VULKAN-FAIL` / `GLES-FAIL` log lines; a Vulkan failure is remembered per format for the
+  driver build.
+- **Quality mode**: settings and in-player toggle between Efficient and Quality (`gpu-next`, MediaCodec
+  copy-back) (beta: the mid-file toggle is not yet checked on the device).
+- **Shader presets** in Quality mode: Anime4K v4.0.1 fast modes A, B, C and Snapdragon Game Super Resolution v1
+  (beta: Anime4K compiles on Vulkan only for now, see Known issues).
+- **Benchmark runner** (debug builds): one adb broadcast plays a clip and writes a summary CSV plus 1 Hz samples
+  on the device; `tools/bench/run_matrix.py` runs matrices from the host.
 
-#### Playback Engine & Background
-- **PlaybackService**: Background foreground service architecture keeping playback state alive across activity lifecycles and orientation changes (beta).
-- **MediaSession & Notification**: MediaStyle playback notification with play/pause, rewind (-10s), fast-forward (+10s), previous, and next controls (beta).
-- **Background audio playback**: Seamless background audio on screen-off or app minimization with audio focus ducking (lowering to 30% on transient loss) and becoming-noisy unplug pause (beta).
-- **Picture-in-picture (PiP)**: Android PiP mini player with aspect-ratio clamping, auto-enter on backgrounding, and seamless auto-advance to next episode while in PiP.
-- **Playlist navigation**: Auto-play next file in folder upon completion, and previous/next media buttons.
-- **Hold for fast playback**: Long-press on the right half of the screen for temporary fast playback (2x or configurable speed) (beta).
+#### Playback service and background
+- **PlaybackService**: the engine lives in a foreground service; reopening the player re-attaches without
+  reloading (beta).
+- **MediaSession and notification**: play/pause, seek, previous/next from the notification and media buttons
+  (beta: lock screen and a real headset button not yet checked).
+- **Background audio**: audio keeps playing with the screen off or the player left, video decoding stops while
+  in the background; audio-focus ducking and becoming-noisy pause (beta: call and unplug not yet checked).
+- **Picture-in-picture mini player** with aspect-ratio clamping, auto-enter on home, auto-advance inside the
+  mini player.
+- **Auto-play next file** in the folder; previous / next buttons.
+- **Hold for fast playback**: press and hold on the right half for the hold speed (1.5x, 2x, 3x, 4x) (beta).
 
-#### Subtitles & Audio
-- **Subtitle & audio delay sync**: Sync adjustment sheet (-/+ 50 ms step controls) persisted per file (Room schema migration 3 -> 4) (beta).
-- **Global subtitle appearance**: Settings for subtitle font size (`sub-scale`), vertical position (`sub-pos`), and ASS style override toggle (beta).
-- **Folder track memory & default languages**: Remembers preferred audio/subtitle track choices per folder and supports user default language preferences (Room schema migration 2 -> 3).
-- **Per-file state persistence**: Persists audio/sub track selections, playback speed, aspect ratio mode, and sync delays across sessions.
+#### Subtitles and audio
+- **Subtitle and audio delay** in 50 ms steps, saved per file (Room schema 3 -> 4) (beta).
+- **Subtitle size, position and ASS style override** settings (override off by default) (beta).
+- **Default languages and per-folder track memory** (Room schema 2 -> 3).
 
-#### Browser & Media Library
-- **Continue Watching row**: Horizontal shelf on the browser home screen displaying recent in-progress videos with progress bars, formatted time labels, and history key deduplication.
-- **Software thumbnail extraction**: libmpv-backed software frame extraction for 10-bit HEVC, AV1, and clips where Android MediaMetadataRetriever fails, with dark-frame detection and multi-offset retry.
+#### Browser
+- **Continue Watching row** with progress bars.
+- **Software thumbnails** (libmpv) for 10-bit HEVC, AV1 and clips Android's MediaMetadataRetriever cannot read,
+  with dark-frame detection.
 
-#### Performance & Optimization
-- **Baseline Profile module**: Macrobenchmark-based baseline profiles for faster cold start and smoother UI interactions.
-- **Release build configuration**: Optimized R8 minification, resource shrinking, and ProGuard keep rules for libmpv JNI callbacks and native bindings.
-- **Demuxer cache & memory budgeting**: Bounded mpv read-ahead cache (32 MB forward / 16 MB backward) and fixed 16 MB thumbnail LRU cache with Android `onTrimMemory` handling.
-- **Browser smoothness**: Optimized Jetpack Compose recomposition and list scrolling performance (0% janky frames on 900+ items list).
+#### Performance
+- **Start time**: about 0.9 s from the open intent to the first frame (release build, median 882 ms for 1080p
+  H.264, 798 ms for `ichiban.mp4`).
+- **Memory budget**: mpv demuxer cache 32 MiB forward / 16 MiB back for local files, smaller thumbnail cache,
+  `onTrimMemory`; 1080p H.264 playback 216 MB PSS (was 428 MB), browser after closing the player 110 MB.
+- **Browser smoothness**: 0 to 0.5 % janky frames on fast scrolls of a 925-video folder (release build).
+- **Release build**: R8 and resource shrinking with keep rules for the JNI callbacks.
+- **Baseline Profile module** (`:baselineprofile`): prepared; the profile has not been generated on the device yet.
+
+### Changed
+- Storage access limited to video files: `MANAGE_EXTERNAL_STORAGE` removed, only `READ_MEDIA_VIDEO`
+  (`READ_EXTERNAL_STORAGE` up to Android 12).
+- Player sheets (tracks, subtitles, speed, sync) open fully expanded in landscape.
 
 ### Fixed
-- **B-08 decoder start stall recovery**: Stall watchdog monitors first frame rendering; automatically aborts stuck decoder handles and recovers via software decoding on a fresh surface without ANR.
-- **ANR and thread safety**: Bounded main-thread surface detach wait (1.5s max) to prevent ANR during engine tear-down or codec reinitialization.
-- **Accurate resume position**: Bounded command-thread position polling ensuring saved resume positions do not become stale when on-screen controls auto-hide.
-- **Thumbnail temp file cleanup**: Isolated unique temporary file naming and cleanup during frame extraction.
-- **Sheet display in landscape**: Ensure track selection and settings bottom sheets open fully expanded in landscape orientation.
+- **B-08 start stall recovery**: a watchdog detects a decoder that never delivers the first frame, abandons the
+  stuck handle and reopens the file (with software decoding for that open), with no ANR.
+- Bounded main-thread surface detach (1.5 s) so a stuck mpv core cannot hang the UI.
+- Saved resume positions no longer go stale while the controls are hidden.
+- Closing the mini player with its X now ends the session (no stale notification).
+- Benchmark runs no longer trigger the "startForegroundService() did not then call startForeground()" ANR.
+- Double Tap Skip Interval setting is applied (it was always 10 s before).
 
-### Known Issues
-- **B-08 start stall on H.264 zero-copy**: H.264 zero-copy decoding occasionally stalls on initial frame display; automatically detected and recovered by the stall watchdog without user intervention.
-- **Vulkan experimental with fallback**: Vulkan requires driver support (Vulkan 1.2+); on devices or drivers where Vulkan fails, the app automatically falls back to OpenGL ES.
-- **HEVC 10-bit 4K drops under investigation**: High frame drop rates (~1,200 drops/min) observed during 4K 10-bit HEVC playback benchmarks are under active investigation code-side.
+### Known issues
+- **B-08**: MediaCodec can still stall at the start of an H.264 file (1 in 20 and 1 in 10 cold opens in two runs on
+  the default copy-back row, 4 in 20 on zero-copy); the watchdog recovers it in 6 to 10 s.
+- **Anime4K on OpenGL ES**: presets A, B and C fail to compile one pass (Clamp_Highlights) on OpenGL ES; a fix
+  is in progress. They work on Vulkan; Snapdragon GSR works on both.
+- **HEVC 10-bit 4K drops** (~40 of 60 frames per second on `hevc10_4k.mp4`): cause found (no operating-rate
+  hint to the MediaCodec decoder; `operating_rate=120` gave 0 drops in a device A/B); the fix is pending its
+  device confirmation and a power check.
+- **External subtitles**: `.srt` / `.ass` files next to a video in shared storage are not auto-loaded on
+  Android 13+, because the app only has video access.
+- **Vulkan is experimental**: it depends on the owner's unfinished driver port; the stock driver (Vulkan 1.1)
+  cannot run it and the app uses OpenGL ES.
 
 ---
 
