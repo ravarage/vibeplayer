@@ -81,6 +81,7 @@ fun DebugOverlay(
             DebugRow("HWDEC", stats.hwdecCurrent.ifEmpty { "unknown" })
             DebugRow("MODE", stats.mode.ifEmpty { "unknown" })
             DebugRow("THERMAL", stats.thermalStatus ?: "none")
+            DebugRow("ADPF", stats.adpfStatus ?: "off")
             val fpsText = if (stats.containerFps != null) {
 
                 String.format(Locale.US, "%.2f (container: %.3f)", stats.fps, stats.containerFps)

@@ -295,6 +295,13 @@ class PlaybackService : Service() {
             appSettingsRepository.migrateRendererDefaultIfNeeded()
         }
 
+        // P10-06: ADPF hint session while a file plays (setting, default off). Runs on IO; the session
+        // closes when the service scope is cancelled in onDestroy.
+        PerformanceHintController(
+            this, playerEngine,
+            appSettingsRepository.appSettingsFlow.map { it.performanceHints }
+        ).start(serviceScope)
+
         // Shader presets (P7): the service owns the engine, so it owns the directory and the setting.
         playerEngine.setShaderDirectory(File(filesDir, "shaders").absolutePath)
         // P7-02: extraction is only needed before a load that uses a shader preset (awaited there);

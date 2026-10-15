@@ -148,6 +148,15 @@ fun SettingsScreen(
                 }
             )
 
+            SettingsSwitchRow(
+                title = "Performance hints (experimental)",
+                description = "Tell Android how much time each frame needs (ADPF) while a video plays",
+                checked = settings.performanceHints,
+                onCheckedChange = { checked ->
+                    onUpdateSettings(settings.copy(performanceHints = checked))
+                }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)

@@ -60,8 +60,25 @@ Application id and base package: `com.vibeplayer`.
 | Main | Compose, surface callbacks, collects state | call blocking mpv functions (`getProperty`, sync commands). Only exception: `surfaceDestroyed` waits for the detach to finish, at most 1.5 s (`PlayerEngine.detachSurface`); on timeout the detach stays queued on the command thread |
 | Player command thread (single-thread dispatcher in `PlayerEngine`) | all `command`/`setProperty` calls, init, destroy | touch UI |
 | mpv event thread (native) | reads events, pushes values into `MutableStateFlow`s | call back into mpv synchronously |
-| IO dispatcher | Room, MediaStore, thumbnail disk cache | |
+| IO dispatcher | Room, MediaStore, thumbnail disk cache; ADPF hint session (P10-06: /proc thread scan, session calls, close) | |
 | Thumbnail worker (limited to 2 parallel) | frame extraction | use the playback mpv handle |
+
+**ADPF hint session (P10-06, setting "Performance hints (experimental)", default off).** `PerformanceHintController`
+(app, owned by `PlaybackService`) holds one `PerformanceHintManager` session while a file plays and closes it on
+pause, stop, file end, setting off and service destroy. Threads are found by `/proc/self/task/*/comm`: mpv names
+them without an `mpv/` prefix; the session takes exactly `vo`, `core`, `demux`, `dec/video` plus every
+`dav1d-worker` and FFmpeg frame thread `av:<codec>:df<n>` (`AdpfHintPolicy`, player). The set is re-read after
+each mpv file-loaded event, also after reconfigure reloads, and each surface attach/detach
+(`PlayerEngine.threadChangeSerial`) at 0, 1, 2 and 5 s, then every 10 s; a changed set goes to `setThreads`. Target = 1e9 / container fps
+(60 fps fallback). mpv has no cheap per-frame work time, so once per second the controller reports the target,
+or 1.5x the target when `frame-drop-count` + `decoder-frame-drop-count` rose (read bounded on the command
+executor; no report when mpv does not answer). `setPreferPowerEfficiency(true)` only for zero-copy
+`hwdec-current=mediacodec` (HEVC, VP9 rows), false for software (AV1) and copy-back. Overlay row `ADPF`.
+Limits of this reporting (prescribed, kept simple): it never reports below the target, so a boost after a drop
+second has no "work got cheaper" signal to decay on; and one report per second is far slower than the per-frame
+reports HALs expect, so a vendor HAL may treat the session as stale between reports. A null A/B result may come
+from this scheme rather than from ADPF itself. Unsupported (no service, null session, 3 throws in a row):
+logged once per process (`VP-ADPF`), overlay "unsupported".
 
 ## Player state to Compose
 - `PlayerEngine.state: StateFlow<PlayerState>` for values that change rarely: paused, duration,
