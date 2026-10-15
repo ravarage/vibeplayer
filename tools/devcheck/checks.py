@@ -89,6 +89,12 @@ def open_av1_ass(ctx):
     return a + " | " + b + " (ASS styling needs a human look at the 'ass' screenshot)"
 
 
+# Note on hwdec reporting: devcheck launches clips without mode extras (--es mode),
+# thus testing against the user's active AppSettings preference. In EFFICIENT mode (the app's
+# default), format_table.json selects GLES zero-copy (hwdec=mediacodec) for HEVC and VP9.
+# In QUALITY mode (e.g. when left enabled from quality/benchmark passes), FormatProfileTable.resolve
+# maps all hardware decoders to copy-back (hwdec=mediacodec-copy) with vo=gpu-next to support custom
+# shaders/scaling. Both satisfy the hwdec check (neither is in SW_VALUES).
 @check("hwdec", "Hardware decode in use for H.264, HEVC and VP9")
 def hwdec(ctx):
     res = []
