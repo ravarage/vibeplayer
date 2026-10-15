@@ -438,7 +438,9 @@ class PlayerActivity : ComponentActivity() {
             val neighbours by viewModel.neighbours.collectAsState()
             val gesturesEnabled by viewModel.gesturesEnabled.collectAsState()
             val skipSeconds by viewModel.skipSeconds.collectAsState()
+            val matchDisplayRefreshRate by viewModel.matchDisplayRefreshRate.collectAsState()
             val zoomState = playerEngine.zoomState
+
             val isInPip by _isInPipFlow.collectAsState()
             val initialDebugOverlay = com.vibeplayer.BuildConfig.DEBUG && (
                 intent.getBooleanExtra("debug_overlay", false) ||
@@ -471,8 +473,11 @@ class PlayerActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         VideoSurface(
                             playerEngine = playerEngine,
+                            matchDisplayRefreshRate = matchDisplayRefreshRate,
+                            currentPath = activePath,
                             modifier = Modifier.fillMaxSize()
                         )
+
 
                         if (!isInPip) {
                             GestureLayer(

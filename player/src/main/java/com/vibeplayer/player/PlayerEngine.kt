@@ -333,7 +333,9 @@ class PlayerEngine(
         const val REPLY_VIDEO_FORMAT = 11L
         const val REPLY_AID = 12L
         const val REPLY_SID = 13L
+        const val REPLY_CONTAINER_FPS = 14L
     }
+
 
     private val eventCallback = object : MpvNative.EventCallback {
         override fun onPropertyChange(name: String, value: Any?) {
@@ -454,6 +456,12 @@ class PlayerEngine(
                     _state.update { it.copy(selectedSubTrackId = sid) }
                     updateTracks()
                 }
+                "container-fps" -> {
+                    val f = (value as? Number)?.toDouble() ?: (value as? String)?.toDoubleOrNull()
+                    if (SurfaceFrameRateHelper.isValidFps(f)) {
+                        _state.update { it.copy(containerFps = f) }
+                    }
+                }
             }
         }
 
@@ -484,10 +492,17 @@ class PlayerEngine(
                         debugSimulateStallOnce = false
                         simulateStall()
                     }
+                    if (_state.value.containerFps == null) {
+                        val mpvFps = MpvNative.getPropertyDouble(handle, "container-fps")
+                        if (SurfaceFrameRateHelper.isValidFps(mpvFps)) {
+                            _state.update { it.copy(containerFps = mpvFps) }
+                        }
+                    }
                     updateTracks(allowPendingSelection = true)
                     checkVulkanVoInitialization()
                     checkGlesInitialization()
                 }
+
                 MpvEvent.TRACKS_CHANGED -> {
                     Log.i("VP", "mpv event tracks-changed")
                     updateTracks()
@@ -788,8 +803,10 @@ class PlayerEngine(
                     decoderFrameDropCount = decDrops,
                     formatProfileRow = currentResolvedConfig?.chosenRowDescription ?: _state.value.formatProfileRow,
                     formatProfileReason = currentResolvedConfig?.reason ?: _state.value.formatProfileReason,
-                    detectedFormat = currentFormat
+                    detectedFormat = currentFormat,
+                    containerFps = _state.value.containerFps
                 )
+
                 Log.i("VP-Perf", "Stats: vo=$vo hwdec=$hwdec mode=$modeStr gpuApi=$gpuApi gpuContext=$gpuContext drops=$drops decDrops=$decDrops fps=$fps")
             }
         }
@@ -899,8 +916,10 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_VIDEO_FORMAT, "video-format", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_AID, "aid", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_SID, "sid", MpvFormat.STRING)
+        MpvNative.observeProperty(handle, REPLY_CONTAINER_FPS, "container-fps", MpvFormat.DOUBLE)
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
+
         MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
         MpvNative.setPropertyDouble(handle, "panscan", 0.0)
         applyShaderPresetInternal()
@@ -1071,15 +1090,18 @@ class PlayerEngine(
         _zoomState.value = 0.0
         currentPanX = 0.0
         currentPanY = 0.0
+        val clipFps = clip?.fps?.takeIf { SurfaceFrameRateHelper.isValidFps(it) }
         _state.update {
             it.copy(
                 videoCodec = null,
                 fallback = false,
                 aspect = aspect,
                 rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES",
-                lastVulkanError = lastVulkanErrorText
+                lastVulkanError = lastVulkanErrorText,
+                containerFps = clipFps
             )
         }
+
         if (handle != 0L) {
             val options = mutableListOf<String>()
             // P5-03: no surface (background audio) means no video decoding; vid is restored on attach.

@@ -138,10 +138,20 @@ fun SettingsScreen(
                 }
             )
 
+            SettingsSwitchRow(
+                title = "Match display refresh rate",
+                description = "Seamlessly switch display refresh rate to match video frame rate",
+                checked = settings.matchDisplayRefreshRate,
+                onCheckedChange = { checked ->
+                    onUpdateSettings(settings.copy(matchDisplayRefreshRate = checked))
+                }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)
             )
+
 
             // Category: Controls & Gestures
             SettingsSectionHeader(title = "Controls & Gestures")

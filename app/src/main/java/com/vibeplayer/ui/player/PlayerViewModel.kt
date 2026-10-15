@@ -45,6 +45,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val skipSeconds: StateFlow<Int> = appSettingsRepository.appSettingsFlow
         .map { it.skipSeconds }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, 10)
+
+    val matchDisplayRefreshRate: StateFlow<Boolean> = appSettingsRepository.appSettingsFlow
+        .map { it.matchDisplayRefreshRate }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, true)
+
     /**
      * Debug benchmark run: the service skips history writes and does not post a notification.
      * Process-wide, set by PlayerActivity before this ViewModel is created.
