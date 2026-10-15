@@ -3,13 +3,21 @@
 ## Prerequisites
 
 - A Linux host (developed on Arch-based Linux; other distributions untested). The native scripts use bash,
-  git, meson, ninja, cmake, nasm, python3, curl and standard build tools. Versions used are in `PROGRESS.md`.
-- Android Studio, for its JetBrains Runtime (JBR) as the build JDK. `native/build.sh` currently hardcodes
-  `JAVA_HOME` to the developer's Android Studio path
-  (`/home/rava/.local/share/JetBrains/Toolbox/apps/android-studio/jbr`); edit that line for your machine.
-  Gradle also needs a JDK (the project used the JBR 25).
+  git, meson, ninja, cmake, nasm, python3, curl, wget, unzip, autoconf, libtool, pkg-config, gperf and
+  standard build tools. Versions used are in `PROGRESS.md`.
+- A JDK 17 or newer with `javac` (the project used Android Studio's JetBrains Runtime 25). `native/build.sh`
+  uses `$JAVA_HOME` if set, otherwise the Android Studio JBR under `~/.local/share/JetBrains/Toolbox`,
+  otherwise the `javac` on `PATH`. Gradle needs a JDK too.
 - The Android SDK (platform 37) and NDK r30 (30.0.16248370). The native build scripts download the NDK and the
-  dependency sources themselves; point `local.properties` (`sdk.dir`) at your Android SDK for Gradle.
+  dependency sources themselves; the NDK lands next to the SDK, not inside it,
+  so Gradle needs both paths in `local.properties` in the project root:
+
+  ```properties
+  sdk.dir=<repo>/native/mpv-android/buildscripts/sdk/android-sdk-linux
+  ndk.dir=<repo>/native/mpv-android/buildscripts/sdk/android-ndk-r30
+  ```
+
+  The scripts install SDK platform 36; Gradle downloads platform 37 on the first build (network needed).
 - Disk space and time: the first native build downloads and compiles all dependencies.
 
 ## Native libraries

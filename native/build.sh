@@ -6,8 +6,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MPV_ANDROID_DIR="$REPO_ROOT/native/mpv-android"
 BUILDSCRIPTS_DIR="$MPV_ANDROID_DIR/buildscripts"
 
-export JAVA_HOME="/home/rava/.local/share/JetBrains/Toolbox/apps/android-studio/jbr"
-export PATH="$JAVA_HOME/bin:$PATH"
+# JDK: $JAVA_HOME if set, else the developer's Android Studio JBR, else the javac on PATH.
+if [[ -z "${JAVA_HOME:-}" ]]; then
+	if [[ -d "$HOME/.local/share/JetBrains/Toolbox/apps/android-studio/jbr" ]]; then
+		export JAVA_HOME="$HOME/.local/share/JetBrains/Toolbox/apps/android-studio/jbr"
+	elif command -v javac >/dev/null 2>&1; then
+		export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
+	fi
+fi
+[[ -n "${JAVA_HOME:-}" ]] && export PATH="$JAVA_HOME/bin:$PATH"
 
 if [[ ! -d "$MPV_ANDROID_DIR/.git" ]]; then
 	"$SCRIPT_DIR/fetch.sh"
@@ -65,6 +72,7 @@ echo "Building native variant: $variant"
 cd "$BUILDSCRIPTS_DIR"
 # This buildscripts checkout has one shared prefix/build directory. Clean all target build dirs
 # and the prefix on every selection, so no object or static archive can leak across flag sets.
+mkdir -p prefix  # missing on a fresh clone
 find prefix -mindepth 1 -delete
 ./buildall.sh --clean --arch arm64 mpv
 
