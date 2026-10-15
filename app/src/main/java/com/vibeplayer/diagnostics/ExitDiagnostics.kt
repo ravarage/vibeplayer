@@ -78,8 +78,9 @@ object ExitDiagnostics {
                 reasonCode = info.reason,
                 reasonName = reasonToString(info.reason),
                 description = info.description,
-                pssBytes = info.pss,
-                rssBytes = info.rss,
+                // ApplicationExitInfo reports pss and rss in kB.
+                pssBytes = info.pss * 1024,
+                rssBytes = info.rss * 1024,
                 timestampMs = info.timestamp
             )
         }

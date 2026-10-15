@@ -58,14 +58,29 @@ class ThermalManager(
             }
             isRegistered = false
         }
+        mainHandler.removeCallbacksAndMessages(null)
     }
 
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var fileGeneration = 0
+
+    /**
+     * Called before a new file is handed to the engine. Resets the step-down budget and re-checks the
+     * status once the new file plays: checking right away would act on the outgoing file (a vo step-down
+     * reconfigures and reloads whatever is loaded) and read its paused/eof state.
+     */
     fun onFileChanged(newPath: String?) {
-        // Reset thermal trigger budget for new file: a new file starts fresh and may adapt if hot
         highestTriggeredStatus = null
-        if (isRegistered && powerManager != null) {
-            handleThermalStatus(powerManager.currentThermalStatus)
-        }
+        val generation = ++fileGeneration
+        mainHandler.postDelayed({
+            if (generation == fileGeneration && isRegistered && powerManager != null) {
+                handleThermalStatus(powerManager.currentThermalStatus)
+            }
+        }, FILE_SETTLE_MS)
+    }
+
+    companion object {
+        private const val FILE_SETTLE_MS = 3000L
     }
 
     fun handleThermalStatus(status: Int) {
