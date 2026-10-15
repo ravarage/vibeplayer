@@ -15,6 +15,7 @@ import com.vibeplayer.player.PlayerEngine
  * Exposes playback state, duration, position, speed, metadata, and handles
  * play/pause, seek, 10s skip, and previous/next neighbour navigation.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class VibePlayerAdapter(
     looper: Looper,
     private val engine: PlayerEngine,

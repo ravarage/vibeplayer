@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -608,9 +609,9 @@ private fun SeekControls(
     onScrubbingChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val positionSeconds by remember(positionFlow) {
-        positionFlow.map { it / 1000 }.distinctUntilChanged()
-    }.collectAsState(initial = positionFlow.value / 1000)
+    // Read only inside derivedStateOf: SeekControls recomposes once per second, not per position update.
+    val positionState = positionFlow.collectAsState()
+    val positionSeconds by remember(positionState) { derivedStateOf { positionState.value / 1000 } }
     var userSeeking by remember { mutableStateOf(false) }
     var seekProgress by remember { mutableFloatStateOf(0f) }
 

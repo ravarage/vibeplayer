@@ -67,6 +67,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackService : Service() {
 
     companion object {

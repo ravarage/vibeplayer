@@ -2,15 +2,19 @@ package com.vibeplayer.data.prefs
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 
 enum class PlaybackModeOption(val displayName: String, val description: String) {
     EFFICIENT("Efficient", "Hardware decoding via MediaCodec, lowest battery, path B (GLES)"),
@@ -95,7 +99,10 @@ object SettingsMigrationPolicy {
     }
 }
 
-val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
+val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "app_settings",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }
+)
 
 class AppSettingsRepository(private val context: Context) {
     companion object {
@@ -122,9 +129,13 @@ class AppSettingsRepository(private val context: Context) {
     }
 
 
-    val notificationPermissionDeniedFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_NOTIFICATION_PERMISSION_DENIED] ?: false
-    }
+    val notificationPermissionDeniedFlow: Flow<Boolean> = context.settingsDataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { prefs ->
+            prefs[KEY_NOTIFICATION_PERMISSION_DENIED] ?: false
+        }
 
     suspend fun setNotificationPermissionDenied(denied: Boolean) {
         context.settingsDataStore.edit { it[KEY_NOTIFICATION_PERMISSION_DENIED] = denied }
@@ -143,7 +154,11 @@ class AppSettingsRepository(private val context: Context) {
         }
     }
 
-    val appSettingsFlow: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
+    val appSettingsFlow: Flow<AppSettings> = context.settingsDataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { prefs ->
         val playbackMode = try {
             PlaybackModeOption.valueOf(prefs[KEY_PLAYBACK_MODE] ?: PlaybackModeOption.EFFICIENT.name)
         } catch (_: Exception) {
