@@ -1382,16 +1382,21 @@ class PlayerEngine(
         }
         vulkanCheckJob?.cancel()
         vulkanCheckJob = scope.launch {
+            // The failure belongs to this handle and this file: a reconfigure (another handle) or an
+            // open of the next file (openVideo switches currentFormat before its load) during the
+            // window must not be blamed, since the verdict is remembered per format or driver build.
+            val checkedHandle = handle
+            val checkedFormat = currentFormat
             if (BuildConfig.DEBUG && debugForceVulkanFailureOnce) {
                 debugForceVulkanFailureOnce = false
-                handleVulkanFailure("Debug forced Vulkan failure", forcedScope = VulkanFailureScope.FORMAT)
+                handleVulkanFailure("Debug forced Vulkan failure", forcedScope = VulkanFailureScope.FORMAT, format = checkedFormat)
                 return@launch
             }
             val startTime = System.currentTimeMillis()
             var voConfigured = false
             while (isActive && System.currentTimeMillis() - startTime < 3200L) {
                 delay(200L)
-                if (handle == 0L) break
+                if (handle == 0L || handle != checkedHandle) break
                 val currentVo = MpvNative.getPropertyString(handle, "current-vo")
                 val voParams = MpvNative.getPropertyString(handle, "video-out-params")
                 if (!currentVo.isNullOrEmpty() && currentVo != "null" && currentVo != "none") {
@@ -1404,10 +1409,10 @@ class PlayerEngine(
                 }
             }
             val vid = if (!voConfigured && isActive && handle != 0L) MpvNative.getPropertyString(handle, "vid") else null
-            if (isActive && handle != 0L &&
+            if (isActive && handle != 0L && handle == checkedHandle && playbackConfig.renderer == Renderer.VULKAN &&
                 isVulkanVoFailure(fileLoaded, attachedSurface != null, vid, voConfigured)
             ) {
-                handleVulkanFailure("Vulkan VO failed to initialise (no current-vo/video-out-params within 3s)")
+                handleVulkanFailure("Vulkan VO failed to initialise (no current-vo/video-out-params within 3s)", format = checkedFormat)
             }
         }
     }
@@ -1428,7 +1433,7 @@ class PlayerEngine(
         }
     }
 
-    fun handleVulkanFailure(reason: String, forcedScope: VulkanFailureScope? = null) {
+    fun handleVulkanFailure(reason: String, forcedScope: VulkanFailureScope? = null, format: VideoFormat? = currentFormat) {
         sessionVulkanFailed = true
         val mpvLines = dumpMpvLogSince(handleCreatedAtMs)
         val classified = VulkanFailureClassifier.classify(mpvLines, reason)
@@ -1444,7 +1449,7 @@ class PlayerEngine(
         _onScreenMessage.tryEmit("Vulkan failed, using OpenGL ES")
         Log.w("VP", "Vulkan failed, falling back to OpenGL ES")
         try {
-            onVulkanFailureListener?.invoke(currentFormat, failure)
+            onVulkanFailureListener?.invoke(format, failure)
         } catch (t: Throwable) {
             Log.w("VP", "Error notifying onVulkanFailureListener: ${t.message}")
         }
