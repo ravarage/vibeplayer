@@ -155,6 +155,12 @@ class PlayerEngine(
     @Volatile private var softwareRecoveryIdentity: String? = null
     /** hwdec=no was set on the current handle for [softwareRecoveryIdentity] (a new handle starts without). */
     @Volatile private var hwdecForcedSoftware = false
+    /**
+     * The `hwdec` value last set on the current mpv handle (option table at init, [setHwdec], B-08), which
+     * mpv decodes the next file with; the P6-08 operating-rate hint is decided from it, not from the
+     * requested config ([setHwdec] changes the handle only).
+     */
+    @Volatile private var handleHwdec: String? = null
     private val watchdog: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "VP-Watchdog").apply { isDaemon = true }
     }
@@ -847,9 +853,11 @@ class PlayerEngine(
         MpvNative.setVo(handle, playbackConfig.vo)
 
         // Options from PlaybackConfig option table
-        for ((key, value) in playbackConfig.getOptionTable()) {
+        val optionTable = playbackConfig.getOptionTable()
+        for ((key, value) in optionTable) {
             MpvNative.setOptionString(handle, key, value)
         }
+        handleHwdec = optionTable["hwdec"]
         if (playbackConfig.debugMpvOptions.isNotEmpty()) {
             Log.i("VP", "Debug mpv_opts applied at init: ${playbackConfig.debugMpvOptions}")
         }
@@ -1167,17 +1175,24 @@ class PlayerEngine(
             if (software && !hwdecForcedSoftware) {
                 MpvNative.setPropertyString(handle, "hwdec", "no")
                 hwdecForcedSoftware = true
+                handleHwdec = "no"
                 Log.w("VP", "B-08: $identity stalled with hardware decoding earlier; loading it with hwdec=no")
             } else if (!software && hwdecForcedSoftware) {
-                playbackConfig.getOptionTable()["hwdec"]?.let { MpvNative.setPropertyString(handle, "hwdec", it) }
+                playbackConfig.getOptionTable()["hwdec"]?.let {
+                    MpvNative.setPropertyString(handle, "hwdec", it)
+                    handleHwdec = it
+                }
                 hwdecForcedSoftware = false
             }
 
-            // P6-08 fix: MediaCodec clock hint, per file (after the B-08 decision: never for software).
-            val hwdecForFile = if (hwdecForcedSoftware) "no" else playbackConfig.getOptionTable()["hwdec"]
+            // P6-08 fix: MediaCodec clock hint, per file (after the B-08 decision: never for software), only
+            // when mpv will open a MediaCodec decoder with the handle's hwdec / hwdec-codecs / gpu-api: every
+            // other decoder rejects the AVOption ("AVOption 'operating_rate' not found").
+            val hwdecForFile = if (hwdecForcedSoftware) "no" else handleHwdec
+            val handleOptions = playbackConfig.getOptionTable()
             val clipFormat = clip?.format
             val ratePolicy = if (clipFormat != null) FormatProfileTable.getProfile(clipFormat).operatingRate else OperatingRatePolicy.OFF
-            val rate = OperatingRate.hint(ratePolicy, hwdecForFile, clip)
+            val rate = OperatingRate.hint(ratePolicy, hwdecForFile, clip, handleOptions["hwdec-codecs"], handleOptions["gpu-api"])
             val rateOption = OperatingRate.loadOption(rate, playbackConfig.debugMpvOptions)
             if (rateOption != null) {
                 options.add(rateOption)
@@ -1185,7 +1200,7 @@ class PlayerEngine(
                 Log.i("VP", "Operating-rate hint $rate not set: debug mpv_opts set vd-lavc-o")
             }
             if (clip != null) {
-                Log.i("VP", "Operating rate for ${clip.format.formatKey} fps=${clip.fps} ${clip.width}x${clip.height} tenBit=${clip.tenBit} hwdec=$hwdecForFile policy=${ratePolicy.token} -> ${rate ?: "none"}")
+                Log.i("VP", "Operating rate for ${clip.format.formatKey} fps=${clip.fps} ${clip.width}x${clip.height} tenBit=${clip.tenBit} hwdec=$hwdecForFile hwdec-codecs=${handleOptions["hwdec-codecs"]} gpu-api=${handleOptions["gpu-api"]} policy=${ratePolicy.token} -> ${rate ?: "none"}")
             }
 
             val cmd = if (options.isNotEmpty()) {
@@ -1325,6 +1340,7 @@ class PlayerEngine(
             assertCommandThread()
             if (handle != 0L) {
                 MpvNative.setPropertyString(handle, "hwdec", hwdec)
+                handleHwdec = hwdec
                 Log.i("VP", "hwdec set to $hwdec")
             }
         }

@@ -1,7 +1,9 @@
 package com.vibeplayer.player
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** P6-08 fix: MediaCodec operating-rate hint. */
@@ -57,6 +59,35 @@ class OperatingRateTest {
         assertNull(OperatingRate.hint(auto, "auto", hevc(60.0)))
         assertNull(OperatingRate.hint(OperatingRatePolicy.OFF, "mediacodec", hevc(60.0)))
         assertNull(OperatingRate.hint(auto, "mediacodec", null))
+    }
+
+    @Test
+    fun `hint only when mpv opens a MediaCodec decoder`() {
+        val appCodecs = "h264,hevc,vp9" // PlaybackConfig.getOptionTable
+        // codec not on hwdec-codecs: mpv decodes in software (vd_lavc.c hwdec_codec_allowed)
+        assertNull(OperatingRate.hint(auto, "mediacodec-copy", ClipInfo(VideoFormat.AV1, 60.0, 3840, 2160), appCodecs))
+        assertEquals(120, OperatingRate.hint(auto, "mediacodec-copy", ClipInfo(VideoFormat.AV1, 60.0), null))
+        assertEquals(60, OperatingRate.hint(auto, "mediacodec-copy", h264(30.0), appCodecs, "vulkan"))
+        assertEquals(120, OperatingRate.hint(auto, "mediacodec", hevc(60.0), appCodecs, "opengl"))
+        assertEquals(120, OperatingRate.hint(auto, "mediacodec", hevc(60.0), appCodecs, null)) // mediacodec_embed
+        // zero-copy on Vulkan: no AImageReader interop, mpv falls back to software
+        assertNull(OperatingRate.hint(auto, "mediacodec", hevc(60.0), appCodecs, "vulkan"))
+        assertEquals(120, OperatingRate.hint(auto, "mediacodec-copy", hevc(60.0), appCodecs, "vulkan"))
+        // no MediaCodec decoder for Hi10P or an unknown codec
+        assertNull(OperatingRate.hint(auto, "mediacodec-copy", ClipInfo(VideoFormat.H264_10BIT, 24.0)))
+        assertNull(OperatingRate.hint(auto, "mediacodec-copy", ClipInfo(VideoFormat.OTHER, 30.0)))
+        // a hwdec list is not one MediaCodec value
+        assertNull(OperatingRate.hint(auto, "mediacodec-copy,no", h264(30.0)))
+    }
+
+    @Test
+    fun `hwdec-codecs matching mirrors mpv`() {
+        assertTrue(OperatingRate.hwdecCodecAllowed("h264,hevc,vp9", "hevc"))
+        assertFalse(OperatingRate.hwdecCodecAllowed("h264,hevc,vp9", "av1"))
+        assertFalse(OperatingRate.hwdecCodecAllowed("h264,hevc10", "hevc"))
+        assertTrue(OperatingRate.hwdecCodecAllowed("all", "av1"))
+        assertTrue(OperatingRate.hwdecCodecAllowed(null, "av1")) // mpv default list
+        assertFalse(OperatingRate.hwdecCodecAllowed("", "h264"))
     }
 
     @Test

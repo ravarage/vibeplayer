@@ -150,10 +150,29 @@ frame rate (`MediaExtractor` `KEY_FRAME_RATE`, read by `VideoFormatDetector.dete
 detection; rates <= 0 or above 480, i.e. VFR timebases, count as unknown), rounded up and clamped to 60..240;
 with an unknown frame rate n = 120 for clips >= 4K (longest side >= 3840) or 10-bit HEVC, otherwise no hint.
 The detection result travels with the load request, so reconfigure, Vulkan -> GLES fallback and stall
-reloads keep it. The engine decides at loadfile time from the hwdec that file is actually loaded with, so
-software loads (row `no`, B-08 software recovery, `hwdec=no` overrides) never get the option (FFmpeg's
-software decoders do not know it and mpv would log `AVOption 'operating_rate' not found`); only mpv's own
-in-file fallback from a MediaCodec init failure to software can still log that once. A debug `mpv_opts`
+reloads keep it. **Where the option lands (2026-10-15 source check, after the device log showed
+`[vd] AVOption 'operating_rate' not found` twice on an H.264 load):** mpv 0.41 has no per-decoder variant of
+`vd-lavc-o`; `init_avctx` applies the whole list to every AVCodecContext it opens (`video/decode/vd_lavc.c:837`):
+the first hwdec attempt, each `force_fallback` (665-675, called from `reinit` 696-700, the decode-error path
+1293-1303 and the VO format fallback `VDCTRL_FORCE_HWDEC_FALLBACK` 1385), and every `VDCTRL_REINIT` after a
+runtime `hwdec`/`hwdec-codecs` change (`player/command.c:7989`). Only FFmpeg n9.0.2's MediaCodec decoders
+(`h264/hevc/mpeg2/mpeg4/vp8/vp9/av1_mediacodec`, all compiled in) have the AVOption: `libavcodec/mediacodecdec.c:601-602`,
+INT 0..INT_MAX (so 60..240 are all valid; a bad value would print "Could not set AVOption", not "not found"),
+read once in `mediacodec_decode_init` (441-442) into the MediaFormat key `operating-rate`. `av_opt_set(..,
+AV_OPT_SEARCH_CHILDREN)` searches only the opened codec's own private class (`libavcodec/options.c:51-57`), so the
+"not found" line proves that a non-MediaCodec context (software `h264`, `hevc`, `libdav1d`, ...) was opened during
+that load. It is not fatal: `mp_set_avopts` (`common/av_common.c:384-392`) only logs and returns -1, and
+`init_avctx` ignores the result; the option cannot cause a fallback, it only reports one (or a software
+decode). Each software context logs it once, so two lines mean two software opens in that load (for example
+MediaCodec failing, then a reinit). The engine therefore sets the option only when mpv will pick MediaCodec
+first, decided by the pure `OperatingRate.mediaCodecOpens` from the values **on the mpv handle** (not the
+requested profile): `hwdec` last set on the handle (option table at init, `setHwdec` from the `force_hwdec`
+extra, B-08 `hwdec=no`), the codec on `hwdec-codecs` (mirror of `hwdec_codec_allowed`, vd_lavc.c:443; the app
+sets `h264,hevc,vp9`, so AV1 never gets it), a format with a MediaCodec decoder (not Hi10P, not `other`), and not
+zero-copy `mediacodec` on Vulkan (no AImageReader interop: "Could not create device", software). What is left: an
+in-file MediaCodec failure (configure/start error, decode errors during probing) still falls back to software,
+and that software context logs the line once per open; the line is kept as the visible sign of that fallback.
+A debug `mpv_opts`
 that sets `vd-lavc-o` disables the per-file hint (device A/B baseline: `vd-lavc-o=operating_rate=0`, which
 FFmpeg treats as unspecified). Cost: the hint raises decoder clocks (+9 points app CPU in the A/B); the
 battery cost on battery power is not measured yet (TASKS.md P6-08).

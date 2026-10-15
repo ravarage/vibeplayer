@@ -57,15 +57,64 @@ object OperatingRate {
     /** True for the hwdec values that decode with MediaCodec (zero-copy and copy-back). */
     fun isMediaCodec(hwdec: String?): Boolean = hwdec == "mediacodec" || hwdec == "mediacodec-copy"
 
+    /** mpv's default `hwdec-codecs` (mpv 0.41 `video/decode/vd_lavc.c`, `hwdec_conf` defaults). */
+    const val MPV_DEFAULT_HWDEC_CODECS = "h264,vc1,hevc,vp8,vp9,av1,prores,prores_raw,ffv1,dpx"
+
+    /**
+     * The mpv codec name of [format] for which FFmpeg has a `<codec>_mediacodec` decoder that can decode
+     * it, or null. H.264 10-bit (Hi10P) and `other` give null: Android MediaCodec has no Hi10P decoder on
+     * the target SoC (format_table.json) and `other` is not one known codec.
+     */
+    fun mediaCodecCodec(format: VideoFormat): String? = when (format) {
+        VideoFormat.H264_8BIT -> "h264"
+        VideoFormat.HEVC -> "hevc"
+        VideoFormat.VP9 -> "vp9"
+        VideoFormat.AV1 -> "av1"
+        VideoFormat.H264_10BIT, VideoFormat.OTHER -> null
+    }
+
+    /** mpv's `hwdec_codec_allowed` (vd_lavc.c): [codec] is in the comma list [hwdecCodecs], or it says "all". */
+    fun hwdecCodecAllowed(hwdecCodecs: String?, codec: String): Boolean =
+        (hwdecCodecs ?: MPV_DEFAULT_HWDEC_CODECS).split(',').any { it == "all" || it == codec }
+
+    /**
+     * True when mpv will open a `<codec>_mediacodec` decoder for [format] with the handle's [hwdec],
+     * [hwdecCodecs] and [gpuApi] (the values set on the mpv handle, not the requested profile).
+     *
+     * mpv applies `vd-lavc-o` to every AVCodecContext it opens (vd_lavc.c `init_avctx`), but only FFmpeg's
+     * MediaCodec decoders have the `operating_rate` AVOption (mediacodecdec.c); any other decoder logs
+     * `AVOption 'operating_rate' not found` (non-fatal). So the hint is only set when mpv's own selection
+     * (vd_lavc.c `select_and_set_hwdec`) picks MediaCodec first:
+     * - hwdec is `mediacodec` or `mediacodec-copy`;
+     * - the codec is on `hwdec-codecs` (otherwise mpv goes straight to software decoding);
+     * - zero-copy `mediacodec` is not on Vulkan: its device comes from the VO's AImageReader interop, which
+     *   only the GL renderer offers, so mpv logs "Could not create device." and decodes in software.
+     */
+    fun mediaCodecOpens(hwdec: String?, format: VideoFormat, hwdecCodecs: String?, gpuApi: String?): Boolean {
+        if (!isMediaCodec(hwdec)) return false
+        val codec = mediaCodecCodec(format) ?: return false
+        if (!hwdecCodecAllowed(hwdecCodecs, codec)) return false
+        if (hwdec == "mediacodec" && gpuApi == "vulkan") return false
+        return true
+    }
+
     /**
      * The operating rate to request for [clip] decoded with [hwdec], or null for no hint.
      *
-     * - only for MediaCodec decoding ([isMediaCodec]) and policy [OperatingRatePolicy.AUTO];
+     * - only when mpv opens a MediaCodec decoder for it ([mediaCodecOpens], with the handle's
+     *   [hwdecCodecs] and [gpuApi]) and policy [OperatingRatePolicy.AUTO];
      * - known fps: 2 x fps rounded up, clamped to [MIN_RATE]..[MAX_RATE] (24 -> 60, 30 -> 60, 60 -> 120);
      * - unknown fps: [UNKNOWN_FPS_HEAVY_RATE] for >= 4K or 10-bit HEVC, otherwise no hint.
      */
-    fun hint(policy: OperatingRatePolicy, hwdec: String?, clip: ClipInfo?): Int? {
-        if (policy != OperatingRatePolicy.AUTO || clip == null || !isMediaCodec(hwdec)) return null
+    fun hint(
+        policy: OperatingRatePolicy,
+        hwdec: String?,
+        clip: ClipInfo?,
+        hwdecCodecs: String? = null,
+        gpuApi: String? = null
+    ): Int? {
+        if (policy != OperatingRatePolicy.AUTO || clip == null) return null
+        if (!mediaCodecOpens(hwdec, clip.format, hwdecCodecs, gpuApi)) return null
         val fps = sanitizeFps(clip.fps)
         if (fps != null) {
             return kotlin.math.ceil(fps * 2.0 - 1e-6).toInt().coerceIn(MIN_RATE, MAX_RATE)
