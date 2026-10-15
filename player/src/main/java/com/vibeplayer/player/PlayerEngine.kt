@@ -1973,8 +1973,13 @@ class PlayerEngine(
     }
 
     fun release(sync: Boolean = false) {
-        if (released) return
-        released = true
+        // Under the abandon lock: an abandon either finished (its executor is the one shut down here)
+        // or sees released and does nothing; it can no longer swap in a thread nobody shuts down.
+        val executor = synchronized(this) {
+            if (released) return
+            released = true
+            commandExecutor
+        }
         speedOverride = null
         savedVid = null
         isDucked = false
@@ -1997,15 +2002,19 @@ class PlayerEngine(
         }
         try {
             if (sync && Looper.myLooper() != Looper.getMainLooper()) {
-                val future = commandExecutor.submit(task)
+                val future = executor.submit(task)
                 future.get(5, TimeUnit.SECONDS)
-                commandExecutor.shutdown()
+                executor.shutdown()
             } else {
-                commandExecutor.submit(task)
-                commandExecutor.shutdown()
+                executor.submit(task)
+                executor.shutdown()
             }
         } catch (e: RejectedExecutionException) {
             Log.w("VP", "Command executor already stopped during release: ${e.message}")
+        } catch (e: java.util.concurrent.TimeoutException) {
+            // sync release behind a blocked command thread: do not throw at the caller; the destroy stays queued.
+            Log.w("VP", "release: handle destroy did not finish within 5 s")
+            executor.shutdown()
         }
     }
 }
