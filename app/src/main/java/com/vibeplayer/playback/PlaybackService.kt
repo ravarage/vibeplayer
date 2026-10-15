@@ -965,22 +965,27 @@ class PlaybackService : Service() {
             playerEngine.setShaderPreset(effectivePreset)
             playerEngine.setSubtitleStyle(appSettings.subtitleStyle())
 
+            // P4-14: re-open the remembered external subtitle off the main thread (this coroutine runs on Main).
             val externalSubUri = fileSettings?.externalSubUri
-            var subFdPath: String? = null
-            var subTitle: String? = null
-            if (!externalSubUri.isNullOrEmpty()) {
+            val externalSub: Pair<String, String>? = if (externalSubUri.isNullOrEmpty()) null else withContext(Dispatchers.IO) {
                 try {
                     val subUri = Uri.parse(externalSubUri)
                     val pfd = contentResolver.openFileDescriptor(subUri, "r")
                     if (pfd != null) {
-                        subFdPath = "fdclose://${pfd.detachFd()}"
-                        subTitle = queryDisplayName(subUri)
+                        val title = queryDisplayName(subUri)
+                        "fdclose://${pfd.detachFd()}" to title
                     } else {
                         Log.w("VP", "Reopening external subtitle: null descriptor for $externalSubUri")
+                        null
                     }
                 } catch (e: Exception) {
                     Log.w("VP", "Reopening external subtitle $externalSubUri failed: ${e.message}")
+                    null
                 }
+            }
+            if (generation != loadGeneration || currentVideoPath != path) {
+                externalSub?.let { PlayerEngine.closeFdPath(it.first) }
+                return@launch
             }
 
             playerEngine.load(
@@ -996,13 +1001,13 @@ class PlaybackService : Service() {
                 audioDelayMs = audioDelayMs,
                 identity = identityKey ?: path
             )
-            if (subFdPath != null && subTitle != null) {
-                playerEngine.addSubtitleTrack(
-                    fdPath = subFdPath,
-                    title = subTitle,
-                    select = fileSettings?.subEnabled ?: true
-                )
-                Log.i("VP", "Reopening video: re-added external subtitle $externalSubUri ($subTitle, select=${fileSettings?.subEnabled ?: true})")
+            if (externalSub != null) {
+                val (subFdPath, subTitle) = externalSub
+                // Select it only when it was the last chosen subtitle; the user may have switched to an
+                // embedded track (or turned subtitles off) since loading the file.
+                val selectExternal = (fileSettings?.subEnabled ?: true) && fileSettings?.subTrackTitle == subTitle
+                playerEngine.addSubtitleTrack(fdPath = subFdPath, title = subTitle, select = selectExternal)
+                Log.i("VP", "Reopening video: re-added external subtitle $externalSubUri ($subTitle, select=$selectExternal)")
             }
             handedToEngine = true
             lastPathHandedToEngine = path
