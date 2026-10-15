@@ -81,9 +81,9 @@ class MediaRepository(private val context: Context) {
             )
 
             cursor?.use {
-                val idCol = it.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+                val idCol = it.getColumnIndex(MediaStore.Video.Media._ID)
                 val dataCol = it.getColumnIndex(MediaStore.Video.Media.DATA)
-                val nameCol = it.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+                val nameCol = it.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
                 val bucketIdCol = it.getColumnIndex(MediaStore.Video.Media.BUCKET_ID)
                 val bucketNameCol = it.getColumnIndex(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
                 val durationCol = it.getColumnIndex(MediaStore.Video.Media.DURATION)
@@ -92,11 +92,16 @@ class MediaRepository(private val context: Context) {
                 val widthCol = it.getColumnIndex(MediaStore.Video.Media.WIDTH)
                 val heightCol = it.getColumnIndex(MediaStore.Video.Media.HEIGHT)
 
+                if (idCol < 0) {
+                    Log.w("VP", "MediaStore query: _ID column missing")
+                    return@use
+                }
+
                 while (it.moveToNext()) {
                     val id = it.getLong(idCol)
                     val uri = ContentUris.withAppendedId(collection, id)
                     val path = if (dataCol >= 0) it.getString(dataCol) ?: "" else ""
-                    val displayName = it.getString(nameCol) ?: ""
+                    val displayName = if (nameCol >= 0) it.getString(nameCol) ?: "" else ""
                     val bucketId = if (bucketIdCol >= 0) it.getString(bucketIdCol) ?: "unknown" else "unknown"
                     val bucketName = if (bucketNameCol >= 0) it.getString(bucketNameCol) ?: "Unknown" else "Unknown"
                     val duration = if (durationCol >= 0) it.getLong(durationCol) else 0L
@@ -122,6 +127,8 @@ class MediaRepository(private val context: Context) {
                     )
                 }
             }
+        } catch (e: SecurityException) {
+            Log.w("VP", "SecurityException querying MediaStore videos: ${e.message}")
         } catch (e: Exception) {
             Log.e("VP", "Error querying MediaStore videos", e)
         }
@@ -174,16 +181,26 @@ class MediaRepository(private val context: Context) {
             }
         }
 
-        context.contentResolver.registerContentObserver(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            true,
-            observer
-        )
+        try {
+            context.contentResolver.registerContentObserver(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                true,
+                observer
+            )
+        } catch (e: SecurityException) {
+            Log.w("VP", "SecurityException registering MediaStore observer: ${e.message}")
+        } catch (e: Exception) {
+            Log.w("VP", "Failed to register MediaStore observer: ${e.message}")
+        }
 
         trySend(Unit)
 
         awaitClose {
-            context.contentResolver.unregisterContentObserver(observer)
+            try {
+                context.contentResolver.unregisterContentObserver(observer)
+            } catch (e: Exception) {
+                Log.w("VP", "Failed to unregister MediaStore observer: ${e.message}")
+            }
         }
     }.conflate()
         .debounce(250L)
