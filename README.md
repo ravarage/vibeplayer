@@ -71,7 +71,8 @@ what will not.
   20 cold opens on the default row). A watchdog recovers it within 6 to 10 seconds; it never stays black.
 - **Anime4K on OpenGL ES**: presets A, B and C fail to compile one pass on OpenGL ES; a fix is in progress. They
   work on Vulkan; Snapdragon GSR works on both.
-- **HEVC 10-bit 4K drops**: the 60 fps 4K HEVC test clip drops about 40 frames per second. The cause is known (no
+- **HEVC 10-bit 4K drops**: the 60 fps 4K HEVC test clip drops many frames (1027 in a 25 s run, 1241
+  in a 60 s looped run). The cause is known (no
   operating-rate hint to the decoder; a device test with the hint dropped none); the fix still needs its device
   confirmation.
 - **External subtitles**: `.srt` / `.ass` files next to a video in shared storage are not auto-loaded on

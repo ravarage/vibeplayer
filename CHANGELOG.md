@@ -58,7 +58,7 @@ Features marked **(beta)** are merged but their device acceptance check is not f
 - **Memory budget**: mpv demuxer cache 32 MiB forward / 16 MiB back for local files, smaller thumbnail cache,
   `onTrimMemory`; 1080p H.264 playback 216 MB PSS (was 428 MB), browser after closing the player 110 MB.
 - **Browser smoothness**: 0 to 0.5 % janky frames on fast scrolls of a 925-video folder (release build).
-- **Release build**: R8 and resource shrinking with keep rules for the JNI callbacks.
+- **Release build**: R8 and resource shrinking with keep rules for the JNI callbacks (beta: still being checked).
 - **Baseline Profile module** (`:baselineprofile`): prepared; the profile has not been generated on the device yet.
 
 ### Changed
@@ -72,7 +72,8 @@ Features marked **(beta)** are merged but their device acceptance check is not f
 - Bounded main-thread surface detach (1.5 s) so a stuck mpv core cannot hang the UI.
 - Saved resume positions no longer go stale while the controls are hidden.
 - Closing the mini player with its X now ends the session (no stale notification).
-- Benchmark runs no longer trigger the "startForegroundService() did not then call startForeground()" ANR.
+- Benchmark mode always answers `startForegroundService` with `startForeground` (fix for an ANR; unit-tested,
+  device re-check still open).
 - Double Tap Skip Interval setting is applied (it was always 10 s before).
 
 ### Known issues
@@ -80,7 +81,7 @@ Features marked **(beta)** are merged but their device acceptance check is not f
   the default copy-back row, 4 in 20 on zero-copy); the watchdog recovers it in 6 to 10 s.
 - **Anime4K on OpenGL ES**: presets A, B and C fail to compile one pass (Clamp_Highlights) on OpenGL ES; a fix
   is in progress. They work on Vulkan; Snapdragon GSR works on both.
-- **HEVC 10-bit 4K drops** (~40 of 60 frames per second on `hevc10_4k.mp4`): cause found (no operating-rate
+- **HEVC 10-bit 4K drops** (1027 in a 25 s run, 1241 in a 60 s looped run of `hevc10_4k.mp4`): cause found (no operating-rate
   hint to the MediaCodec decoder; `operating_rate=120` gave 0 drops in a device A/B); the fix is pending its
   device confirmation and a power check.
 - **External subtitles**: `.srt` / `.ass` files next to a video in shared storage are not auto-loaded on

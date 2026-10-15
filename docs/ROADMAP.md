@@ -45,7 +45,8 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
 
 - B-08 (resolved as recovery, `BLOCKERS.md`): MediaCodec can stall at the start of an H.264 file (1 in 10 to 1
   in 20 cold opens on the default copy-back row, 4 in 20 on zero-copy). The watchdog abandons the stuck handle
-  and reopens the file within 6 to 10 s; no black screen or ANR in 140+ test opens. The stall itself is not fixed.
+  and reopens the file within 6 to 10 s; none stayed black in 160 test opens, and no ANR in the
+  60-open run that recorded it. The stall itself is not fixed.
 - Anime4K presets fail to compile one pass on OpenGL ES (fix in progress).
 - External subtitle files next to a video are not auto-loaded on Android 13+ (video-only storage access).
 - Vulkan is experimental and depends on the owner's unfinished driver port.
