@@ -82,6 +82,7 @@ The app provides the following hooks for devcheck and automated testing, with de
    - `debug_overlay` (boolean): Force debug performance overlay visible.
 4. Debug broadcast receiver (`DebugActionReceiver`, permission-guarded with `DUMP` or registered with `RECEIVER_NOT_EXPORTED`):
    Targeting `com.vibeplayer` (`am broadcast -p com.vibeplayer -a com.vibeplayer.DEBUG_ACTION --es action <action>`), supporting actions:
-   - `pause`, `play`, `toggle_pause`, `next`, `prev`, `seek` (`--el pos_ms <ms>`), `aspect`, `speed` (`--ef speed <float>`), and `double_tap` (`--es side left|right`).
+   - `pause`, `play`, `toggle_pause`, `next`, `prev`, `seek` (`--el pos_ms <ms>`), `aspect`, `speed` (`--ef speed <float>`), `double_tap` (`--es side left|right`), and `shader:<preset>` (`none|anime4k_a|anime4k_b|anime4k_c|snapdragon_gsr`, applied to the running engine without reloading the file; used for the P8-01 same-frame shader check).
+
 5. PiP rectangle logging: logs `PiP bounds=l,t,r,b` and `sourceRectHint` upon PiP param update and enter/exit. Used by devcheck as a fallback when dumpsys bounds parsing fails.
 6. Thumbnail bind logging: logs `thumb=ok|black|missing name=` under tag `VP` when thumbnails are loaded or displayed.

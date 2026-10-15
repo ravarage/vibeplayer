@@ -1047,7 +1047,26 @@ class PlayerActivity : ComponentActivity() {
                         val side = intent.getStringExtra("side")?.lowercase() ?: "right"
                         playerEngine.seekRelative(if (side == "left") -10.0 else 10.0, exact = true)
                     }
+                    // Debug-only runtime shader toggle (P8-01 controlled same-frame check): applies the
+                    // preset to the running engine without reloading the file, so a paused frame stays
+                    // identical and only the shader differs. Does not touch the persisted setting.
+                    action.startsWith("shader:") -> {
+                        val name = action.substringAfter("shader:").lowercase()
+                        val preset = when (name) {
+                            "none" -> com.vibeplayer.player.ShaderPreset.NONE
+                            "anime4k_a", "a" -> com.vibeplayer.player.ShaderPreset.ANIME4K_A
+                            "anime4k_b", "b" -> com.vibeplayer.player.ShaderPreset.ANIME4K_B
+                            "anime4k_c", "c" -> com.vibeplayer.player.ShaderPreset.ANIME4K_C
+                            "snapdragon_gsr", "gsr" -> com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR
+                            else -> null
+                        }
+                        if (preset != null) {
+                            Log.i("VP", "debugReceiver: runtime shader preset -> $preset")
+                            playerEngine.setShaderPreset(preset)
+                        }
+                    }
                 }
+
             }
         }
     } else null
