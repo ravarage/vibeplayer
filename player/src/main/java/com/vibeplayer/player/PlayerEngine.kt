@@ -553,7 +553,7 @@ class PlayerEngine(
         if (released || serial != loadSerial.get() || restartSeenSerial == serial) return
         val busyMs = probed.busyForMs()
         if (!StallPolicy.shouldRecover(answered, busyMs)) {
-            if (!answered) Log.i("VP", "B-08 watchdog: probe queued behind a task busy for only $busyMs ms (e.g. a Vulkan fallback reconfigure); looking again")
+            if (!answered) Log.i("VP", "B-08 probe: queued behind a task busy for only $busyMs ms (e.g. a Vulkan fallback reconfigure); looking again")
             scheduleStallCheck(serial, armedAt, StallPolicy.RECHECK_MS)
             return
         }
