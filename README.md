@@ -18,43 +18,65 @@ Screenshots will be added later.
 
 ## Features
 
-Features marked **beta** are merged but not yet verified on the device.
+Features marked **beta** are merged but their device check is not finished (see [PROGRESS.md](PROGRESS.md)).
 
 - Gestures: brightness, volume, swipe to seek, double-tap skip, pinch zoom and pan, lock, haptics;
-  hold for 2x speed (**beta**)
+  hold for fast playback (**beta**)
 - Hardware decoding of H.264, HEVC and VP9 through MediaCodec; AV1 with dav1d on all cores
 - Styled ASS subtitles with embedded fonts (libass); audio and subtitle track pickers
-- Subtitle and audio sync adjustment (-/+ 50 ms) (**beta**)
-- Global subtitle styling: size, position, and ASS style override toggle (**beta**)
+- Subtitle and audio delay in 50 ms steps, saved per file (**beta**)
+- Subtitle size, position and ASS style override settings (**beta**)
 - Speed 0.25x to 4x with pitch correction; aspect modes (fit, crop, stretch, 16:9, 4:3)
-- Per-file memory of position, tracks, speed, aspect, and sync delays; per-folder track memory and default languages
+- Per-file memory of position, tracks, speed and aspect; per-folder track memory and default languages
 - Auto-play of the next file in the folder; previous / next
 - Picture-in-picture mini player
-- Background playback with a media notification (**beta**)
-- Folder browser with thumbnails (software thumbnails for AV1 and 10-bit video) and a continue-watching row
-- Quality mode with an OpenGL ES renderer or an experimental Vulkan renderer, with automatic fallback to OpenGL ES (**beta**)
-- Best configuration per format chosen before opening: Auto renderer mode detects format (MediaExtractor, <50 ms) and selects the measured best decoder and renderer from a data table keyed by the Vulkan driver build (**beta**)
-- Anime4K and Snapdragon GSR shader presets (**beta**)
-- Efficient mode for battery
+- Background playback in a foreground service with a media notification (**beta**)
+- Folder browser with thumbnails (software thumbnails for AV1 and 10-bit video) and a Continue Watching row
+- Best configuration per format chosen before opening (Auto renderer, the default), from a table measured on the
+  reference phone and keyed by the Vulkan driver build, with a Vulkan -> OpenGL ES -> software fallback chain
+- Renderer setting: Auto, OpenGL ES, or Vulkan (experimental: needs the owner's driver port)
+- Quality mode (`gpu-next`, MediaCodec copy-back) next to the Efficient mode (**beta**)
+- Anime4K (A, B, C) and Snapdragon GSR shader presets in Quality mode (**beta**)
+- Starts playing in about 0.9 s; about 216 MB of memory while playing 1080p H.264 (release build)
 
-### Format and renderer matrix
+### Format and renderer table
 
-Auto renderer mode selects the measured optimal configuration per format before opening from a data table keyed by the Vulkan driver build hash:
+What Auto picks on the reference phone (`player/src/main/assets/format_table.json`, Vulkan driver
+`c0b92d25178c8b21`; the same rows apply for an unknown driver). Numbers are from 60 s runs on battery
+([docs/BENCHMARK.md](docs/BENCHMARK.md), "Power comparison").
 
-| Format | Renderer | Video Output (`vo`) | Decoder | Notes |
-|---|---|---|---|---|
-| **H.264 (8-bit)** | Vulkan | `gpu-next` | MediaCodec copy-back | Lowest power draw; falls back to OpenGL ES `gpu` copy-back |
-| **HEVC (8/10-bit)** | OpenGL ES | `gpu` | MediaCodec zero-copy | Optimal efficiency and lowest battery consumption |
-| **VP9** | OpenGL ES | `gpu` | MediaCodec zero-copy | Optimal efficiency and 0 dropped frames |
-| **AV1** | Vulkan | `gpu` | Software (`dav1d`) | Smoothest multi-core software decode; falls back to OpenGL ES `gpu` |
-| **H.264 (10-bit / Hi10P)** | Vulkan | `gpu` | Software | No hardware decoder on chipset; falls back to OpenGL ES `gpu` |
+| Format | Renderer | `vo` | Decoder | Without Vulkan | Why |
+|---|---|---|---|---|---|
+| H.264 8-bit | Vulkan | `gpu-next` | MediaCodec copy-back | OpenGL ES `gpu`, copy-back | 0 drops, 549 mA (lowest); zero-copy excluded for start stalls (B-08) |
+| HEVC (8/10-bit) | OpenGL ES | `gpu` | MediaCodec zero-copy | (same) | 604 mA vs 1254 mA on Vulkan, drops equal within 5% |
+| VP9 | OpenGL ES | `gpu` | MediaCodec zero-copy | (same) | 0 drops, 339 mA vs 794-1026 mA |
+| AV1 | Vulkan | `gpu` | Software (dav1d) | OpenGL ES `gpu`, software | 362 drops vs 385 (`gpu-next`) and 918 (OpenGL ES) on 4K |
+| H.264 10-bit (Hi10P) | Vulkan | `gpu` | Software | OpenGL ES `gpu`, software | no hardware decoder on the 778G |
+| Other | OpenGL ES | `gpu` | Software | (same) | safe default |
 
-**Fallback chain**: If Vulkan is unavailable or fails at runtime, playback automatically falls back to OpenGL ES. If hardware decoding fails on OpenGL ES, playback falls back to software decoding, preserving current playback position with an on-screen notice.
+**Fallback chain**: if Vulkan fails to start or fails at runtime, playback continues on OpenGL ES; if the
+hardware decoder fails on OpenGL ES, it continues with software decoding. The position is kept and a short
+notice is shown.
 
 ## Requirements and compatibility
 
-Android 17 on an arm64-v8a device (minSdk is 37). Tested on one phone only. See
-[docs/HARDWARE.md](docs/HARDWARE.md) for the reference device, what might work elsewhere and what will not.
+Android 17 (minSdk 37) on an arm64-v8a device; OpenGL ES 3.x. The Vulkan renderer needs Vulkan 1.2 or newer
+(libplacebo); otherwise the app uses OpenGL ES. Tested on one phone only (POCO X5 Pro 5G, Snapdragon 778G). See
+[docs/HARDWARE.md](docs/HARDWARE.md) for the reference device, measured numbers, what might work elsewhere and
+what will not.
+
+## Known issues
+
+- **Start stall (B-08)**: MediaCodec sometimes never delivers the first frame of an H.264 file (1 in 10 to 1 in
+  20 cold opens on the default row). A watchdog recovers it within 6 to 10 seconds; it never stays black.
+- **Anime4K on OpenGL ES**: presets A, B and C fail to compile one pass on OpenGL ES; a fix is in progress. They
+  work on Vulkan; Snapdragon GSR works on both.
+- **HEVC 10-bit 4K drops**: the 60 fps 4K HEVC test clip drops about 40 frames per second. The cause is known (no
+  operating-rate hint to the decoder; a device test with the hint dropped none); the fix still needs its device
+  confirmation.
+- **External subtitles**: `.srt` / `.ass` files next to a video in shared storage are not auto-loaded on
+  Android 13 and later, because the app only asks for access to videos.
+- **Vulkan is experimental**: it depends on the owner's unfinished Vulkan 1.3 driver port.
 
 ## Download
 
@@ -82,8 +104,8 @@ Antigravity CLI (agy, Gemini) and OpenAI Codex were the implementing agents. The
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md): renderer benchmark and default choice, performance work, shader and
-tuned-build benchmarks, and the known H.264 start stall (B-08).
+See [docs/ROADMAP.md](docs/ROADMAP.md): the remaining device checks, longer renderer benchmarks, the rest of
+the performance work, the shader benchmark and the tuned native build.
 
 ## License
 
