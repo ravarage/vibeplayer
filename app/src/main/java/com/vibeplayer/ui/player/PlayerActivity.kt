@@ -22,8 +22,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -148,6 +151,8 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    // P10-04: Volume keys handled here. Back navigation does not rely on KEYCODE_BACK (not delivered on
+    // targetSdk 37 predictive back); all back paths use BackHandler / OnBackPressedDispatcher.
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
@@ -385,6 +390,12 @@ class PlayerActivity : ComponentActivity() {
         _volumeFlow.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val lp = window.attributes
+            lp.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            window.attributes = lp
+        }
         hideSystemBars()
 
         // Auto-orient based on video aspect ratio (P1-09)
@@ -455,7 +466,9 @@ class PlayerActivity : ComponentActivity() {
             val neighbours by viewModel.neighbours.collectAsState()
             val gesturesEnabled by viewModel.gesturesEnabled.collectAsState()
             val skipSeconds by viewModel.skipSeconds.collectAsState()
+            val matchDisplayRefreshRate by viewModel.matchDisplayRefreshRate.collectAsState()
             val zoomState = playerEngine.zoomState
+
             val isInPip by _isInPipFlow.collectAsState()
             val initialDebugOverlay = com.vibeplayer.BuildConfig.DEBUG && (
                 intent.getBooleanExtra("debug_overlay", false) ||
@@ -480,6 +493,11 @@ class PlayerActivity : ComponentActivity() {
                 Log.i("VP", "Back press ignored: screen is locked")
             }
 
+            BackHandler(enabled = showDebugOverlay && !isLocked && !isInPip) {
+                Log.i("VP", "Back press: dismiss debug overlay")
+                showDebugOverlay = false
+            }
+
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -488,8 +506,11 @@ class PlayerActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         VideoSurface(
                             playerEngine = playerEngine,
+                            matchDisplayRefreshRate = matchDisplayRefreshRate,
+                            currentPath = activePath,
                             modifier = Modifier.fillMaxSize()
                         )
+
 
                         if (!isInPip) {
                             GestureLayer(
@@ -576,7 +597,9 @@ class PlayerActivity : ComponentActivity() {
                                         Log.e("VP", "Failed to launch OPEN_DOCUMENT: ${e.message}")
                                     }
                                 },
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .windowInsetsPadding(WindowInsets.displayCutout)
                             )
 
                             AspectIndicator(
@@ -590,6 +613,7 @@ class PlayerActivity : ComponentActivity() {
                                     playerEngine = playerEngine,
                                     onClose = { showDebugOverlay = false },
                                     modifier = Modifier
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
                                         .padding(top = 80.dp, start = 16.dp)
                                         .align(Alignment.TopStart)
                                 )

@@ -17,6 +17,10 @@ Clips are in `/sdcard/Movies/vibeplayer-test/` (SPEC.md). Tasks are sequential u
   P4-01, P4-08. Touches only Gradle files, `app/`, `player/build.gradle.kts` and its PROGRESS.md rows;
   nothing under `native/` or `player/src/main/cpp`. Uses the SDK at `~/Android/Sdk` via `local.properties`.
   Where an acceptance item needs playback, skip that item and say so in the note.
+- **Platform track** (`par/platform`, /home/rava/vibeplayer-worktrees/platform) **[parallel safe]**: P10-01..P10-05.
+  Platform features from the Android 17 research (Surface.setFrameRate, thermal adaptation, display cutout,
+  back handling audit, exit diagnostics).
+
 
 ## P0 Native build and first playback
 
@@ -665,3 +669,16 @@ anywhere in the build flags.
 
 **P9-02 Tuned vs baseline** — Benchmark AV1 4K software decode and a 30 min stability run.
 *Files*: docs/BENCHMARK.md. *Accept*: results recorded; tuned build kept only if stable and not slower.
+
+## Phase 10: platform features (from the Android 17 research, 2026-10-15)
+
+**P10-01 Surface.setFrameRate** — in the video surface code (app/src/main/java/com/vibeplayer/ui/player/VideoSurface.kt or wherever the SurfaceView's Surface is created), when a file's container fps is known (engine state/stats; use the exact value e.g. 23.976), call surface.setFrameRate(fps, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS) once per file (not per frame), and setFrameRate(0f, ...) on pause, stop, surface destroy and when leaving the player. Guard against invalid fps (0, NaN, >240). Add a setting toggle "Match display refresh rate" (default on) in the existing settings store. Pure helper for the fps decision with unit tests. *Files*: ui/player/VideoSurface.kt, data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt, test files. *Accept*: log line shows the call, `adb shell dumpsys SurfaceFlinger | grep -i 'frame rate'` shows the vote (device check open).
+
+**P10-02 Thermal adaptation** — register PowerManager.addThermalStatusListener while playing (unregister on stop). Expose thermal status in the stats overlay. At THERMAL_STATUS_MODERATE or higher, step quality down one notch via the existing quality-mode/renderer/shader machinery (e.g. drop shaders first, then gpu-next→gpu), show a short toast/OSD "Reduced quality (device hot)", never step back up within the same file. Decision logic as a pure function with unit tests (including no oscillation). Never touch the safety chain Vulkan→GLES→software ordering. *Files*: playback/PlaybackService.kt, ui/player/DebugOverlay.kt, PlayerEngine.kt, test files. *Accept*: device check open.
+
+**P10-03 Display cutout** — set window.attributes.layoutInDisplayCutoutMode = LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS in PlayerActivity so video in zoom/fill aspect modes can use the punch-hole area; make sure the controls still respect the cutout insets (WindowInsets displayCutout padding on the controls layer only, not on the video). *Files*: ui/player/PlayerActivity.kt, ui/player/PlayerControls.kt. *Accept*: device check open (user).
+
+**P10-04 Back handling audit for targetSdk 37** — KEYCODE_BACK and onBackPressed are not delivered. Check PlayerActivity.onKeyDown and every back path (lock state, open sheets, PiP, settings, browser); make sure all use BackHandler/OnBackPressedDispatcher; add android:enableOnBackInvokedCallback="true" to the application in the manifest if missing. Fix whatever depends on KEYCODE_BACK. *Files*: AndroidManifest.xml, ui/player/PlayerActivity.kt, ui/player/PlayerControls.kt, ui/browser/BrowserActivity.kt, etc. *Accept*: predictive back and gestures work on Android 17 without KEYCODE_BACK dependencies.
+
+**P10-05 Exit diagnostics** — on app start, read ActivityManager.getHistoricalProcessExitReasons(packageName, 0, 5); for exits since the last check (store the last seen timestamp), log reason, description (Android 17 memory limiter shows "MemoryLimiter:AnonSwap"), pss/rss and timestamp to logcat with tag VibeExit, and show them in the existing diagnostics/about/stats screen if there is one. IO off the main thread. *Files*: diagnostics/ExitDiagnostics.kt, data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt, MainActivity.kt. *Accept*: logged to logcat with tag VibeExit, visible in about/diagnostics screen (device check open).
+

@@ -124,8 +124,10 @@ class PlaybackService : Service() {
     private var hasAudioFocus = false
     private var isDucked = false
     private var isNoisyReceiverRegistered = false
+    private val thermalManager by lazy { ThermalManager(this, playerEngine) }
 
     private val audioFocusListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
+
         Log.i("VP", "onAudioFocusChange: focusChange=$focusChange")
         val isPlaying = !playerEngine.state.value.paused
         when (AudioFocusPolicy.handleFocusChange(focusChange, isPlaying, resumeOnFocusGain, isDucked)) {
@@ -356,6 +358,7 @@ class PlaybackService : Service() {
                 if (state.paused && !wasPaused) {
                     saveCurrentPosition()
                     updateNoisyReceiver(false)
+                    thermalManager.onPlaybackStopped()
                     if (!resumeOnFocusGain) {
                         abandonAudioFocus()
                     }
@@ -369,8 +372,10 @@ class PlaybackService : Service() {
                         playerEngine.pause()
                     } else {
                         updateNoisyReceiver(true)
+                        thermalManager.onPlaybackStarted()
                     }
                 }
+
                 if (state.paused != wasPaused) {
                     if (!state.paused) {
                         pausedTimeoutJob?.cancel()
@@ -990,8 +995,10 @@ class PlaybackService : Service() {
                 return@launch
             }
 
+            thermalManager.onFileChanged(path)
             playerEngine.load(
                 path = path,
+
                 startPositionMs = startPositionMs,
                 audioTrackId = if (audioEnabled) audioTrackId else null,
                 audioEnabled = audioEnabled,
@@ -1455,8 +1462,10 @@ class PlaybackService : Service() {
         activeEngine = null
         activeService = null
 
+        thermalManager.onPlaybackStopped()
         updateNoisyReceiver(false)
         abandonAudioFocus()
+
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         nm?.cancel(NOTIFICATION_ID)

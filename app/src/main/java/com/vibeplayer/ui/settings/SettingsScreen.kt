@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -138,10 +139,20 @@ fun SettingsScreen(
                 }
             )
 
+            SettingsSwitchRow(
+                title = "Match display refresh rate",
+                description = "Seamlessly switch display refresh rate to match video frame rate",
+                checked = settings.matchDisplayRefreshRate,
+                onCheckedChange = { checked ->
+                    onUpdateSettings(settings.copy(matchDisplayRefreshRate = checked))
+                }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)
             )
+
 
             // Category: Controls & Gestures
             SettingsSectionHeader(title = "Controls & Gestures")
@@ -257,6 +268,42 @@ fun SettingsScreen(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            // Category: Exit Diagnostics (P10-05)
+            val recentExits by com.vibeplayer.diagnostics.ExitDiagnostics.recentExits.collectAsState()
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            SettingsSectionHeader(title = "Process Exit Diagnostics")
+            if (recentExits.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "No prior exit reasons recorded",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                recentExits.take(5).forEach { exit ->
+                    val dateStr = remember(exit.timestampMs) {
+                        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                            .format(java.util.Date(exit.timestampMs))
+                    }
+                    val pssMb = exit.pssBytes / (1024 * 1024)
+                    val rssMb = exit.rssBytes / (1024 * 1024)
+                    val descStr = if (!exit.description.isNullOrBlank()) " • ${exit.description}" else ""
+                    SettingsInfoRow(
+                        title = "${exit.reasonName}$descStr",
+                        subtitle = dateStr,
+                        description = "PSS: ${pssMb}MB • RSS: ${rssMb}MB (code ${exit.reasonCode})"
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -736,5 +783,47 @@ fun SettingsSliderRow(
             valueRange = valueRange,
             steps = steps
         )
+    }
+}
+
+@Composable
+fun SettingsInfoRow(
+    title: String,
+    subtitle: String? = null,
+    description: String? = null,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (description != null) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
