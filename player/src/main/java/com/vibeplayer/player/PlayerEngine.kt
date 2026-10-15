@@ -1029,6 +1029,7 @@ class PlayerEngine(
             Log.w("VP", "loadInternal: command thread was abandoned; $path is not loaded here")
             return
         }
+        loadInternalCount++
         currentFilePath = path
         currentFileIdentity = identity
         // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
@@ -1171,6 +1172,13 @@ class PlayerEngine(
         }
     }
 
+    /**
+     * Loads issued on the command thread. A reload waiting for a fresh descriptor is dropped when this
+     * changed: its serial is taken when its task runs, so an open queued before it has a lower serial
+     * and the serial check alone would load the old file over the newer one.
+     */
+    @Volatile private var loadInternalCount = 0
+
     private fun loadRequest(request: LoadRequest, paused: Boolean) {
         loadInternal(
             path = request.path,
@@ -1216,6 +1224,10 @@ class PlayerEngine(
             plan is ReloadPolicy.Plan.Reopen -> {
                 val reopener = pathReopener ?: return
                 Log.i("VP", "$why: resolving a fresh descriptor for ${plan.identity}")
+                // Now, not when the descriptor arrives: until then lastKnownPositionMs() (a save) and the
+                // watchdogs must see this load (its start position), not the previous one.
+                lastLoad = request
+                val loadsBefore = loadInternalCount
                 ioScope.launch {
                     val fresh = try {
                         reopener(plan.identity)
@@ -1228,7 +1240,7 @@ class PlayerEngine(
                         return@launch
                     }
                     val task = Runnable {
-                        if (released || serial != loadSerial.get() || handle == 0L) {
+                        if (released || serial != loadSerial.get() || loadInternalCount != loadsBefore || handle == 0L) {
                             Log.i("VP", "$why: reopened descriptor not used (newer load or no handle); closing it")
                             closeFdPath(fresh)
                             return@Runnable
