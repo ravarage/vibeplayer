@@ -29,8 +29,8 @@ static jmethodID g_thumb_frame_ctor = NULL;
 typedef struct {
     mpv_handle *mpv;
     pthread_t event_thread;
-    int thread_running;
-    int stop_requested;
+    volatile int thread_running;
+    volatile int stop_requested;
     jobject surface_ref;
     jobject callback;
     pthread_mutex_t lock;
@@ -54,6 +54,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         g_boolean_class = (jclass)(*env)->NewGlobalRef(env, b_cls);
         g_boolean_valueOf = (*env)->GetStaticMethodID(env, g_boolean_class, "valueOf", "(Z)Ljava/lang/Boolean;");
         (*env)->DeleteLocalRef(env, b_cls);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
     }
 
     jclass l_cls = (*env)->FindClass(env, "java/lang/Long");
@@ -61,6 +63,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         g_long_class = (jclass)(*env)->NewGlobalRef(env, l_cls);
         g_long_valueOf = (*env)->GetStaticMethodID(env, g_long_class, "valueOf", "(J)Ljava/lang/Long;");
         (*env)->DeleteLocalRef(env, l_cls);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
     }
 
     jclass d_cls = (*env)->FindClass(env, "java/lang/Double");
@@ -68,6 +72,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         g_double_class = (jclass)(*env)->NewGlobalRef(env, d_cls);
         g_double_valueOf = (*env)->GetStaticMethodID(env, g_double_class, "valueOf", "(D)Ljava/lang/Double;");
         (*env)->DeleteLocalRef(env, d_cls);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
     }
 
     jclass cb_cls = (*env)->FindClass(env, "com/vibeplayer/player/MpvNative$EventCallback");
@@ -191,7 +197,22 @@ static void *event_thread_func(void *arg) {
                                 break;
                         }
                     }
+                    if ((*env)->ExceptionCheck(env)) {
+                        (*env)->ExceptionDescribe(env);
+                        (*env)->ExceptionClear(env);
+                        if (jval) (*env)->DeleteLocalRef(env, jval);
+                        pthread_mutex_unlock(&holder->lock);
+                        continue;
+                    }
                     jstring jname = (*env)->NewStringUTF(env, prop->name);
+                    if ((*env)->ExceptionCheck(env)) {
+                        (*env)->ExceptionDescribe(env);
+                        (*env)->ExceptionClear(env);
+                        if (jval) (*env)->DeleteLocalRef(env, jval);
+                        if (jname) (*env)->DeleteLocalRef(env, jname);
+                        pthread_mutex_unlock(&holder->lock);
+                        continue;
+                    }
                     (*env)->CallVoidMethod(env, callback, g_cb_on_prop, jname, jval);
                     if ((*env)->ExceptionCheck(env)) {
                         (*env)->ExceptionDescribe(env);
@@ -201,6 +222,9 @@ static void *event_thread_func(void *arg) {
                     if (jval) (*env)->DeleteLocalRef(env, jval);
                 }
             } else {
+                if ((*env)->ExceptionCheck(env)) {
+                    (*env)->ExceptionClear(env);
+                }
                 (*env)->CallVoidMethod(env, callback, g_cb_on_event, (jint)event->event_id);
                 if ((*env)->ExceptionCheck(env)) {
                     (*env)->ExceptionDescribe(env);
@@ -261,6 +285,7 @@ Java_com_vibeplayer_player_MpvNative_setOptionString(JNIEnv *env, jobject thiz,
                                                      jlong handle, jstring name, jstring value) {
     if (!handle || !name || !value) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
     if (!c_name) return -1;
     const char *c_value = (*env)->GetStringUTFChars(env, value, NULL);
@@ -278,6 +303,7 @@ JNIEXPORT jint JNICALL
 Java_com_vibeplayer_player_MpvNative_initialize(JNIEnv *env, jobject thiz, jlong handle) {
     if (!handle) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     int res = mpv_initialize(holder->mpv);
     if (res < 0) {
         __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "mpv_initialize failed: %s", mpv_error_string(res));
@@ -296,9 +322,15 @@ Java_com_vibeplayer_player_MpvNative_command(JNIEnv *env, jobject thiz,
                                              jlong handle, jobjectArray args) {
     if (!handle || !args) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     jsize len = (*env)->GetArrayLength(env, args);
     const char **cmd_args = (const char **)calloc(len + 1, sizeof(const char *));
     jstring *jstrs = (jstring *)calloc(len, sizeof(jstring));
+    if (!cmd_args || !jstrs) {
+        if (cmd_args) free(cmd_args);
+        if (jstrs) free(jstrs);
+        return -1;
+    }
     for (jsize i = 0; i < len; i++) {
         jstrs[i] = (jstring)(*env)->GetObjectArrayElement(env, args, i);
         if (jstrs[i]) {
@@ -325,7 +357,9 @@ Java_com_vibeplayer_player_MpvNative_getPropertyString(JNIEnv *env, jobject thiz
                                                         jlong handle, jstring name) {
     if (!handle || !name) return NULL;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return NULL;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return NULL;
     char *val = mpv_get_property_string(holder->mpv, c_name);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
     if (!val) return NULL;
@@ -339,6 +373,7 @@ Java_com_vibeplayer_player_MpvNative_setPropertyString(JNIEnv *env, jobject thiz
                                                         jlong handle, jstring name, jstring value) {
     if (!handle || !name || !value) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
     if (!c_name) return -1;
     const char *c_value = (*env)->GetStringUTFChars(env, value, NULL);
@@ -360,7 +395,9 @@ Java_com_vibeplayer_player_MpvNative_getPropertyBoolean(JNIEnv *env, jobject thi
                                                          jlong handle, jstring name) {
     if (!handle || !name) return NULL;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv || !g_boolean_class || !g_boolean_valueOf) return NULL;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return NULL;
     int flag = 0;
     int res = mpv_get_property(holder->mpv, c_name, MPV_FORMAT_FLAG, &flag);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
@@ -373,7 +410,9 @@ Java_com_vibeplayer_player_MpvNative_setPropertyBoolean(JNIEnv *env, jobject thi
                                                          jlong handle, jstring name, jboolean value) {
     if (!handle || !name) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return -1;
     int flag = value ? 1 : 0;
     int res = mpv_set_property(holder->mpv, c_name, MPV_FORMAT_FLAG, &flag);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
@@ -385,7 +424,9 @@ Java_com_vibeplayer_player_MpvNative_getPropertyLong(JNIEnv *env, jobject thiz,
                                                      jlong handle, jstring name) {
     if (!handle || !name) return NULL;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv || !g_long_class || !g_long_valueOf) return NULL;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return NULL;
     int64_t val = 0;
     int res = mpv_get_property(holder->mpv, c_name, MPV_FORMAT_INT64, &val);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
@@ -398,7 +439,9 @@ Java_com_vibeplayer_player_MpvNative_setPropertyLong(JNIEnv *env, jobject thiz,
                                                      jlong handle, jstring name, jlong value) {
     if (!handle || !name) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return -1;
     int64_t val = (int64_t)value;
     int res = mpv_set_property(holder->mpv, c_name, MPV_FORMAT_INT64, &val);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
@@ -410,7 +453,9 @@ Java_com_vibeplayer_player_MpvNative_getPropertyDouble(JNIEnv *env, jobject thiz
                                                        jlong handle, jstring name) {
     if (!handle || !name) return NULL;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv || !g_double_class || !g_double_valueOf) return NULL;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return NULL;
     double val = 0.0;
     int res = mpv_get_property(holder->mpv, c_name, MPV_FORMAT_DOUBLE, &val);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
@@ -423,7 +468,9 @@ Java_com_vibeplayer_player_MpvNative_setPropertyDouble(JNIEnv *env, jobject thiz
                                                        jlong handle, jstring name, jdouble value) {
     if (!handle || !name) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return -1;
     double val = (double)value;
     int res = mpv_set_property(holder->mpv, c_name, MPV_FORMAT_DOUBLE, &val);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
@@ -435,7 +482,9 @@ Java_com_vibeplayer_player_MpvNative_observeProperty(JNIEnv *env, jobject thiz,
                                                      jlong handle, jlong reply_userdata, jstring name, jint format) {
     if (!handle || !name) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    if (!c_name) return -1;
     int res = mpv_observe_property(holder->mpv, (uint64_t)reply_userdata, c_name, (mpv_format)format);
     (*env)->ReleaseStringUTFChars(env, name, c_name);
     return res;
@@ -446,6 +495,7 @@ Java_com_vibeplayer_player_MpvNative_unobserveProperty(JNIEnv *env, jobject thiz
                                                        jlong handle, jlong reply_userdata) {
     if (!handle) return -1;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return -1;
     holder->last_time_pos = -1000.0;
     return mpv_unobserve_property(holder->mpv, (uint64_t)reply_userdata);
 }
@@ -475,6 +525,7 @@ Java_com_vibeplayer_player_MpvNative_setVo(JNIEnv *env, jobject thiz,
     if (!handle || !vo) return;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
     const char *c_vo = (*env)->GetStringUTFChars(env, vo, NULL);
+    if (!c_vo) return;
     strncpy(holder->vo_in_use, c_vo, sizeof(holder->vo_in_use) - 1);
     (*env)->ReleaseStringUTFChars(env, vo, c_vo);
 }
@@ -484,6 +535,7 @@ Java_com_vibeplayer_player_MpvNative_setSurfaceSize(JNIEnv *env, jobject thiz,
                                                     jlong handle, jint width, jint height) {
     if (!handle) return;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return;
     char size_str[32];
     snprintf(size_str, sizeof(size_str), "%dx%d", width, height);
     mpv_set_property_string(holder->mpv, "android-surface-size", size_str);
@@ -494,6 +546,7 @@ Java_com_vibeplayer_player_MpvNative_attachSurface(JNIEnv *env, jobject thiz,
                                                    jlong handle, jobject surface) {
     if (!handle || !surface) return;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
+    if (!holder->mpv) return;
     if (holder->surface_ref) {
         mpv_set_property_string(holder->mpv, "vo", "null");
         mpv_set_property_string(holder->mpv, "force-window", "no");
@@ -520,11 +573,13 @@ Java_com_vibeplayer_player_MpvNative_detachSurface(JNIEnv *env, jobject thiz,
                                                    jlong handle) {
     if (!handle) return;
     mpv_holder_t *holder = (mpv_holder_t *)(intptr_t)handle;
-    mpv_set_property_string(holder->mpv, "vo", "null");
-    mpv_set_property_string(holder->mpv, "force-window", "no");
-    wait_for_vo_unconfigured(holder->mpv);
-    int64_t wid = 0;
-    mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
+    if (holder->mpv) {
+        mpv_set_property_string(holder->mpv, "vo", "null");
+        mpv_set_property_string(holder->mpv, "force-window", "no");
+        wait_for_vo_unconfigured(holder->mpv);
+        int64_t wid = 0;
+        mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
+    }
     if (holder->surface_ref) {
         (*env)->DeleteGlobalRef(env, holder->surface_ref);
         holder->surface_ref = NULL;
@@ -544,11 +599,13 @@ Java_com_vibeplayer_player_MpvNative_destroy(JNIEnv *env, jobject thiz, jlong ha
         holder->thread_running = 0;
     }
     if (holder->surface_ref) {
-        mpv_set_property_string(holder->mpv, "vo", "null");
-        mpv_set_property_string(holder->mpv, "force-window", "no");
-        wait_for_vo_unconfigured(holder->mpv);
-        int64_t wid = 0;
-        mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
+        if (holder->mpv) {
+            mpv_set_property_string(holder->mpv, "vo", "null");
+            mpv_set_property_string(holder->mpv, "force-window", "no");
+            wait_for_vo_unconfigured(holder->mpv);
+            int64_t wid = 0;
+            mpv_set_option(holder->mpv, "wid", MPV_FORMAT_INT64, &wid);
+        }
         (*env)->DeleteGlobalRef(env, holder->surface_ref);
         holder->surface_ref = NULL;
     }
