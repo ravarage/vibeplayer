@@ -393,6 +393,17 @@ data/db/*, data/prefs/*, ui/settings/*. *Accept*: a delay change visibly moves s
 device, is restored after reopen, another file is unaffected; size/position change SRT subtitles;
 Bocchi's styled ASS is unchanged with override off.
 
+**P4-14 Load subtitle file via SAF** — "Load subtitle file" through the Storage Access Framework.
+Since P2-11 the app only has READ_MEDIA_VIDEO, so .srt/.ass/.ssa/.vtt/.sub files next to a video are no longer auto-loaded.
+Add a "Load subtitle file…" row at the top of the subtitle sheet that opens ACTION_OPEN_DOCUMENT (any file type; text/*
+and subtitle types preferred). On result: take a persistable read permission, open the URI as a file descriptor on IO
+and pass it to mpv with `sub-add` using `fdclose://<fd>` (mpv owns and closes the fd) with the display name as the title,
+select it, and remember it per file in Room (store the content URI string; new column + MIGRATION_4_5, exported schema 5.json;
+existing history must survive) so reopening the video re-adds it automatically (if the permission is gone, skip quietly and log).
+P4-13 sync and style settings must apply to it. No mpv call on the main thread; engine commands through PlayerEngine/PlaybackService.
+*Files*: ui/player/*, PlayerEngine.kt, data/db/*, playback/PlaybackService.kt.
+*Accept*: external subtitle file (.srt/.ass) loaded via SAF sheet row appears with display name in picker sheet and renders; sync/style settings apply; reopening video re-adds it automatically; revoked permission skips quietly without crash; existing history survives.
+
 **P4-08 History in browser** — Progress bar on thumbnails, "Continue watching" row.
 *Files*: ui/browser/*. *Accept*: partially watched clips show progress; row order = most recent first.
 

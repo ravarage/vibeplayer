@@ -45,6 +45,7 @@ import com.vibeplayer.data.prefs.AppSettingsRepository
 import com.vibeplayer.playback.PlaybackService
 import com.vibeplayer.player.PerfLog
 import com.vibeplayer.player.PlayerEngine
+import com.vibeplayer.player.SubtitleCommands
 import com.vibeplayer.data.thumbs.ThumbnailPause
 import com.vibeplayer.data.prefs.AppSettings
 import kotlinx.coroutines.Deferred
@@ -321,6 +322,22 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    private val openSubtitleLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                Log.w("VP", "takePersistableUriPermission failed for $uri: ${e.message}")
+            }
+            viewModel.loadSubtitleFile(uri)
+        }
+    }
+
     private fun checkNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -551,6 +568,13 @@ class PlayerActivity : ComponentActivity() {
                                     viewModel.setAspect(nextMode)
                                     aspectIndicatorText = nextMode
                                     aspectIndicatorTrigger = System.currentTimeMillis()
+                                },
+                                onLoadSubtitle = {
+                                    try {
+                                        openSubtitleLauncher.launch(SubtitleCommands.OPEN_DOCUMENT_MIME_TYPES)
+                                    } catch (e: Exception) {
+                                        Log.e("VP", "Failed to launch OPEN_DOCUMENT: ${e.message}")
+                                    }
                                 },
                                 modifier = Modifier.fillMaxSize()
                             )

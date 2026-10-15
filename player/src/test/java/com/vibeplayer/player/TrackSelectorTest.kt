@@ -172,4 +172,28 @@ class TrackSelectorTest {
         assertEquals(40, result.selectedSubTrackId)
         assertTrue(result.subEnabled)
     }
+
+    @Test
+    fun testExternalSubtitleMatchingByTitle() {
+        val tracks = listOf(
+            Track(id = 1, type = "sub", title = "Internal English", lang = "eng", external = false),
+            Track(id = 2, type = "sub", title = "my_custom_subs.srt", lang = null, external = true)
+        )
+        val fileChoice = FileTrackChoice(
+            audioTrackId = null,
+            audioTrackTitle = null,
+            audioTrackLang = null,
+            audioEnabled = true,
+            subTrackId = 999, // old ID
+            subTrackTitle = "my_custom_subs.srt",
+            subTrackLang = null,
+            subEnabled = true
+        )
+        val result = TrackSelector.selectTracks(
+            tracks = tracks,
+            fileChoice = fileChoice
+        )
+        assertEquals(2, result.selectedSubTrackId)
+        assertTrue(result.subEnabled)
+    }
 }

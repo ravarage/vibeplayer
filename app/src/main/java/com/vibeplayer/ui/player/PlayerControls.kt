@@ -84,6 +84,7 @@ fun PlayerControls(
     onSetAudioDelay: ((Int) -> Unit)? = null,
     onCycleAspect: (() -> Unit)? = null,
     onToggleMode: (() -> Unit)? = null,
+    onLoadSubtitle: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val interactionEvents = remember { MutableStateFlow(System.currentTimeMillis()) }
@@ -523,7 +524,14 @@ fun PlayerControls(
                 onOpenSync = {
                     showSubTrackSheet = false
                     showSyncSheet = true
-                }
+                },
+                onLoadSubtitle = if (onLoadSubtitle != null) {
+                    {
+                        showSubTrackSheet = false
+                        interactionEvents.value = System.currentTimeMillis()
+                        onLoadSubtitle()
+                    }
+                } else null
             )
         }
 
