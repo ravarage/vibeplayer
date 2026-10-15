@@ -573,14 +573,27 @@ class PlayerEngine(
      * current command thread (the other path already abandoned it).
      */
     private fun abandonStuckHandle(stuck: CommandExecutor, why: String, reload: () -> Unit): Boolean {
-        val executor: CommandExecutor
         synchronized(this) {
             if (released || commandExecutor !== stuck) return false
             val oldScope = scope
             // From here on nothing touches the stuck handle again: its command thread is blocked inside
             // mpv and destroying it would block as well. It is leaked until the process ends.
             handleToken++
-            executor = newCommandExecutor()
+            // Nothing may use the stuck handle from here on (a task queued on the new thread, release()).
+            handle = 0L
+            val executor = newCommandExecutor()
+            // Queued before the executor is published: a task another thread queues meanwhile
+            // (detachSurface, a position read, a load) must not run before the new handle exists.
+            executor.execute {
+                if (released) return@execute
+                attachedSurface = null
+                requestedConfig?.let { playbackConfig = it }
+                initHandle()
+                Log.w("VP", "$why: new mpv handle (${if (handle != 0L) "ok" else "failed"}) with ${playbackConfig.mode}/${playbackConfig.renderer}; asking the UI for a fresh surface")
+                // The old Surface still belongs to the abandoned handle's video output.
+                _surfaceEpoch.update { it + 1 }
+                reload()
+            }
             val dispatcher = executor.asCoroutineDispatcher()
             commandExecutor = executor
             commandDispatcher = dispatcher
@@ -590,17 +603,6 @@ class PlayerEngine(
             // requestedConfig / requestedTrackSelection and the load requests.
             stuck.shutdownNow()
             statsJob = null
-        }
-        executor.execute {
-            if (released) return@execute
-            handle = 0L
-            attachedSurface = null
-            requestedConfig?.let { playbackConfig = it }
-            initHandle()
-            Log.w("VP", "$why: new mpv handle (${if (handle != 0L) "ok" else "failed"}) with ${playbackConfig.mode}/${playbackConfig.renderer}; asking the UI for a fresh surface")
-            // The old Surface still belongs to the abandoned handle's video output.
-            _surfaceEpoch.update { it + 1 }
-            reload()
         }
         return true
     }
