@@ -157,6 +157,15 @@ fun SettingsScreen(
                 }
             )
 
+            SettingsSwitchRow(
+                title = "Collect system profiles",
+                description = "Register system profiling triggers (ANR, anomaly, app-fully-drawn) via ProfilingManager",
+                checked = settings.collectSystemProfiles,
+                onCheckedChange = { checked ->
+                    onUpdateSettings(settings.copy(collectSystemProfiles = checked))
+                }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)

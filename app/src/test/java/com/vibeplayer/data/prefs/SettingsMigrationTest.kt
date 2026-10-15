@@ -12,6 +12,12 @@ class SettingsMigrationTest {
         val settings = AppSettings()
         assertEquals(RendererOption.AUTO, settings.renderer)
     }
+
+    @Test
+    fun `default collectSystemProfiles in AppSettings is false`() {
+        val settings = AppSettings()
+        assertFalse(settings.collectSystemProfiles)
+    }
  
     @Test
     fun `unmigrated null raw renderer resolves to AUTO`() {
