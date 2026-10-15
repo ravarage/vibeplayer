@@ -179,6 +179,22 @@ seek was issued in both runs without errors) and dropped frames across the A/B.
 | D GLES copy-back gpu / gpu-next | 40 / 40 | 0 / 0 | - | 0 | - |
 | A_hevc / A_vp9 | 20 / 20 | 0 / 0 | - | 0 | - |
 
+## P6-08 start-stall re-check (2026-10-15, CLAUDE-V2, driver c0b92d25178c8b21, debug build cb2abcf+, phone charging)
+
+`OUT=/tmp/vp_stall_night tools/stall_test.sh <label> 20 ichiban.mp4 [probe extras]`, force-stop before each open, stall = no
+playback-restart within 8 s. Every stall was recovered by the B-08 watchdog (6.3-9.8 s), none stayed black.
+
+| configuration | extras | opens | stalls (recovered) |
+|---|---|---|---|
+| table row (Efficient, Auto): mediacodec-copy, Vulkan gpu-next | none | 20 | 1 (1) |
+| GLES zero-copy gpu | probe_vo gpu, probe_renderer opengl, hwdec mediacodec | 20 | 4 (4) |
+| GLES copy-back gpu | probe_vo gpu, probe_renderer opengl, hwdec mediacodec-copy | 20 | 1 (1) |
+| Vulkan gpu copy-back | probe_vo gpu, probe_renderer vulkan, hwdec mediacodec-copy | 20 | 0 |
+
+Plus the P7-02 release runs: 1 stall in 10 opens of h264_1080p.mp4 and 0 in 10 of ichiban.mp4 on the table row.
+Conclusion: zero-copy still stalls most (20 %, as in B-08); the copy-back rows are 0-5 % at 20 opens each, too
+few to rank them against each other. The table's H.264 choice (copy-back) stands.
+
 ## Power comparison (2026-10-14, unplugged, driver c0b92d25178c8b21)
 
 Measured on POCO X5 Pro 5G (redwood), Snapdragon 778G, Adreno 642L, Android 17.
