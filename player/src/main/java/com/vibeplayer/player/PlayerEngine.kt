@@ -786,8 +786,9 @@ class PlayerEngine(
             playbackRestartMs = lastPlaybackRestartMs,
             nowMs = System.currentTimeMillis(),
             alreadyFallback = _state.value.fallback,
-            // Configured hwdec=no (format row, decoder=software, debug force) is a choice; a B-08 stall
-            // recovery (hwdecForcedSoftware) is a real fallback and keeps the badge.
+            // Configured hwdec=no (format row, decoder=software, debug setHwdec, and also the software step
+            // after a GLES failure, which announces itself with an on-screen message instead) shows no badge;
+            // a B-08 stall recovery (hwdecForcedSoftware) is a real fallback and keeps the badge.
             softwareByDesign = playbackConfig.hwdecOverride == "no" || (handleHwdec == "no" && !hwdecForcedSoftware),
             hwdecNoSinceMs = hwdecNoSinceMs,
             seekPending = seekPending

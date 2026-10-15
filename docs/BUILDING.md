@@ -18,7 +18,7 @@
   ```
 
   The scripts install SDK platform 37.0 (`platforms;android-37.0`, the package `compileSdk = 37` uses; sdkmanager has no
-  `android-37`), so Gradle does not download the platform itself. An SDK installed before this change (2026-10-15) has only
+  `android-37`), so Gradle does not download the platform itself (it may still fetch platform-tools or build-tools on the first build). An SDK installed before this change (2026-10-15) has only
   platform 36; there Gradle downloads platform 37 on its first build (network needed).
 - Disk space and time: the first native build downloads and compiles all dependencies.
 
