@@ -47,6 +47,13 @@ Before every on-device step run `tools/phone_idle.sh`. Exit 1 means the user is 
 on with another app in front): do not touch it; wait, re-checking every 60 s, and do phone-free work in
 the meantime. Never take the phone away from the user, never close their apps.
 
+## Bugs you notice (user rule, 2026-10-15)
+If you see or experience a bug while doing anything (a crash, ANR, wrong behaviour, a log error, a flaky
+check that turns out to be an app problem), fix it right away in your task's branch, with a test where
+possible and a separate commit "fix: ...", unless the fix is large or belongs to a file another agent owns:
+then record it in BLOCKERS.md or PROGRESS.md so the reviewer assigns it. When your task is finished, spend
+the remaining time reviewing the code you touched and its neighbours for bugs, and fix those too.
+
 ## Hard limits
 - Never change the fixed tech decisions in SPEC.md. If something seems wrong, write it in BLOCKERS.md,
   set the task to `BLOCKED` and stop.
