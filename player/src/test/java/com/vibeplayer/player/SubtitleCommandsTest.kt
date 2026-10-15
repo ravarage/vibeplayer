@@ -1,6 +1,7 @@
 package com.vibeplayer.player
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,9 +26,16 @@ class SubtitleCommandsTest {
     }
 
     @Test
-    fun buildSubAddArgsWithTitleAndCached() {
+    fun buildSubAddArgsWithTitleNotSelectedUsesAuto() {
         val args = SubtitleCommands.buildSubAddArgs("fdclose://42", "English.srt", select = false)
-        assertArrayEquals(arrayOf("sub-add", "fdclose://42", "cached", "English.srt"), args)
+        assertArrayEquals(arrayOf("sub-add", "fdclose://42", "auto", "English.srt"), args)
+    }
+
+    @Test
+    fun notSelectedNeverUsesCachedFlagWhichSelects() {
+        // mpv input.rst: "cached" selects the subtitle; only "auto" adds it without selecting.
+        val args = SubtitleCommands.buildSubAddArgs("fdclose://7", "x.srt", select = false)
+        assertTrue("cached" !in args && "select" !in args)
     }
 
     @Test
@@ -36,6 +44,19 @@ class SubtitleCommandsTest {
         assertArrayEquals(arrayOf("sub-add", "fdclose://42", "select"), args)
 
         val argsEmpty = SubtitleCommands.buildSubAddArgs("fdclose://42", "", select = false)
-        assertArrayEquals(arrayOf("sub-add", "fdclose://42", "cached"), argsEmpty)
+        assertArrayEquals(arrayOf("sub-add", "fdclose://42", "auto"), argsEmpty)
+    }
+
+    @Test
+    fun selectOnRestoreFollowsTheSelectionOnTheOldHandle() {
+        assertTrue(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = false, trackWasPresent = true, selectedSubTitle = "a.srt"))
+        assertFalse(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = true, trackWasPresent = true, selectedSubTitle = "English"))
+        assertFalse(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = true, trackWasPresent = true, selectedSubTitle = null))
+    }
+
+    @Test
+    fun selectOnRestoreKeepsTheRequestWhenTheTrackWasStillPending() {
+        assertTrue(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = true, trackWasPresent = false, selectedSubTitle = null))
+        assertFalse(SubtitleCommands.selectOnRestore("a.srt", requestedSelect = false, trackWasPresent = false, selectedSubTitle = "a.srt"))
     }
 }

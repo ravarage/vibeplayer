@@ -22,6 +22,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
@@ -138,7 +139,18 @@ class PlayerEngine(
         val title: String,
         val select: Boolean = true
     )
-    @Volatile private var pendingSubtitle: PendingSubtitle? = null
+    /** Taken with getAndSet only: release() (main thread) and the command thread must not both close its fd. */
+    private val pendingSubtitle = AtomicReference<PendingSubtitle?>(null)
+    /**
+     * External subtitles added to the current file with their content URI: a reload on a new handle
+     * (reconfigure, thermal step-down, Vulkan/GLES fallback, B-08) loses them, and their fdclose://
+     * descriptor is gone, so they are reopened through [pathReopener] at that reload's file-loaded.
+     */
+    private data class ExternalSubSource(val fileIdentity: String, val uri: String, val title: String, val select: Boolean)
+    private val externalSubSources = java.util.concurrent.CopyOnWriteArrayList<ExternalSubSource>()
+    /** The reload (load serial) whose file-loaded re-adds the external subtitles, and whether each (by URI) is selected. */
+    private class SubRestore(val serial: Int, val selectByUri: Map<String, Boolean>)
+    @Volatile private var subRestore: SubRestore? = null
     private val loadSerial = AtomicInteger(0)
     /** Highest load serial whose loadfile command has been issued. */
     @Volatile private var loadIssuedSerial = 0
@@ -151,6 +163,13 @@ class PlayerEngine(
      * tasks are dropped with the queue when a stuck handle is abandoned, and the new handle needs them.
      */
     @Volatile private var requestedConfig: PlaybackConfig? = null
+    /**
+     * The newest configuration asked for: [playbackConfig] until a queued [reconfigure] (e.g. a Vulkan ->
+     * GLES or GLES -> software fallback) has run. A caller deriving a new configuration from the current
+     * one (P10-02 thermal step-down) must start from this, or its reconfigure, queued behind the fallback,
+     * would bring the failed renderer or decoder back.
+     */
+    val latestRequestedConfig: PlaybackConfig get() = requestedConfig ?: playbackConfig
     @Volatile private var requestedTrackSelection: PendingTrackSelection? = null
     @Volatile private var restartSeenSerial = -1
     /** Events from an abandoned handle carry an old token and are dropped. */
@@ -571,11 +590,20 @@ class PlayerEngine(
                         debugSimulateStallOnce = false
                         simulateStall()
                     }
+                    if (_state.value.containerFps == null) {
+                        val mpvFps = MpvNative.getPropertyDouble(handle, "container-fps")
+                        if (SurfaceFrameRateHelper.isValidFps(mpvFps)) {
+                            _state.update { it.copy(containerFps = mpvFps) }
+                        }
+                    }
+                    updateTracks(allowPendingSelection = true)
+                    // After the remembered-track selection (queued just above): a pending external subtitle
+                    // added with "select" then wins over a stale remembered sid, and one added without
+                    // selection leaves that choice alone.
                     executeCommand {
                         assertCommandThread()
-                        val pending = pendingSubtitle
+                        val pending = pendingSubtitle.getAndSet(null)
                         if (pending != null) {
-                            pendingSubtitle = null
                             if (handle != 0L) {
                                 val cmd = SubtitleCommands.buildSubAddArgs(pending.fdPath, pending.title, pending.select)
                                 val res = MpvNative.command(handle, cmd)
@@ -585,13 +613,10 @@ class PlayerEngine(
                             }
                         }
                     }
-                    if (_state.value.containerFps == null) {
-                        val mpvFps = MpvNative.getPropertyDouble(handle, "container-fps")
-                        if (SurfaceFrameRateHelper.isValidFps(mpvFps)) {
-                            _state.update { it.copy(containerFps = mpvFps) }
-                        }
+                    subRestore?.takeIf { it.serial == loadSerial.get() }?.let {
+                        subRestore = null
+                        restoreExternalSubtitles(it)
                     }
-                    updateTracks(allowPendingSelection = true)
                     checkVulkanVoInitialization()
                     checkGlesInitialization()
                 }
@@ -1180,6 +1205,7 @@ class PlayerEngine(
         loadInternalCount++
         currentFilePath = path
         currentFileIdentity = identity
+        externalSubSources.removeAll { it.fileIdentity != identity }
         // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
         val wasRecovering = softwareRecoveryIdentity
         softwareRecoveryIdentity = StallPolicy.recoveryAfterLoad(softwareRecoveryIdentity, identity)
@@ -1187,10 +1213,7 @@ class PlayerEngine(
             Log.i("VP", "B-08 recovery over: $identity is another file, hardware decoding allowed again")
         }
         fileLoaded = false
-        pendingSubtitle?.let {
-            closeFdPath(it.fdPath)
-            pendingSubtitle = null
-        }
+        pendingSubtitle.getAndSet(null)?.let { closeFdPath(it.fdPath) }
         lastPlaybackRestartMs = 0L
         seekPending = false
         hwdecNoSinceMs = 0L
@@ -1392,6 +1415,14 @@ class PlayerEngine(
         reuseOpenFd: Boolean = false
     ) {
         assertCommandThread()
+        // Tracks of the old handle are still in the state here (only load() clears them).
+        val tracks = _state.value.tracks
+        val selectedSubTitle = tracks.firstOrNull { it.type == "sub" && it.id == _state.value.selectedSubTrackId }?.title
+        subRestore = SubRestore(serial, externalSubSources.filter { it.fileIdentity == request.identity }.associate { src ->
+            src.uri to SubtitleCommands.selectOnRestore(
+                src.title, src.select, tracks.any { it.type == "sub" && it.external && it.title == src.title }, selectedSubTitle
+            )
+        })
         val plan = ReloadPolicy.plan(request.path, request.identity, pathReopener != null)
         when {
             plan == ReloadPolicy.Plan.Same || (plan == ReloadPolicy.Plan.Impossible && reuseOpenFd) -> {
@@ -1913,7 +1944,7 @@ class PlayerEngine(
      * Otherwise, queues as [pendingSubtitle] to be applied once FILE_LOADED fires.
      * Uses [FdOwningTask] so descriptor in [fdPath] is closed if the executor drops it.
      */
-    fun addSubtitleTrack(fdPath: String, title: String, select: Boolean = true) {
+    fun addSubtitleTrack(fdPath: String, title: String, select: Boolean = true, sourceUri: String? = null) {
         if (released) {
             closeFdPath(fdPath)
             return
@@ -1924,14 +1955,19 @@ class PlayerEngine(
                 closeFdPath(fdPath)
                 return@FdOwningTask
             }
+            if (sourceUri != null) {
+                externalSubSources.removeAll { it.uri == sourceUri }
+                externalSubSources.add(ExternalSubSource(currentFileIdentity, sourceUri, title, select))
+            }
             if (fileLoaded) {
                 val cmd = SubtitleCommands.buildSubAddArgs(fdPath, title, select)
                 val res = MpvNative.command(handle, cmd)
                 Log.i("VP", "sub-add: path=$fdPath, title=$title, select=$select, res=$res")
                 updateTracks()
             } else {
-                pendingSubtitle?.let { closeFdPath(it.fdPath) }
-                pendingSubtitle = PendingSubtitle(fdPath, title, select)
+                pendingSubtitle.getAndSet(PendingSubtitle(fdPath, title, select))?.let { closeFdPath(it.fdPath) }
+                // release() may have taken (an empty) pendingSubtitle meanwhile: nobody else closes this one.
+                if (released) pendingSubtitle.getAndSet(null)?.let { closeFdPath(it.fdPath) }
                 Log.i("VP", "Queued pending subtitle: path=$fdPath, title=$title, select=$select")
             }
         }
@@ -1939,6 +1975,27 @@ class PlayerEngine(
             if (released) closeFdPath(fdPath) else commandExecutor.execute(task)
         } catch (_: RejectedExecutionException) {
             closeFdPath(fdPath)
+        }
+    }
+
+    /** Re-adds the external subtitles of the current file after a reload on a new handle ([subRestore]). */
+    private fun restoreExternalSubtitles(restore: SubRestore) {
+        val reopener = pathReopener ?: return
+        val identity = currentFileIdentity
+        for (src in externalSubSources.filter { it.fileIdentity == identity }) {
+            val select = restore.selectByUri[src.uri] ?: continue
+            ioScope.launch {
+                val fresh = try { reopener(src.uri) } catch (t: Throwable) { null } ?: run {
+                    Log.w("VP", "Re-adding external subtitle ${src.uri} after reload failed: no descriptor")
+                    return@launch
+                }
+                if (released || loadSerial.get() != restore.serial) {
+                    closeFdPath(fresh)
+                    return@launch
+                }
+                Log.i("VP", "Re-adding external subtitle ${src.title} after reload on a new handle (select=$select)")
+                addSubtitleTrack(fresh, src.title, select, src.uri)
+            }
         }
     }
 
@@ -2209,10 +2266,7 @@ class PlayerEngine(
         savedVid = null
         isDucked = false
         preDuckVolume = null
-        pendingSubtitle?.let {
-            closeFdPath(it.fdPath)
-            pendingSubtitle = null
-        }
+        pendingSubtitle.getAndSet(null)?.let { closeFdPath(it.fdPath) }
         watchdog.shutdownNow()
         fallbackCheckJob?.cancel()
         fallbackCheckJob = null

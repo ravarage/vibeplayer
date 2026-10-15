@@ -1023,7 +1023,7 @@ class PlaybackService : Service() {
                 // Select it only when it was the last chosen subtitle; the user may have switched to an
                 // embedded track (or turned subtitles off) since loading the file.
                 val selectExternal = (fileSettings?.subEnabled ?: true) && fileSettings?.subTrackTitle == subTitle
-                playerEngine.addSubtitleTrack(fdPath = subFdPath, title = subTitle, select = selectExternal)
+                playerEngine.addSubtitleTrack(fdPath = subFdPath, title = subTitle, select = selectExternal, sourceUri = externalSubUri)
                 Log.i("VP", "Reopening video: re-added external subtitle $externalSubUri ($subTitle, select=$selectExternal)")
             }
             handedToEngine = true
@@ -1156,7 +1156,7 @@ class PlaybackService : Service() {
             val fd = pfd.detachFd()
             val fdPath = "fdclose://$fd"
 
-            playerEngine.addSubtitleTrack(fdPath, displayName, select = true)
+            playerEngine.addSubtitleTrack(fdPath, displayName, select = true, sourceUri = uri.toString())
 
             val existing = dao.getByKey(key)
             val updated = existing?.copy(

@@ -91,7 +91,7 @@ class ThermalManager(
         if (!isPlaying) return
 
         val currentShader = playerEngine.currentShaderPreset
-        val currentVo = playerEngine.playbackConfig.vo
+        val currentVo = playerEngine.latestRequestedConfig.vo
         val action = ThermalDecisionHelper.decideAction(
             currentStatus = status,
             highestTriggeredStatus = highestTriggeredStatus,
@@ -107,7 +107,7 @@ class ThermalManager(
                     playerEngine.setShaderPreset(ShaderPreset.NONE)
                 }
                 if (action.stepDownVoToGpu) {
-                    val newConfig = playerEngine.playbackConfig.copy(voOverride = "gpu")
+                    val newConfig = playerEngine.latestRequestedConfig.copy(voOverride = "gpu")
                     playerEngine.reconfigure(newConfig)
                 }
                 playerEngine.showOnScreenMessage(action.message)
