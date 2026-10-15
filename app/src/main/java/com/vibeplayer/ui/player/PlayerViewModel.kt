@@ -254,5 +254,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             isBound = false
         }
         service = null
+        super.onCleared()
     }
 }
