@@ -30,9 +30,32 @@ the project owner is porting a Vulkan 1.3 driver to it).
 Software AV1 at 4K is the heaviest case. Measured on this phone in one 20-second test with the debug
 overlay's counters (`av1_4k.mp4`, dav1d, all cores, see `ARCHITECTURE.md`, section Vulkan status update):
 frames dropped by the output were 565 with OpenGL ES (`gpu-next`), 517 with Vulkan (`gpu-next`) and 359 with
-Vulkan (`gpu`), with picture moving in every run. Longer runs and battery cost were not measured yet (P6-04, P6-05).
+Vulkan (`gpu`), with picture moving in every run. The 60 s power runs below agree (362 to 918 drops a minute).
 In other words, 4K AV1 is not smooth on this chip; 1080p AV1 is the realistic target. H.264 1080p had 0 to 7
 dropped frames in the same test.
+
+### Measured on the reference device (2026-10-14/15, driver `c0b92d25178c8b21`)
+
+Details and methods in [BENCHMARK.md](BENCHMARK.md).
+
+- **Start time** (release build, Efficient + Auto, intent to first frame, 10 cold opens each): median 882 ms on
+  `h264_1080p.mp4` (min 799 ms; one B-08 stall recovered at 5.7 s), median 798 ms on `ichiban.mp4` (783-826 ms).
+  About 390 ms of it is mpv opening the file.
+- **Memory** (release build, `dumpsys meminfo` TOTAL PSS, phone charging): browser idle 68 MB; 1080p H.264
+  playing 2 min 216 MB (428 MB before the cache budget; target 220 MB); 4K AV1 playing 708 MB (dav1d frame
+  buffers); mini player 178 MB; browser after closing the player 110 MB.
+- **Power** (60 s per row on battery, steady current from `current_now`, screen on, interleaved GLES / Vulkan):
+
+  | Clip | Best configuration | Steady current | Steady drops | Next best |
+  |---|---|---|---|---|
+  | H.264 1080p | Vulkan `gpu-next`, copy-back | 549 mA | 0 | GLES zero-copy 637 mA, 0 drops |
+  | HEVC 10-bit 4K | GLES zero-copy | 605 mA | 1241 | Vulkan `gpu` copy-back 1254 mA, 1207 drops |
+  | VP9 1080p | GLES zero-copy | 339 mA | 0 | GLES copy-back 794 mA |
+  | AV1 4K (dav1d) | Vulkan `gpu` | 1563 mA | 362 | Vulkan `gpu-next` 1340 mA, 385 drops; GLES 1668 mA, 918 drops |
+
+  For HEVC and VP9, zero-copy on OpenGL ES uses far less power and CPU than any copy-back path; for H.264,
+  Vulkan `gpu-next` copy-back measured lowest (and zero-copy stalls at start more often, B-08). The HEVC 4K drops come from the decoder running below real time without an
+  operating-rate hint (device A/B: `operating_rate=120` gave 0 drops); that fix is pending its device check.
 
 ## Best OS
 
