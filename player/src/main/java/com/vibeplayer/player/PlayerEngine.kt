@@ -212,9 +212,13 @@ class PlayerEngine(
         _stats.update { it.copy(adpfStatus = status) }
     }
 
-    private val _fileLoadedSerial = MutableStateFlow(0)
-    /** Counts mpv file-loaded events (new file, reload after reconfigure or fallback); never reset. */
-    val fileLoadedSerial: StateFlow<Int> = _fileLoadedSerial.asStateFlow()
+    private val _threadChangeSerial = MutableStateFlow(0)
+    /**
+     * P10-06: bumped whenever mpv's playback threads are likely replaced: every file-loaded event (new
+     * file, reload on a new handle after reconfigure, fallback or stall) and every surface attach or
+     * detach (the vo thread goes with `vo=null`). Never reset.
+     */
+    val threadChangeSerial: StateFlow<Int> = _threadChangeSerial.asStateFlow()
 
     /**
      * Sum of `frame-drop-count` and `decoder-frame-drop-count`, bounded like [currentPositionMs]: null
@@ -529,7 +533,7 @@ class PlayerEngine(
                 }
                 MpvEvent.FILE_LOADED -> {
                     fileLoaded = true
-                    _fileLoadedSerial.update { it + 1 }
+                    _threadChangeSerial.update { it + 1 }
                     PerfLog.mark("file-loaded")
                     Log.i("VP", "mpv event file-loaded")
                     if (!pendingPauseOnLoad) {
@@ -1017,6 +1021,7 @@ class PlayerEngine(
                 MpvNative.setPropertyString(handle, "vid", restoreVid)
                 Log.i("VP", "Surface attached to mpv handle; restored vid=$restoreVid")
                 PerfLog.mark("surface-attached")
+                _threadChangeSerial.update { it + 1 }
                 savedVid = null
                 checkVulkanVoInitialization()
                 checkGlesInitialization()
@@ -1046,6 +1051,7 @@ class PlayerEngine(
                     MpvNative.detachSurface(handle)
                     MpvNative.setPropertyString(handle, "vid", "no")
                     Log.i("VP", "Surface detached from mpv handle; vid set to no (savedVid=$savedVid)")
+                    _threadChangeSerial.update { it + 1 }
                 }
             }
             // Called from surfaceDestroyed on the main thread. Bounded: if the command thread is

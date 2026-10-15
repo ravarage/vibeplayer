@@ -27,7 +27,8 @@ import java.io.File
  * closed on pause, stop, file end, setting off and service destroy (cancellation of the loop).
  * Everything runs on the IO dispatcher: the /proc scan, the session calls and the close.
  *
- * Once per second: re-scan /proc when due (file loaded, surface re-attached, schedule), update the
+ * Once per second: re-scan /proc when due (file loaded, surface attached or detached, handle replaced
+ * after a stall, schedule), update the
  * target when the container fps changes, update power efficiency when the decode path changes, and
  * report one work duration derived from the drop counters ([AdpfHintPolicy.reportedDurationNanos]).
  * When mpv does not answer the drop read (decoder stall, B-08) that second is not reported.
@@ -85,10 +86,11 @@ class PerformanceHintController(
             var target = 0L
             var powerEfficient: Boolean? = null
             while (true) {
-                val loadSerial = engine.fileLoadedSerial.value
+                val loadSerial = engine.threadChangeSerial.value
                 val surfaceEpoch = engine.surfaceEpoch.value
                 if (loadSerial != lastLoadSerial || surfaceEpoch != lastSurfaceEpoch) {
-                    // New file, a reload on a new handle or a re-attached surface: threads were replaced.
+                    // New file, a reload on a new handle, a surface attach/detach: threads were replaced.
+                    // The drop counters restart with a new file, so the next sample is a baseline.
                     lastLoadSerial = loadSerial
                     lastSurfaceEpoch = surfaceEpoch
                     secondsSinceLoad = 0

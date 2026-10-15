@@ -68,8 +68,8 @@ Application id and base package: `com.vibeplayer`.
 pause, stop, file end, setting off and service destroy. Threads are found by `/proc/self/task/*/comm`: mpv names
 them without an `mpv/` prefix; the session takes exactly `vo`, `core`, `demux`, `dec/video` plus every
 `dav1d-worker` and FFmpeg frame thread `av:<codec>:df<n>` (`AdpfHintPolicy`, player). The set is re-read after
-each mpv file-loaded event (`PlayerEngine.fileLoadedSerial`, also after reconfigure reloads) and surface
-re-attach at 0, 1, 2 and 5 s, then every 10 s; a changed set goes to `setThreads`. Target = 1e9 / container fps
+each mpv file-loaded event, also after reconfigure reloads, and each surface attach/detach
+(`PlayerEngine.threadChangeSerial`) at 0, 1, 2 and 5 s, then every 10 s; a changed set goes to `setThreads`. Target = 1e9 / container fps
 (60 fps fallback). mpv has no cheap per-frame work time, so once per second the controller reports the target,
 or 1.5x the target when `frame-drop-count` + `decoder-frame-drop-count` rose (read bounded on the command
 executor; no report when mpv does not answer). `setPreferPowerEfficiency(true)` only for zero-copy
