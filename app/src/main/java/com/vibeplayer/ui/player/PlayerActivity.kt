@@ -1044,6 +1044,15 @@ class PlayerActivity : ComponentActivity() {
         playerEngine.setIsInPip(isInPictureInPictureMode)
         if (!isInPictureInPictureMode) {
             hideSystemBars()
+            // P5-05: leaving PiP while stopped = the mini player was closed (X or fling). Expanding
+            // arrives while still started; screen-off keeps PiP mode. The activity is not destroyed
+            // by the system then and its binding kept the paused service in the foreground with a
+            // stale notification: end the session and finish.
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                Log.i("VP", "Mini player closed -> ending the session and finishing")
+                PlaybackService.currentInstance?.stopFromUser()
+                finish()
+            }
         }
     }
 

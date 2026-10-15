@@ -547,22 +547,25 @@ class PlaybackService : Service() {
                 isForegroundService = false
                 stopSelf()
             }
-            ACTION_STOP -> {
-                if (isDucked) {
-                    isDucked = false
-                    playerEngine.setDuck(false)
-                }
-                resumeOnFocusGain = false
-                pausedTimeoutJob?.cancel()
-                pausedTimeoutJob = null
-                playerEngine.pause()
-                saveCurrentPosition()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                isForegroundService = false
-                stopSelf()
-            }
+            ACTION_STOP -> stopFromUser()
         }
         return START_NOT_STICKY
+    }
+
+    /** The user ended playback (notification stop, mini player closed): pause, save, remove the notification. */
+    fun stopFromUser() {
+        if (isDucked) {
+            isDucked = false
+            playerEngine.setDuck(false)
+        }
+        resumeOnFocusGain = false
+        pausedTimeoutJob?.cancel()
+        pausedTimeoutJob = null
+        playerEngine.pause()
+        saveCurrentPosition()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        isForegroundService = false
+        stopSelf()
     }
 
     override fun onBind(intent: Intent?): IBinder {
