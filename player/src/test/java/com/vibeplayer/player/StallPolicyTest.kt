@@ -59,8 +59,8 @@ class StallPolicyTest {
 
     @Test
     fun recoversOnlyWhenTheProbeGotNoAnswer() {
-        assertTrue(StallPolicy.shouldRecover(probeAnswered = false))
-        assertFalse(StallPolicy.shouldRecover(probeAnswered = true))
+        assertTrue(StallPolicy.shouldRecover(probeAnswered = false, commandBusyMs = StallPolicy.STUCK_COMMAND_MS))
+        assertFalse(StallPolicy.shouldRecover(probeAnswered = true, commandBusyMs = StallPolicy.STUCK_COMMAND_MS))
     }
 
     private val uri = "content://media/external/video/media/42"
@@ -125,5 +125,14 @@ class StallPolicyTest {
         assertEquals(754_000L, StallPolicy.fallbackPositionMs(playbackStarted = false, knownMs = 0L, loadStartMs = 754_000L))
         assertEquals(12_000L, StallPolicy.fallbackPositionMs(playbackStarted = true, knownMs = 12_000L, loadStartMs = 754_000L))
         assertEquals(5_000L, StallPolicy.fallbackPositionMs(playbackStarted = false, knownMs = 5_000L, loadStartMs = null))
+    }
+
+    @Test
+    fun aProbeQueuedBehindAShortHealthyTaskDoesNotRecover() {
+        // Vulkan VO fallback: the GLES reconfigure started at 3.2 s and is still running at the probe.
+        assertFalse(StallPolicy.shouldRecover(probeAnswered = false, commandBusyMs = 1_800L))
+        assertFalse(StallPolicy.shouldRecover(probeAnswered = false, commandBusyMs = 0L))
+        // Real stall: blocked since file-loaded (>= 5 s when the first probe times out).
+        assertTrue(StallPolicy.shouldRecover(probeAnswered = false, commandBusyMs = 5_000L))
     }
 }

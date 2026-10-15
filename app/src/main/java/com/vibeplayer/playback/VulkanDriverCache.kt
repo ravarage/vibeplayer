@@ -104,6 +104,7 @@ object VulkanDriverCache {
      * - The Vulkan driver completely failed to initialize on this driver build
      * - This format has a remembered failure on this driver build
      */
+    @Synchronized // with recordVulkanFailure: a driver-change reset here must not overwrite a failure recorded meanwhile
     fun isVulkanAvailable(
         context: Context,
         format: VideoFormat,

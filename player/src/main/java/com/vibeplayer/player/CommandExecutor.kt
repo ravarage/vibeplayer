@@ -23,6 +23,7 @@ internal class CommandExecutor(
         private set
 
     override fun beforeExecute(t: Thread?, r: Runnable?) {
+        owner.set(this)
         busySinceMs = clock()
         super.beforeExecute(t, r)
     }
@@ -34,6 +35,25 @@ internal class CommandExecutor(
 
     /** How long the running task has been running, 0 when idle. */
     fun busyForMs(): Long = busySinceMs.let { if (it == 0L) 0L else (clock() - it).coerceAtLeast(0L) }
+
+    /**
+     * Stops the executor and drops its queue like [shutdownNow]; the descriptor of every dropped
+     * [FdOwningTask] is handed to [close], since that task can no longer pass it to mpv or close it.
+     */
+    fun shutdownNowClosingFds(close: (fdPath: String) -> Unit): List<Runnable> =
+        shutdownNow().also { dropped -> dropped.forEach { (it as? FdOwningTask)?.let { t -> close(t.fdPath) } } }
+
+    companion object {
+        private val owner = ThreadLocal<CommandExecutor?>()
+
+        /** The executor whose task is running on the calling thread, null on any other thread. */
+        fun ofCurrentThread(): CommandExecutor? = owner.get()
+    }
+}
+
+/** A command-thread task that owns the descriptor of [fdPath] (an `fdclose://N` path) until it runs. */
+internal class FdOwningTask(val fdPath: String, private val body: () -> Unit) : Runnable {
+    override fun run() = body()
 }
 
 internal object BoundedCall {

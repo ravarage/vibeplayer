@@ -132,6 +132,8 @@ class PlayerEngine(
     private val loadSerial = AtomicInteger(0)
     /** Highest load serial whose loadfile command has been issued. */
     @Volatile private var loadIssuedSerial = 0
+    /** Serial of the newest [load] call (reloads by reconfigure and B-08 take serials too). */
+    @Volatile private var latestOpenSerial = 0
     /** Load serial for which a stuck handle was abandoned by [pendingLoadCheck]. */
     @Volatile private var abandonedForSerial = -1
     /**
@@ -533,8 +535,9 @@ class PlayerEngine(
         if (StallPolicy.onTimer(facts) != StallPolicy.Action.PROBE) return
         // Liveness probe: a stuck core never answers a synchronous property read, and the command
         // thread is normally already blocked in one (updateTracks), so this task does not even start.
+        val probed = commandExecutor
         val answered = try {
-            val probe = commandExecutor.submit {
+            val probe = probed.submit {
                 if (handle != 0L) MpvNative.getPropertyString(handle, "hwdec-current")
             }
             probe.get(StallPolicy.PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -545,17 +548,19 @@ class PlayerEngine(
             return
         }
         if (released || serial != loadSerial.get() || restartSeenSerial == serial) return
-        if (!StallPolicy.shouldRecover(answered)) {
+        val busyMs = probed.busyForMs()
+        if (!StallPolicy.shouldRecover(answered, busyMs)) {
+            if (!answered) Log.i("VP", "B-08 probe: queued behind a task busy for only $busyMs ms (e.g. a Vulkan fallback reconfigure); looking again")
             scheduleStallCheck(serial, armedAt, StallPolicy.RECHECK_MS)
             return
         }
         val request = lastLoad ?: return
-        Log.e("VP", "B-08 watchdog: no playback-restart ${facts.elapsedSinceFileLoadedMs} ms after file-loaded and the mpv core does not answer (hwdec-current=${_state.value.hwdecCurrent}); abandoning the handle and reloading ${request.path} with software decoding at ${request.startPositionMs} ms")
-        abandonAndReloadInSoftware(request)
+        Log.e("VP", "B-08 watchdog: no playback-restart ${facts.elapsedSinceFileLoadedMs} ms after file-loaded and the mpv core does not answer (hwdec-current=${_state.value.hwdecCurrent}, command thread busy $busyMs ms); abandoning the handle and reloading ${request.path} with software decoding at ${request.startPositionMs} ms")
+        abandonAndReloadInSoftware(request, probed)
     }
 
-    private fun abandonAndReloadInSoftware(request: LoadRequest) {
-        abandonStuckHandle(commandExecutor, "B-08 recovery") {
+    private fun abandonAndReloadInSoftware(request: LoadRequest, stuck: CommandExecutor) {
+        abandonStuckHandle(stuck, "B-08 recovery") {
             softwareRecoveryIdentity = request.identity
             Log.w("VP", "B-08 recovery: ${request.identity} is decoded in software from now on")
             // An fdclose:// file gets a fresh descriptor: the stuck handle keeps the old one (and a
@@ -570,14 +575,32 @@ class PlayerEngine(
      * current command thread (the other path already abandoned it).
      */
     private fun abandonStuckHandle(stuck: CommandExecutor, why: String, reload: () -> Unit): Boolean {
-        val executor: CommandExecutor
         synchronized(this) {
             if (released || commandExecutor !== stuck) return false
             val oldScope = scope
             // From here on nothing touches the stuck handle again: its command thread is blocked inside
             // mpv and destroying it would block as well. It is leaked until the process ends.
             handleToken++
-            executor = newCommandExecutor()
+            // Nothing may use the stuck handle from here on (a task queued on the new thread, release()).
+            handle = 0L
+            val executor = newCommandExecutor()
+            // Queued before the executor is published: a task another thread queues meanwhile
+            // (detachSurface, a position read, a load) must not run before the new handle exists.
+            executor.execute {
+                if (released) return@execute
+                attachedSurface = null
+                requestedConfig?.let { playbackConfig = it }
+                // Like reconfigure: a hold ends with the handle, an audio-focus duck carries over.
+                speedOverride = null
+                if (!initHandle()) return@execute
+                if (isDucked && handle != 0L) {
+                    MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
+                }
+                Log.w("VP", "$why: new mpv handle (${if (handle != 0L) "ok" else "failed"}) with ${playbackConfig.mode}/${playbackConfig.renderer}; asking the UI for a fresh surface")
+                // The old Surface still belongs to the abandoned handle's video output.
+                _surfaceEpoch.update { it + 1 }
+                reload()
+            }
             val dispatcher = executor.asCoroutineDispatcher()
             commandExecutor = executor
             commandDispatcher = dispatcher
@@ -585,19 +608,8 @@ class PlayerEngine(
             oldScope.coroutineContext[Job]?.cancel()
             // Drops everything queued behind the stuck task; the caller's latest wishes are in
             // requestedConfig / requestedTrackSelection and the load requests.
-            stuck.shutdownNow()
+            stuck.shutdownNowClosingFds(::closeFdPath)
             statsJob = null
-        }
-        executor.execute {
-            if (released) return@execute
-            handle = 0L
-            attachedSurface = null
-            requestedConfig?.let { playbackConfig = it }
-            initHandle()
-            Log.w("VP", "$why: new mpv handle (${if (handle != 0L) "ok" else "failed"}) with ${playbackConfig.mode}/${playbackConfig.renderer}; asking the UI for a fresh surface")
-            // The old Surface still belongs to the abandoned handle's video output.
-            _surfaceEpoch.update { it + 1 }
-            reload()
         }
         return true
     }
@@ -645,9 +657,16 @@ class PlayerEngine(
         }
     }
 
-    private fun markIssued(serial: Int) {
+    private fun markIssued(serial: Int) = synchronized(this) {
         if (serial > loadIssuedSerial) loadIssuedSerial = serial
     }
+
+    /**
+     * True on the thread of an abandoned command executor: a task that was only slow (a reconfigure
+     * past [StallPolicy.STUCK_COMMAND_MS]) returns there after the new handle took over and must not
+     * touch the handle or the shared state any more.
+     */
+    private fun isStaleCommandThread(): Boolean = CommandExecutor.ofCurrentThread() !== commandExecutor
 
     /** Debug only: behave like B-08 for the current load (command thread blocked, no playback-restart). */
     private fun simulateStall() {
@@ -797,14 +816,28 @@ class PlayerEngine(
         }
     }
 
-    private fun initHandle() {
+    /** Returns false when this command thread was abandoned meanwhile (nothing was changed then). */
+    private fun initHandle(): Boolean {
         assertCommandThread()
+        val created = MpvNative.create(BuildConfig.DEBUG)
+        val published = synchronized(this) {
+            if (released || isStaleCommandThread()) {
+                false
+            } else {
+                handle = created
+                true
+            }
+        }
+        if (!published) {
+            Log.w("VP", "initHandle: command thread abandoned or engine released meanwhile; dropping the new handle")
+            if (created != 0L) MpvNative.destroy(created)
+            return false
+        }
         handleCreatedAtMs = System.currentTimeMillis()
         hwdecForcedSoftware = false
-        handle = MpvNative.create(BuildConfig.DEBUG)
         if (handle == 0L) {
             Log.e("VP", "Failed to create mpv handle")
-            return
+            return true
         }
 
         MpvNative.setEventCallback(handle, GatedCallback(handleToken))
@@ -861,6 +894,7 @@ class PlayerEngine(
         MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
         MpvNative.setPropertyDouble(handle, "panscan", 0.0)
         applyShaderPresetInternal()
+        return true
     }
 
     fun setControlsVisible(visible: Boolean) {
@@ -958,13 +992,18 @@ class PlayerEngine(
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
-        lastLoad = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity)
+        val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity)
+        lastLoad = request
         val serial = loadSerial.incrementAndGet()
+        latestOpenSerial = serial
         // B-08: if the command thread is stuck in a stalled decoder, this load never runs; the
         // watchdog then abandons the stuck handle (next/previous during a stall).
         schedulePendingLoadCheck(serial, android.os.SystemClock.elapsedRealtime(), StallPolicy.LOAD_START_CHECK_MS)
         scope.launch {
             if (hadOverride && handle != 0L) MpvNative.setPropertyDouble(handle, "speed", 1.0)
+            // A reconfigure queued before this open reloads the previous file when it runs and sets
+            // lastLoad to it; the newest open takes it back so a stall recovery or a save uses this file.
+            if (latestOpenSerial == serial && !isStaleCommandThread()) lastLoad = request
             loadInternal(
                 path = path,
                 startPositionMs = startPositionMs,
@@ -979,7 +1018,7 @@ class PlayerEngine(
                 paused = false,
                 identity = fileIdentity
             )
-            markIssued(serial)
+            if (!isStaleCommandThread()) markIssued(serial)
         }
     }
 
@@ -998,6 +1037,11 @@ class PlayerEngine(
         identity: String = path
     ) {
         assertCommandThread()
+        if (isStaleCommandThread()) {
+            Log.w("VP", "loadInternal: command thread was abandoned; $path is not loaded here")
+            return
+        }
+        loadInternalCount++
         currentFilePath = path
         currentFileIdentity = identity
         // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
@@ -1140,6 +1184,13 @@ class PlayerEngine(
         }
     }
 
+    /**
+     * Loads issued on the command thread. A reload waiting for a fresh descriptor is dropped when this
+     * changed: its serial is taken when its task runs, so an open queued before it has a lower serial
+     * and the serial check alone would load the old file over the newer one.
+     */
+    @Volatile private var loadInternalCount = 0
+
     private fun loadRequest(request: LoadRequest, paused: Boolean) {
         loadInternal(
             path = request.path,
@@ -1185,6 +1236,10 @@ class PlayerEngine(
             plan is ReloadPolicy.Plan.Reopen -> {
                 val reopener = pathReopener ?: return
                 Log.i("VP", "$why: resolving a fresh descriptor for ${plan.identity}")
+                // Now, not when the descriptor arrives: until then lastKnownPositionMs() (a save) and the
+                // watchdogs must see this load (its start position), not the previous one.
+                lastLoad = request
+                val loadsBefore = loadInternalCount
                 ioScope.launch {
                     val fresh = try {
                         reopener(plan.identity)
@@ -1196,11 +1251,12 @@ class PlayerEngine(
                         Log.w("VP", "$why: ${plan.identity} could not be reopened; reopen the file to continue")
                         return@launch
                     }
-                    val task = Runnable {
-                        if (released || serial != loadSerial.get() || handle == 0L) {
+                    // Dropped unrun when this thread is abandoned meanwhile: the descriptor is closed then.
+                    val task = FdOwningTask(fresh) {
+                        if (released || serial != loadSerial.get() || loadInternalCount != loadsBefore || handle == 0L) {
                             Log.i("VP", "$why: reopened descriptor not used (newer load or no handle); closing it")
                             closeFdPath(fresh)
-                            return@Runnable
+                            return@FdOwningTask
                         }
                         val reopened = request.copy(path = fresh)
                         lastLoad = reopened
@@ -1281,9 +1337,23 @@ class PlayerEngine(
             val curAudioDelay = _state.value.audioDelayMs
             val surface = attachedSurface
 
-            if (handle != 0L) {
-                MpvNative.detachSurface(handle)
-                MpvNative.destroy(handle)
+            // The time-pos read above blocks on a stuck core; if it returned only after an abandon,
+            // handle is the new thread's and must not be destroyed from here.
+            val old = synchronized(this) {
+                if (isStaleCommandThread()) return@executeCommand
+                handle
+            }
+            if (old != 0L) {
+                MpvNative.detachSurface(old)
+                MpvNative.destroy(old)
+            }
+            // A destroy (or create) that took longer than STUCK_COMMAND_MS may have been abandoned by the
+            // B-08 watchdog: the new command thread owns handle and config from then on.
+            synchronized(this) {
+                if (isStaleCommandThread()) {
+                    Log.w("VP", "reconfigure: command thread was abandoned while destroying the old handle; leaving it to the new one")
+                    return@executeCommand
+                }
                 handle = 0L
             }
             fileLoaded = false
@@ -1292,14 +1362,14 @@ class PlayerEngine(
             // P3-09: the new mpv handle starts at speed 1.0; a hold in progress ends with the reconfigure
             // (curSpeed above is the file's own speed, never the hold override).
             speedOverride = null
-            initHandle()
+            if (!initHandle()) return@executeCommand
 
-            if (surface != null) {
+            if (surface != null && handle != 0L) {
                 MpvNative.attachSurface(handle, surface)
                 savedVid = null
             }
             // P5-03: the new handle starts at full volume; keep an audio-focus duck in progress.
-            if (isDucked) {
+            if (isDucked && handle != 0L) {
                 MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
             }
 
@@ -1324,16 +1394,21 @@ class PlayerEngine(
         }
         vulkanCheckJob?.cancel()
         vulkanCheckJob = scope.launch {
+            // The failure belongs to this handle and this file: a reconfigure (another handle) or an
+            // open of the next file (openVideo switches currentFormat before its load) during the
+            // window must not be blamed, since the verdict is remembered per format or driver build.
+            val checkedHandle = handle
+            val checkedFormat = currentFormat
             if (BuildConfig.DEBUG && debugForceVulkanFailureOnce) {
                 debugForceVulkanFailureOnce = false
-                handleVulkanFailure("Debug forced Vulkan failure", forcedScope = VulkanFailureScope.FORMAT)
+                handleVulkanFailure("Debug forced Vulkan failure", forcedScope = VulkanFailureScope.FORMAT, format = checkedFormat)
                 return@launch
             }
             val startTime = System.currentTimeMillis()
             var voConfigured = false
             while (isActive && System.currentTimeMillis() - startTime < 3200L) {
                 delay(200L)
-                if (handle == 0L) break
+                if (handle == 0L || handle != checkedHandle) break
                 val currentVo = MpvNative.getPropertyString(handle, "current-vo")
                 val voParams = MpvNative.getPropertyString(handle, "video-out-params")
                 if (!currentVo.isNullOrEmpty() && currentVo != "null" && currentVo != "none") {
@@ -1346,10 +1421,10 @@ class PlayerEngine(
                 }
             }
             val vid = if (!voConfigured && isActive && handle != 0L) MpvNative.getPropertyString(handle, "vid") else null
-            if (isActive && handle != 0L &&
+            if (isActive && handle != 0L && handle == checkedHandle && playbackConfig.renderer == Renderer.VULKAN &&
                 isVulkanVoFailure(fileLoaded, attachedSurface != null, vid, voConfigured)
             ) {
-                handleVulkanFailure("Vulkan VO failed to initialise (no current-vo/video-out-params within 3s)")
+                handleVulkanFailure("Vulkan VO failed to initialise (no current-vo/video-out-params within 3s)", format = checkedFormat)
             }
         }
     }
@@ -1370,7 +1445,7 @@ class PlayerEngine(
         }
     }
 
-    fun handleVulkanFailure(reason: String, forcedScope: VulkanFailureScope? = null) {
+    fun handleVulkanFailure(reason: String, forcedScope: VulkanFailureScope? = null, format: VideoFormat? = currentFormat) {
         sessionVulkanFailed = true
         val mpvLines = dumpMpvLogSince(handleCreatedAtMs)
         val classified = VulkanFailureClassifier.classify(mpvLines, reason)
@@ -1386,7 +1461,7 @@ class PlayerEngine(
         _onScreenMessage.tryEmit("Vulkan failed, using OpenGL ES")
         Log.w("VP", "Vulkan failed, falling back to OpenGL ES")
         try {
-            onVulkanFailureListener?.invoke(currentFormat, failure)
+            onVulkanFailureListener?.invoke(format, failure)
         } catch (t: Throwable) {
             Log.w("VP", "Error notifying onVulkanFailureListener: ${t.message}")
         }
@@ -1576,6 +1651,7 @@ class PlayerEngine(
             }
             val currentAid = MpvNative.getPropertyString(handle, "aid")?.toIntOrNull()
             val currentSid = MpvNative.getPropertyString(handle, "sid")?.toIntOrNull()
+            if (isStaleCommandThread()) return@executeCommand
             _state.update {
                 it.copy(
                     tracks = trackList,
@@ -1914,8 +1990,13 @@ class PlayerEngine(
     }
 
     fun release(sync: Boolean = false) {
-        if (released) return
-        released = true
+        // Under the abandon lock: an abandon either finished (its executor is the one shut down here)
+        // or sees released and does nothing; it can no longer swap in a thread nobody shuts down.
+        val executor = synchronized(this) {
+            if (released) return
+            released = true
+            commandExecutor
+        }
         speedOverride = null
         savedVid = null
         isDucked = false
@@ -1938,15 +2019,19 @@ class PlayerEngine(
         }
         try {
             if (sync && Looper.myLooper() != Looper.getMainLooper()) {
-                val future = commandExecutor.submit(task)
+                val future = executor.submit(task)
                 future.get(5, TimeUnit.SECONDS)
-                commandExecutor.shutdown()
+                executor.shutdown()
             } else {
-                commandExecutor.submit(task)
-                commandExecutor.shutdown()
+                executor.submit(task)
+                executor.shutdown()
             }
         } catch (e: RejectedExecutionException) {
             Log.w("VP", "Command executor already stopped during release: ${e.message}")
+        } catch (e: java.util.concurrent.TimeoutException) {
+            // sync release behind a blocked command thread: do not throw at the caller; the destroy stays queued.
+            Log.w("VP", "release: handle destroy did not finish within 5 s")
+            executor.shutdown()
         }
     }
 }

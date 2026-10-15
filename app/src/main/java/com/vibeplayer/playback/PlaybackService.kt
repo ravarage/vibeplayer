@@ -252,6 +252,7 @@ class PlaybackService : Service() {
     private var periodicSaveJob: Job? = null
     private var loadJob: Job? = null
     @Volatile private var loadGeneration = 0L
+    @Volatile private var lastPathHandedToEngine: String? = null
 
     private val _currentPath = MutableStateFlow<String?>(null)
     val currentPath: StateFlow<String?> = _currentPath.asStateFlow()
@@ -795,6 +796,9 @@ class PlaybackService : Service() {
                 if (currentVideoPath == path) _neighbours.value = updated
             }
         }
+        // An fdclose://N path is owned by this open until it is handed to the engine; a superseded or
+        // cancelled open closes it (unless a newer open uses the same path string).
+        var handedToEngine = false
         loadJob = serviceScope.launch {
             val resolvedFolderKey = folderKey ?: (File(path).parent ?: "")
             // P7-02: key (File.exists/length), per-file row, folder row, app settings, and format detection in parallel,
@@ -974,8 +978,16 @@ class PlaybackService : Service() {
                 audioDelayMs = audioDelayMs,
                 identity = identityKey ?: path
             )
+            handedToEngine = true
+            lastPathHandedToEngine = path
             currentKey = key
             if (playAfterLoad) playerEngine.play()
+        }
+        loadJob?.invokeOnCompletion {
+            // Never a path mpv may own: one an earlier or a parallel open of the same string handed over.
+            if (!handedToEngine && currentVideoPath != path && lastPathHandedToEngine != path) {
+                PlayerEngine.closeFdPath(path)
+            }
         }
     }
 

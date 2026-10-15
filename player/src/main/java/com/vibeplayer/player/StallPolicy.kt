@@ -109,6 +109,13 @@ object StallPolicy {
     fun fallbackPositionMs(playbackStarted: Boolean, knownMs: Long, loadStartMs: Long?): Long =
         if (!playbackStarted && loadStartMs != null) loadStartMs else knownMs
 
-    /** After a probe: recover only when the core did not answer in time. */
-    fun shouldRecover(probeAnswered: Boolean): Boolean = !probeAnswered
+    /**
+     * After a probe: recover only when the core did not answer in time and the command thread has
+     * been inside one task for [STUCK_COMMAND_MS]. A probe can also time out queued behind a healthy
+     * task that is merely slow, such as the Vulkan-to-GLES reconfigure that starts 3.2 s after
+     * file-loaded of a file whose Vulkan VO failed (no playback-restart either): look again then.
+     * In a real stall the thread has been blocked since file-loaded, so recovery is not delayed.
+     */
+    fun shouldRecover(probeAnswered: Boolean, commandBusyMs: Long): Boolean =
+        !probeAnswered && commandBusyMs >= STUCK_COMMAND_MS
 }
