@@ -677,6 +677,11 @@ def prev_next(ctx):
         need(ctx.wait_restart(m, 30), f"{which}: {target} did not start playing")
         ctx.sleep(2)
         t = _title_is(ctx, target)
+        for _ in range(2):  # 4K HEVC under load: the controls dump can come back before the overlay shows
+            if t is not False:
+                break
+            ctx.sleep(1.5)
+            t = _title_is(ctx, target)
         need(t is not False, f"{which}: title does not show {target}")
         out.append(f"{which}->{target[:14]}")
     ctx.need_moving("picture after navigation")
