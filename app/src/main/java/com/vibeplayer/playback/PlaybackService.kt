@@ -967,6 +967,29 @@ class PlaybackService : Service() {
             playerEngine.setShaderPreset(effectivePreset)
             playerEngine.setSubtitleStyle(appSettings.subtitleStyle())
 
+            // P4-14: re-open the remembered external subtitle off the main thread (this coroutine runs on Main).
+            val externalSubUri = fileSettings?.externalSubUri
+            val externalSub: Pair<String, String>? = if (externalSubUri.isNullOrEmpty()) null else withContext(Dispatchers.IO) {
+                try {
+                    val subUri = Uri.parse(externalSubUri)
+                    val pfd = contentResolver.openFileDescriptor(subUri, "r")
+                    if (pfd != null) {
+                        val title = queryDisplayName(subUri)
+                        "fdclose://${pfd.detachFd()}" to title
+                    } else {
+                        Log.w("VP", "Reopening external subtitle: null descriptor for $externalSubUri")
+                        null
+                    }
+                } catch (e: Exception) {
+                    Log.w("VP", "Reopening external subtitle $externalSubUri failed: ${e.message}")
+                    null
+                }
+            }
+            if (generation != loadGeneration || currentVideoPath != path) {
+                externalSub?.let { PlayerEngine.closeFdPath(it.first) }
+                return@launch
+            }
+
             playerEngine.load(
                 path = path,
                 startPositionMs = startPositionMs,
@@ -981,6 +1004,14 @@ class PlaybackService : Service() {
                 identity = identityKey ?: path,
                 clip = detectedClip
             )
+            if (externalSub != null) {
+                val (subFdPath, subTitle) = externalSub
+                // Select it only when it was the last chosen subtitle; the user may have switched to an
+                // embedded track (or turned subtitles off) since loading the file.
+                val selectExternal = (fileSettings?.subEnabled ?: true) && fileSettings?.subTrackTitle == subTitle
+                playerEngine.addSubtitleTrack(fdPath = subFdPath, title = subTitle, select = selectExternal)
+                Log.i("VP", "Reopening video: re-added external subtitle $externalSubUri ($subTitle, select=$selectExternal)")
+            }
             handedToEngine = true
             lastPathHandedToEngine = path
             currentKey = key
@@ -1090,6 +1121,44 @@ class PlaybackService : Service() {
                 folderDao.upsert(updatedFolder)
                 Log.i("VP", "Persisted folder sub: lang=${track?.lang}, title=${track?.title}, kind=$subKind, enabled=$isEnabled for folder=$folderPath")
             }
+        }
+    }
+
+    /**
+     * P4-14: Opens external subtitle [uri] through a file descriptor on IO, hands it to mpv with `sub-add`
+     * using `fdclose://<fd>` (mpv owns and closes the fd), and remembers it per file in Room.
+     */
+    fun loadSubtitleFile(uri: Uri) {
+        serviceScope.launch(Dispatchers.IO) {
+            val key = currentKey ?: return@launch
+            val displayName = queryDisplayName(uri)
+            val pfd = try {
+                contentResolver.openFileDescriptor(uri, "r")
+            } catch (e: Exception) {
+                Log.w("VP", "Failed to open subtitle descriptor for $uri: ${e.message}")
+                null
+            } ?: return@launch
+
+            val fd = pfd.detachFd()
+            val fdPath = "fdclose://$fd"
+
+            playerEngine.addSubtitleTrack(fdPath, displayName, select = true)
+
+            val existing = dao.getByKey(key)
+            val updated = existing?.copy(
+                externalSubUri = uri.toString(),
+                subEnabled = true,
+                subTrackTitle = displayName,
+                lastPlayedAt = System.currentTimeMillis()
+            ) ?: FileSettings(
+                key = key,
+                externalSubUri = uri.toString(),
+                subEnabled = true,
+                subTrackTitle = displayName,
+                lastPlayedAt = System.currentTimeMillis()
+            )
+            dao.upsert(updated)
+            Log.i("VP", "Loaded external subtitle $uri (title=$displayName) for key=$key")
         }
     }
 

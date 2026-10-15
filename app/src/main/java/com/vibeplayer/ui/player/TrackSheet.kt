@@ -115,7 +115,8 @@ fun SubtitleTrackSheet(
     selectedTrackId: Int?,
     onSelectTrack: (Int?) -> Unit,
     onDismiss: () -> Unit,
-    onOpenSync: (() -> Unit)? = null
+    onOpenSync: (() -> Unit)? = null,
+    onLoadSubtitle: (() -> Unit)? = null
 ) {
     val subTracks = remember(tracks) { tracks.filter { it.type == "sub" } }
 
@@ -144,6 +145,24 @@ fun SubtitleTrackSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (onLoadSubtitle != null) {
+                    item {
+                        TrackRow(
+                            title = "Load subtitle file…",
+                            subtitle = "Open subtitle from storage",
+                            isSelected = false,
+                            onClick = {
+                                onLoadSubtitle()
+                                onDismiss()
+                            },
+                            modifier = Modifier.semantics {
+                                contentDescription = "load_subtitle_file"
+                                testTag = "load_subtitle_file"
+                            }
+                        )
+                    }
+                }
+
                 if (onOpenSync != null) {
                     item {
                         TrackRow(

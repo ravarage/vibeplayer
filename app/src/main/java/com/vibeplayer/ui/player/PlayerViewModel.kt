@@ -3,6 +3,7 @@ package com.vibeplayer.ui.player
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
+import android.net.Uri
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
@@ -197,6 +198,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setSubtitleTrack(trackId: Int?) {
         (service ?: PlaybackService.currentInstance)?.setSubtitleTrack(trackId)
+    }
+
+    fun loadSubtitleFile(uri: Uri) {
+        (service ?: PlaybackService.currentInstance)?.loadSubtitleFile(uri)
     }
 
     fun setSpeed(speed: Double) {

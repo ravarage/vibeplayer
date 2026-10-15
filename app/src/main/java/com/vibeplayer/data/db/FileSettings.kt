@@ -21,5 +21,6 @@ data class FileSettings(
     val aspect: String? = null,
     val subDelayMs: Int = 0,
     val audioDelayMs: Int = 0,
+    val externalSubUri: String? = null,
     val lastPlayedAt: Long = System.currentTimeMillis()
 )

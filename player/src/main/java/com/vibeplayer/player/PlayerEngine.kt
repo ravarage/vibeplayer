@@ -131,6 +131,12 @@ class PlayerEngine(
         val clip: ClipInfo? = null
     )
     @Volatile private var lastLoad: LoadRequest? = null
+    private data class PendingSubtitle(
+        val fdPath: String,
+        val title: String,
+        val select: Boolean = true
+    )
+    @Volatile private var pendingSubtitle: PendingSubtitle? = null
     private val loadSerial = AtomicInteger(0)
     /** Highest load serial whose loadfile command has been issued. */
     @Volatile private var loadIssuedSerial = 0
@@ -483,6 +489,20 @@ class PlayerEngine(
                     if (BuildConfig.DEBUG && debugSimulateStallOnce) {
                         debugSimulateStallOnce = false
                         simulateStall()
+                    }
+                    executeCommand {
+                        assertCommandThread()
+                        val pending = pendingSubtitle
+                        if (pending != null) {
+                            pendingSubtitle = null
+                            if (handle != 0L) {
+                                val cmd = SubtitleCommands.buildSubAddArgs(pending.fdPath, pending.title, pending.select)
+                                val res = MpvNative.command(handle, cmd)
+                                Log.i("VP", "Applied pending subtitle on FILE_LOADED: path=${pending.fdPath}, title=${pending.title}, select=${pending.select}, res=$res")
+                            } else {
+                                closeFdPath(pending.fdPath)
+                            }
+                        }
                     }
                     updateTracks(allowPendingSelection = true)
                     checkVulkanVoInitialization()
@@ -1065,6 +1085,10 @@ class PlayerEngine(
             Log.i("VP", "B-08 recovery over: $identity is another file, hardware decoding allowed again")
         }
         fileLoaded = false
+        pendingSubtitle?.let {
+            closeFdPath(it.fdPath)
+            pendingSubtitle = null
+        }
         lastPlaybackRestartMs = 0L
         fallbackCheckJob?.cancel()
         fallbackCheckJob = null
@@ -1776,6 +1800,41 @@ class PlayerEngine(
         }
     }
 
+    /**
+     * P4-14: Adds an external subtitle file to the player via mpv `sub-add`.
+     * If the video file is already loaded, executes immediately on the command thread.
+     * Otherwise, queues as [pendingSubtitle] to be applied once FILE_LOADED fires.
+     * Uses [FdOwningTask] so descriptor in [fdPath] is closed if the executor drops it.
+     */
+    fun addSubtitleTrack(fdPath: String, title: String, select: Boolean = true) {
+        if (released) {
+            closeFdPath(fdPath)
+            return
+        }
+        val task = FdOwningTask(fdPath) {
+            assertCommandThread()
+            if (released || handle == 0L) {
+                closeFdPath(fdPath)
+                return@FdOwningTask
+            }
+            if (fileLoaded) {
+                val cmd = SubtitleCommands.buildSubAddArgs(fdPath, title, select)
+                val res = MpvNative.command(handle, cmd)
+                Log.i("VP", "sub-add: path=$fdPath, title=$title, select=$select, res=$res")
+                updateTracks()
+            } else {
+                pendingSubtitle?.let { closeFdPath(it.fdPath) }
+                pendingSubtitle = PendingSubtitle(fdPath, title, select)
+                Log.i("VP", "Queued pending subtitle: path=$fdPath, title=$title, select=$select")
+            }
+        }
+        try {
+            if (released) closeFdPath(fdPath) else commandExecutor.execute(task)
+        } catch (_: RejectedExecutionException) {
+            closeFdPath(fdPath)
+        }
+    }
+
     fun setSpeed(speed: Double) {
         executeCommand {
             assertCommandThread()
@@ -2043,6 +2102,10 @@ class PlayerEngine(
         savedVid = null
         isDucked = false
         preDuckVolume = null
+        pendingSubtitle?.let {
+            closeFdPath(it.fdPath)
+            pendingSubtitle = null
+        }
         watchdog.shutdownNow()
         fallbackCheckJob?.cancel()
         fallbackCheckJob = null
