@@ -150,6 +150,8 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    // P10-04: Volume keys handled here. Back navigation does not rely on KEYCODE_BACK (not delivered on
+    // targetSdk 37 predictive back); all back paths use BackHandler / OnBackPressedDispatcher.
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
@@ -472,6 +474,11 @@ class PlayerActivity : ComponentActivity() {
 
             BackHandler(enabled = isLocked && !isInPip) {
                 Log.i("VP", "Back press ignored: screen is locked")
+            }
+
+            BackHandler(enabled = showDebugOverlay && !isLocked && !isInPip) {
+                Log.i("VP", "Back press: dismiss debug overlay")
+                showDebugOverlay = false
             }
 
             MaterialTheme {

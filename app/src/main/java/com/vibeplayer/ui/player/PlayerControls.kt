@@ -1,5 +1,6 @@
 package com.vibeplayer.ui.player
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -107,6 +108,15 @@ fun PlayerControls(
     var showSubTrackSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showSyncSheet by remember { mutableStateOf(false) }
+
+    val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet
+    BackHandler(enabled = anySheetOpen) {
+        showAudioTrackSheet = false
+        showSubTrackSheet = false
+        showSpeedSheet = false
+        showSyncSheet = false
+        interactionEvents.value = System.currentTimeMillis()
+    }
 
     // Auto-hide controls after 3 seconds of inactivity (paused while sheet is open)
     LaunchedEffect(controlsVisible, playerState.paused, showAudioTrackSheet, showSubTrackSheet, showSpeedSheet, showSyncSheet) {
