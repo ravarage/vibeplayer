@@ -155,11 +155,19 @@ Dalvik 6 MB.
 
 | State | TOTAL PSS before | TOTAL PSS after | Native heap | Graphics | Dalvik | Target |
 |---|---|---|---|---|---|---|
-| Browser idle after cold start | not measured | not measured | | | | |
-| 1080p H.264 playing 2 min | 428 MB | not measured | 253 MB before | 78 MB before | 6 MB before | <= 220 MB |
-| 4K AV1 playing 2 min | not measured | not measured | | | | |
-| Mini player (PiP) | not measured | not measured | | | | |
-| Browser after closing the player | not measured | not measured | | | | <= 150 MB |
+| Browser idle after cold start (20 s) | not measured | 68 MB | 10 MB | 43 MB | | |
+| 1080p H.264 playing 2 min (h264_1080p.mp4) | 428 MB | 216 MB | 125 MB (253 before) | 47 MB (78 before) | | <= 220 MB: met |
+| 4K AV1 playing (~25 s; the clip is 30 s) | not measured | 708 MB | 594 MB | 76 MB | | (record only) |
+| Mini player (PiP, 1080p H.264, 20 s) | not measured | 178 MB | 125 MB | 9 MB | | |
+| Browser after closing the player (20 s / 60 s) | not measured | 110 MB / 108 MB | 26 MB | 41 MB | | <= 150 MB: met |
+
+"After" = release build of main cb2abcf+ (CLAUDE-V2, 2026-10-15 04:44-04:48, phone charging, Efficient mode,
+Renderer Auto: H.264 copy-back on Vulkan gpu-next, AV1 software on Vulkan gpu). Raw rows in docs/meminfo.csv.
+
+A/B on the debug build (same file, 2 min from 5 s): new 32/16 MiB cache 260 MB PSS (native 121 MB) vs
+`legacy_cache=true` (150/50 MiB) 419 MB (native 289 MB): the demuxer cache accounts for ~160 MB. The debug build
+is ~45 MB above release. Not measured: double-tap seek-back latency (no VP-Perf mark after a seek; the -10 s
+seek was issued in both runs without errors) and dropped frames across the A/B.
 
 ## B-08 stall recovery (2026-10-14, build 1cc3d61, default path, tools/stall_test.sh, ichiban.mp4, cold start each open)
 | run | opens | stalls | recovered by watchdog | permanent black | ANR |

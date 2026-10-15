@@ -1,0 +1,10 @@
+time,label,total_pss_kb,native_heap_kb,graphics_kb,gl_mtrack_kb,dalvik_kb
+2026-10-15T04:44:57,release 1080p H.264 2 min,221634,127520,48072,41088,7270
+2026-10-15T04:45:26,release mini player 1080p H.264,182080,128320,9000,2008,6006
+2026-10-15T04:45:50,release browser after closing the player (20 s),223699,128564,50152,43112,7106
+2026-10-15T04:46:31,release browser after closing the player (20 s),112905,26772,42308,41104,6818
+2026-10-15T04:47:11,release browser after closing the player (60 s),110596,25960,42308,41104,5330
+2026-10-15T04:47:49,release AV1 4K playing ~25 s (clip is 30 s),724538,607920,77768,51364,1615
+2026-10-15T04:48:12,"release browser idle (cold, 20 s)",69121,10024,43756,41104,2579
+2026-10-15T04:50:28,debug 1080p H.264 2 min cache=default,266343,123468,45968,41088,5775
+2026-10-15T04:52:32,debug 1080p H.264 2 min cache=legacy,429250,296196,35708,30828,5783
