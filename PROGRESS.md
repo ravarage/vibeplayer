@@ -121,8 +121,8 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P8-02 | Anime4K light presets | IN PROGRESS | CLAUDE-V2 | pending | Left: after the Anime4K_Clamp_Highlights fix for GLES (in progress), A, B and C load on GLES without shader compile errors in the mpv log. Vulkan already clean for A, B, C (2026-10-15). |
 | P8-03 | Snapdragon GSR | IN PROGRESS | CLAUDE-V2 | pending | Left: side-by-side screenshots of a 720p clip with GSR off and on showing visible sharpening. No shader errors on Vulkan and GLES already shown (2026-10-15). |
 | P8-04 | Shader benchmark | TODO | | | |
-| P9-01 | Tuned build | TODO | | | |
-| P9-02 | Tuned vs baseline | TODO | | | |
+| P9-01 | Tuned build | IN PROGRESS | CLAUDE-V3 | pending | Device check 2026-10-15 of the tuned libraries built in the vulkan worktree (native/out/tuned, -O2 -mcpu=cortex-a78 -flto=thin; build flags not re-audited for -O3 here): copied into jniLibs, debug build installed with -r; all 8 test clips played with picture (check_video VIDEO VISIBLE each: h264_1080p, ichiban, hevc10_4k, vp9_1080p, av1_4k, Bocchi, multi_track, VP8), 0 FATAL. Default libraries restored afterwards (md5 of all 7 .so match the backup in /tmp/vp_jnilibs_default, libmpv.so 15504848) and the default debug build reinstalled. Left: decision (reviewer), the TUNED=1 path in native/build.sh on main if kept. |
+| P9-02 | Tuned vs baseline | IN PROGRESS | CLAUDE-V3 | pending | AV1 4K software decode, 60 s, Vulkan gpu, interleaved tuned/default/tuned/default (charging, drops+CPU only): steady drops 918/937/770/951, app CPU 382/406/415/410 % -> tuned mean 844 vs default 944 drops at equal CPU (docs/BENCHMARK.md P9). Recommendation: tuned is stable and not slower (about 11 % fewer drops, within run spread); keeping it is acceptable, but not worth it on this evidence alone. Left: 30 min stability run with tuned libraries, a battery (unplugged) pair. |
 
 ### P4-11 review item dispositions
 

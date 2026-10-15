@@ -318,3 +318,26 @@ deliver far fewer than 60 frames/s as mpv drives it; `operating_rate=120` brings
 decodes), then re-run P6-08 for HEVC 4K and AV1-free rows. Picture visible was not re-checked per row (benchmark
 runs), and current was not comparable (charging).
 
+
+## P9-01 / P9-02 Tuned native libraries vs default (2026-10-15 17:41-17:50, CLAUDE-V3)
+
+Tuned build: `-O2 -mcpu=cortex-a78 -flto=thin`, Vulkan, from `/home/rava/vibeplayer-worktrees/vulkan/native/out/tuned/arm64-v8a`
+(libmpv.so 16792368 bytes) vs default libraries (libmpv.so 15504848 bytes). Same debug app code (main c32a50b), two
+APKs installed in place with `adb install -r` alternately. Each run: `av1_4k.mp4` (4K 10-bit 60 fps), 60 s
+benchmark broadcast, `mode quality, renderer vulkan, vo gpu, decoder software` (the table's AV1 row), warm shader
+cache, driver c0b92d25178c8b21. **Phone charging (status 2): current not comparable, drops/CPU only.**
+
+| Order | Libraries | Steady drops / 60 s | App CPU % (avg) | Battery temp start -> end |
+|---|---|---|---|---|
+| 1 | tuned | 918 | 382 | 34 -> 34 C |
+| 2 | default | 937 | 406 | 36 -> 36 C |
+| 3 | tuned | 770 | 415 | 36 -> 37 C |
+| 4 | default | 951 | 410 | 37 -> 38 C |
+| mean | tuned / default | 844 / 944 (-11 %) | 399 / 408 | |
+
+Every run played at 0 decoder drops, estimated-vf-fps 60 (the decoder delivers late, mpv drops at output).
+Clip check on the tuned build (8 s each, `tools/check_video.py`): h264_1080p, ichiban, hevc10_4k, vp9_1080p,
+av1_4k, Bocchi (AV1 10-bit + ASS), multi_track.mkv, Kelly Clarkson (VP8): all VIDEO VISIBLE, 0 FATAL, one process
+throughout. Not done: the 30 min stability run with the tuned libraries (P9-02 second half), runs on battery.
+Reading: the tuned libraries are not slower; about 11 % fewer drops at equal CPU over only two pairs with the
+temperature rising 34 -> 38 C, so the gain is within run-to-run spread (770-918 for the same build).
