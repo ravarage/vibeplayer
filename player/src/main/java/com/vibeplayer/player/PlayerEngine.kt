@@ -536,8 +536,9 @@ class PlayerEngine(
         if (StallPolicy.onTimer(facts) != StallPolicy.Action.PROBE) return
         // Liveness probe: a stuck core never answers a synchronous property read, and the command
         // thread is normally already blocked in one (updateTracks), so this task does not even start.
+        val probed = commandExecutor
         val answered = try {
-            val probe = commandExecutor.submit {
+            val probe = probed.submit {
                 if (handle != 0L) MpvNative.getPropertyString(handle, "hwdec-current")
             }
             probe.get(StallPolicy.PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -548,17 +549,19 @@ class PlayerEngine(
             return
         }
         if (released || serial != loadSerial.get() || restartSeenSerial == serial) return
-        if (!StallPolicy.shouldRecover(answered)) {
+        val busyMs = probed.busyForMs()
+        if (!StallPolicy.shouldRecover(answered, busyMs)) {
+            if (!answered) Log.i("VP", "B-08 watchdog: probe queued behind a task busy for only $busyMs ms (e.g. a Vulkan fallback reconfigure); looking again")
             scheduleStallCheck(serial, armedAt, StallPolicy.RECHECK_MS)
             return
         }
         val request = lastLoad ?: return
-        Log.e("VP", "B-08 watchdog: no playback-restart ${facts.elapsedSinceFileLoadedMs} ms after file-loaded and the mpv core does not answer (hwdec-current=${_state.value.hwdecCurrent}); abandoning the handle and reloading ${request.path} with software decoding at ${request.startPositionMs} ms")
-        abandonAndReloadInSoftware(request)
+        Log.e("VP", "B-08 watchdog: no playback-restart ${facts.elapsedSinceFileLoadedMs} ms after file-loaded and the mpv core does not answer (hwdec-current=${_state.value.hwdecCurrent}, command thread busy $busyMs ms); abandoning the handle and reloading ${request.path} with software decoding at ${request.startPositionMs} ms")
+        abandonAndReloadInSoftware(request, probed)
     }
 
-    private fun abandonAndReloadInSoftware(request: LoadRequest) {
-        abandonStuckHandle(commandExecutor, "B-08 recovery") {
+    private fun abandonAndReloadInSoftware(request: LoadRequest, stuck: CommandExecutor) {
+        abandonStuckHandle(stuck, "B-08 recovery") {
             softwareRecoveryIdentity = request.identity
             Log.w("VP", "B-08 recovery: ${request.identity} is decoded in software from now on")
             // An fdclose:// file gets a fresh descriptor: the stuck handle keeps the old one (and a
