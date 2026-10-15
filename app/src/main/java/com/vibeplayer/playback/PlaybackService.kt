@@ -153,6 +153,7 @@ class PlaybackService : Service() {
             }
             FocusAction.RESUME -> {
                 resumeOnFocusGain = false
+                ensureForegroundForResume("focus gain")
                 playerEngine.play()
             }
             FocusAction.UNDUCK -> {
@@ -163,6 +164,7 @@ class PlaybackService : Service() {
                 isDucked = false
                 playerEngine.setDuck(false)
                 resumeOnFocusGain = false
+                ensureForegroundForResume("focus gain")
                 playerEngine.play()
             }
             FocusAction.NONE -> {}
@@ -373,9 +375,12 @@ class PlaybackService : Service() {
                     // Playing again (user, notification, auto-advance): a pending transient-loss resume
                     // must not start playback later after the user paused again.
                     resumeOnFocusGain = false
-                    val granted = requestAudioFocus()
+                    // P10-10: the foreground service must be up before the focus request (Android 17 returns
+                    // AUDIOFOCUS_REQUEST_FAILED from a background app without one).
+                    val fgOk = ensureForegroundForResume("resume")
+                    val granted = fgOk && requestAudioFocus()
                     if (!granted) {
-                        Log.w("VP", "Audio focus denied -> pausing playback")
+                        Log.w("VP", "Audio focus denied (foreground=$fgOk; AudioHardening?) -> pausing playback")
                         playerEngine.pause()
                     } else {
                         updateNoisyReceiver(true)
@@ -492,8 +497,8 @@ class PlaybackService : Service() {
      * [notice] NONE does nothing; SILENT (benchmark run) posts a minimal notification on a silent channel;
      * MEDIA the normal one. See [ForegroundStartPolicy] for which applies where.
      */
-    private fun startForegroundCompat(notice: ForegroundNotice = ForegroundStartPolicy.opportunistic(benchmarkRun)) {
-        if (notice == ForegroundNotice.NONE) return
+    private fun startForegroundCompat(notice: ForegroundNotice = ForegroundStartPolicy.opportunistic(benchmarkRun)): Boolean {
+        if (notice == ForegroundNotice.NONE) return true
         val notif = if (notice == ForegroundNotice.SILENT) {
             Log.i("VP", "PlaybackService: foreground start during a benchmark run -> silent notification")
             buildBenchmarkNotification()
@@ -507,9 +512,31 @@ class PlaybackService : Service() {
                 startForeground(NOTIFICATION_ID, notif)
             }
             isForegroundService = true
+            return true
         } catch (e: Exception) {
             Log.e("VP", "Failed to startForeground: ${e.message}", e)
+            return false
         }
+    }
+
+    /**
+     * P10-10 (Android 17 background-audio hardening): before audio resumes with no activity bound
+     * (media key, lock-screen control, focus gain), make sure the mediaPlayback foreground service is
+     * running. Returns false when it could not be started (then the caller must not start audio).
+     * A benchmark run never gets a foreground notice (NONE) and counts as fine.
+     */
+    private fun ensureForegroundForResume(why: String): Boolean {
+        if (!PlaybackLifecyclePolicy.needsForegroundBeforeResume(boundClients, isForegroundService)) return true
+        val ok = startForegroundCompat()
+        Log.i("VP", "ensureForegroundForResume($why): foreground=$ok")
+        return ok
+    }
+
+    /** Called by the MediaSession adapter before engine.play() (headset, lock screen, system media controls). */
+    fun prepareAudioResume() {
+        pausedTimeoutJob?.cancel()
+        pausedTimeoutJob = null
+        ensureForegroundForResume("media session play")
     }
 
     private fun detachFromForeground() {
@@ -658,7 +685,7 @@ class PlaybackService : Service() {
             isForegroundService = false
             stopSelf()
         } else {
-            val shouldBeInFg = PlaybackLifecyclePolicy.shouldBeInForeground(boundClients, state.paused)
+            val shouldBeInFg = PlaybackLifecyclePolicy.shouldBeInForeground(boundClients, state.paused, resumeOnFocusGain)
             if (!shouldBeInFg) {
                 detachFromForeground()
                 updateNotification()
@@ -701,6 +728,8 @@ class PlaybackService : Service() {
 
     fun skipToNeighbour(forward: Boolean) {
         val from = currentVideoPath ?: return
+        // P10-10: next/previous from a headset or lock screen starts playback; foreground first.
+        ensureForegroundForResume("skip")
         serviceScope.launch {
             val leavingKey = currentKey ?: return@launch
             val leavingState = playerEngine.state.value

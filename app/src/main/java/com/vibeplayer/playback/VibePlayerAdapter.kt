@@ -109,6 +109,7 @@ class VibePlayerAdapter(
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
         if (playWhenReady) {
+            service.prepareAudioResume()
             engine.play()
         } else {
             engine.pause()

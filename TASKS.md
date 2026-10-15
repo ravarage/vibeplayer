@@ -24,6 +24,9 @@ Clips are in `/sdcard/Movies/vibeplayer-test/` (SPEC.md). Tasks are sequential u
   player/.../PlayerEngine.kt, PlayerState.kt, the new AdpfHintPolicy.kt (+ test), app/.../playback/PlaybackService.kt,
   the new playback/PerformanceHintController.kt, data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt,
   ui/player/DebugOverlay.kt, ARCHITECTURE.md, docs/ROADMAP.md, TASKS.md and its PROGRESS.md row. No phone.
+- **Background-audio track** (`par/bgaudio`, /home/rava/vibeplayer-worktrees/bgaudio) **[parallel safe]**: P10-10.
+  Touches playback/PlaybackService.kt, PlaybackLifecyclePolicy.kt, VibePlayerAdapter.kt, their tests, docs/BG_AUDIO.md,
+  TASKS.md and its PROGRESS.md row. No phone.
 - **Profiling & HDR track** (`par/prof`, /home/rava/vibeplayer-worktrees/prof) **[parallel safe]**: P10-07, P10-08.
   ProfilingManager triggers (API 37) and HDR output spike research. Touches app/src/main/java/com/vibeplayer/profiling/*,
   app/src/debug/*, data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt, VibePlayerApp.kt, docs/HDR.md, TASKS.md and PROGRESS.md. No phone.
@@ -695,4 +698,9 @@ anywhere in the build flags.
 
 **P10-08 HDR output spike** — determine from the sources under /home/rava/vibeplayer/native/mpv-android/buildscripts/deps (mpv 0.41 video/out/opengl/context_android.c, video/out/vulkan/context_android.c, libplacebo swapchain code) whether mpv on Android can output HDR (PQ/HLG/extended-range) on GLES or Vulkan (VK_EXT_swapchain_colorspace, EGL_EXT_gl_colorspace_bt2020_pq, target-colorspace-hint, Android SurfaceView dataspace), what app-side APIs would be needed (Window.setColorMode(COLOR_MODE_HDR), setDesiredHdrHeadroom), and write the findings with file:line citations and a go/no-go recommendation plus a concrete device test plan to docs/HDR.md. Do not guess: mark anything not seen in the sources as unverified. *Files*: docs/HDR.md, TASKS.md, PROGRESS.md. *Accept*: comprehensive report in docs/HDR.md with file:line citations, go/no-go recommendation, and device test plan.
 
-
+**P10-10 Android 17 background-audio hardening** — audit every path that starts or resumes audio or requests
+audio focus while the app may be in the background against https://developer.android.com/about/versions/17/changes/bg-audio
+(needs a visible activity or a non-short-service foreground service, with while-in-use capability for targetSdk 37);
+fix non-compliant paths (foreground service up before focus request/resume); audit table and device test plan in
+docs/BG_AUDIO.md. *Files*: playback/PlaybackService.kt, PlaybackLifecyclePolicy.kt, VibePlayerAdapter.kt, tests,
+docs/BG_AUDIO.md. *Accept*: unit tests pass; device check open (`cmd audio set-enable-hardening throw`).
