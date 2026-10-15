@@ -92,6 +92,7 @@ fun PlayerControls(
     onLoadSubtitle: (() -> Unit)? = null,
     modifier: Modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout)
 ) {
+    TrackRecomposition("PlayerControls")
     val interactionEvents = remember { MutableStateFlow(System.currentTimeMillis()) }
 
     DisposableEffect(playerEngine) {
@@ -205,6 +206,7 @@ fun PlayerControls(
                         .background(Color(0x44000000))
                 ) {
                     // Top Bar: Back button + Title
+                    TrackRecomposition("TopBar")
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -427,6 +429,7 @@ fun PlayerControls(
                     }
 
                 // Previous / play-pause / next, grouped in the center like a video-player remote.
+                TrackRecomposition("CenterControls")
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     verticalAlignment = Alignment.CenterVertically,
@@ -609,6 +612,7 @@ private fun SeekControls(
     onScrubbingChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    TrackRecomposition("SeekControls")
     // Read only inside derivedStateOf: SeekControls recomposes once per second, not per position update.
     val positionState = positionFlow.collectAsState()
     val positionSeconds by remember(positionState) { derivedStateOf { positionState.value / 1000 } }

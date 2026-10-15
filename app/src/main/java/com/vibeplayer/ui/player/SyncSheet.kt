@@ -22,6 +22,7 @@ fun SyncSheet(
     onAudioDelay: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    TrackRecomposition("SyncSheet")
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         // Open fully: in landscape the half-expanded sheet shows only the first row.

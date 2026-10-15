@@ -28,6 +28,7 @@ fun AudioTrackSheet(
     onSelectTrack: (Int?) -> Unit,
     onDismiss: () -> Unit
 ) {
+    TrackRecomposition("AudioTrackSheet")
     val audioTracks = remember(tracks) { tracks.filter { it.type == "audio" } }
 
     ModalBottomSheet(
@@ -118,6 +119,7 @@ fun SubtitleTrackSheet(
     onOpenSync: (() -> Unit)? = null,
     onLoadSubtitle: (() -> Unit)? = null
 ) {
+    TrackRecomposition("SubtitleTrackSheet")
     val subTracks = remember(tracks) { tracks.filter { it.type == "sub" } }
 
     ModalBottomSheet(

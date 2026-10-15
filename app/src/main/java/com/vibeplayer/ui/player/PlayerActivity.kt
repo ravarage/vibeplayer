@@ -90,9 +90,14 @@ import kotlinx.coroutines.flow.map
 
 class PlayerActivity : ComponentActivity() {
 
-    private companion object {
+    companion object {
         /** P7-02: deferred start-up work (thumbnails, permission dialog) resumes at the latest after this. */
         const val STARTUP_DEFER_TIMEOUT_MS = 4000L
+
+        /** P7-03: debug-only. When true the controls are pinned visible (no 3 s auto-hide) so a
+         * recomposition measurement can run with the controls on screen. Set from the manifest
+         * DebugActionReceiver (adb broadcast), which cannot reach the activity's runtime receiver. */
+        val pinControlsFlow = MutableStateFlow(false)
     }
 
     val viewModel: PlayerViewModel by viewModels()
@@ -486,6 +491,10 @@ class PlayerActivity : ComponentActivity() {
             var showDebugOverlay by remember { mutableStateOf(initialDebugOverlay) }
             var controlsVisible by remember { mutableStateOf(true) }
             var isLocked by remember { mutableStateOf(false) }
+            val pinControls by pinControlsFlow.collectAsState()
+            LaunchedEffect(pinControls) {
+                if (pinControls) controlsVisible = true
+            }
             var aspectIndicatorText by remember { mutableStateOf("") }
             var showAspectIndicator by remember { mutableStateOf(false) }
             var aspectIndicatorTrigger by remember { mutableStateOf(0L) }
@@ -577,7 +586,7 @@ class PlayerActivity : ComponentActivity() {
                                 },
                                 onBack = { finish() },
                                 onToggleDebug = { showDebugOverlay = !showDebugOverlay },
-                                onHideControls = { controlsVisible = false },
+                                onHideControls = { if (!pinControls) controlsVisible = false },
                                 onEnterPip = { enterPip() },
                                 canSkipPrevious = neighbours.previous,
                                 canSkipNext = neighbours.next,

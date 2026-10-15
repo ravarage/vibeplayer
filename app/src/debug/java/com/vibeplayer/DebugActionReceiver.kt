@@ -24,6 +24,28 @@ class DebugActionReceiver : BroadcastReceiver() {
             Log.i("VP", "DebugActionReceiver: cleared Vulkan driver cache (remembered failures)")
             return
         }
+        if (action == "recomp_reset") {
+            // P7-03: zero the debug recomposition counters (start of a measurement window).
+            com.vibeplayer.ui.player.RecompositionTracker.reset()
+            Log.i("VP-Recomp", "DebugActionReceiver: reset recomposition counters")
+            return
+        }
+        if (action == "recomp_dump") {
+            // P7-03: log the current recomposition counts under tag VP-Recomp.
+            val label = intent.getStringExtra("label") ?: ""
+            com.vibeplayer.ui.player.RecompositionTracker.dump(label)
+            return
+        }
+        if (action == "pin_controls" || action == "unpin_controls") {
+            // P7-03: pin/unpin the player controls so a recomposition measurement can run with the
+            // controls visible (the normal 3 s auto-hide would otherwise hide them). The activity's
+            // runtime receiver is NOT_EXPORTED and cannot be reached from adb, so the flag lives in
+            // a companion StateFlow the activity observes.
+            val pinned = action == "pin_controls"
+            com.vibeplayer.ui.player.PlayerActivity.pinControlsFlow.value = pinned
+            Log.i("VP-Recomp", "DebugActionReceiver: controls pinned=$pinned")
+            return
+        }
         if (action == "system_trace" || action == "trace" || action == "request_profiling" || intent.action == "com.vibeplayer.REQUEST_PROFILING") {
             // P10-07: adb broadcast action to request a 10 s system trace for stall investigations
             val durationMs = intent.getIntExtra("duration_ms", com.vibeplayer.profiling.ProfilingManagerHelper.DEFAULT_DURATION_MS)
