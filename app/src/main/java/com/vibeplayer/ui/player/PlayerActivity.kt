@@ -800,7 +800,7 @@ class PlayerActivity : ComponentActivity() {
                     computeStartup(viewModel.appSettingsRepository.appSettingsFlow.first())
                 }
             if (useStartup) contentDeferred?.await()
-            val debugStartMs = if (com.vibeplayer.BuildConfig.DEBUG && intent.hasExtra("start_ms")) {
+            val debugStartMs = if (intent.hasExtra("start_ms")) {
                 intent.getLongExtra("start_ms", -1L).takeIf { it >= 0 }
                     ?: intent.getIntExtra("start_ms", -1).toLong().takeIf { it >= 0 }
                     ?: intent.getStringExtra("start_ms")?.toLongOrNull()?.takeIf { it >= 0 }

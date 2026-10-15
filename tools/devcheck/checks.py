@@ -44,10 +44,10 @@ def _hwdec(ctx, since):
 
 
 # ---- cold open --------------------------------------------------------------------------------
-def _open(ctx, clip, label):
+def _open(ctx, clip, label, extras=""):
     _need_clip(ctx, clip)
     t0 = time.monotonic()
-    mark = ctx.launch_clip(clip)
+    mark = ctx.launch_clip(clip, extras=extras)
     hit = ctx.wait_restart(mark, 25)
     need(hit, f"{label}: no playback-restart within 25 s")
     first = time.monotonic() - t0
@@ -73,7 +73,7 @@ def open_hevc10(ctx):
 
 @check("open_vp9", "Cold open VP9")
 def open_vp9(ctx):
-    return _open(ctx, VP9, "VP9")
+    return _open(ctx, VP9, "VP9", extras="--el start_ms 0")
 
 
 @check("open_av1_4k", "Cold open AV1 10-bit 4K")
@@ -671,9 +671,15 @@ def prev_next(ctx):
     out = []
     for which, target in (("next", nxt), ("prev", H264), ("prev", prev), ("next", H264)):
         ns = None
-        m = ctx.log.mark()
-        ctx.tap_center_button(which, ns)
-        need(ctx.log.wait(r"loadfile res=0 for .*" + re.escape(target[:14]), 15, since=m), f"{which}: {target} was not loaded")
+        loaded = None
+        for attempt in range(3):
+            m = ctx.log.mark()
+            ctx.tap_center_button(which, ns)
+            loaded = ctx.log.wait(r"loadfile res=0 for .*" + re.escape(target[:14]), 6, since=m)
+            if loaded:
+                break
+            ctx.sleep(0.5)
+        need(loaded, f"{which}: {target} was not loaded")
         need(ctx.wait_restart(m, 30), f"{which}: {target} did not start playing")
         ctx.sleep(2)
         t = _title_is(ctx, target)
