@@ -11,6 +11,13 @@ android {
         minSdk = 37
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // StartupBenchmark measures cold-start numbers and needs a rooted/userdebug device. On a
+        // normal phone MacrobenchmarkRule skips it via assumeTrue, and JUnit reports that assumption
+        // violation as a failure, which fails the whole connected test run (and with it the profile
+        // generation) before the profile is written. The profile itself only needs
+        // BaselineProfileGenerator, so exclude the benchmark class from the instrumentation run.
+        testInstrumentationRunnerArguments["notClass"] =
+            "com.vibeplayer.baselineprofile.StartupBenchmark"
     }
 
     compileOptions {
