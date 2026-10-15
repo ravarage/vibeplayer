@@ -52,7 +52,9 @@ data class AppSettings(
     val subtitleScale: Double = 1.0,
     val subtitlePos: Int = 100,
     val subtitleAssOverride: Boolean = false,
-    val matchDisplayRefreshRate: Boolean = true
+    val matchDisplayRefreshRate: Boolean = true,
+    /** P10-06: ADPF performance hint session while playing (experimental, default off). */
+    val performanceHints: Boolean = false
 ) {
 
     fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
@@ -110,6 +112,7 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_SUB_ASS_OVERRIDE = booleanPreferencesKey("sub_ass_override")
         private val KEY_NOTIFICATION_PERMISSION_DENIED = booleanPreferencesKey("notification_permission_denied")
         private val KEY_MATCH_DISPLAY_REFRESH_RATE = booleanPreferencesKey("match_display_refresh_rate")
+        private val KEY_PERFORMANCE_HINTS = booleanPreferencesKey("performance_hints")
     }
 
 
@@ -185,7 +188,8 @@ class AppSettingsRepository(private val context: Context) {
             subtitleScale = com.vibeplayer.player.SubtitleStyle.normalizeScale(prefs[KEY_SUB_SCALE] ?: 1.0),
             subtitlePos = com.vibeplayer.player.SubtitleStyle.normalizePos(prefs[KEY_SUB_POS] ?: 100),
             subtitleAssOverride = prefs[KEY_SUB_ASS_OVERRIDE] ?: false,
-            matchDisplayRefreshRate = prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] ?: true
+            matchDisplayRefreshRate = prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] ?: true,
+            performanceHints = prefs[KEY_PERFORMANCE_HINTS] ?: false
         )
     }
 
@@ -259,6 +263,7 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_SUB_POS] = settings.subtitlePos
             prefs[KEY_SUB_ASS_OVERRIDE] = settings.subtitleAssOverride
             prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] = settings.matchDisplayRefreshRate
+            prefs[KEY_PERFORMANCE_HINTS] = settings.performanceHints
         }
     }
 }

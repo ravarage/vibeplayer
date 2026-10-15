@@ -29,7 +29,9 @@ data class PlayerStats(
     val formatProfileReason: String? = null,
     val detectedFormat: VideoFormat? = null,
     val containerFps: Double? = null,
-    val thermalStatus: String? = null
+    val thermalStatus: String? = null,
+    /** P10-06 ADPF hint session status for the overlay ("off", "on (n threads)", ...). */
+    val adpfStatus: String? = null
 )
 
 data class PlayerState(

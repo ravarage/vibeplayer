@@ -67,7 +67,8 @@ diagnostics). Not yet scheduled:
   (then `throw`) that screen-off playback and resume from the notification or a media key still produce
   audio; consider moving to Media3 `MediaSessionService` (the documented route). Needs the phone.
 - ADPF hint session (`PerformanceHintManager`, `setPreferPowerEfficiency`) for the mpv render, demux and
-  dav1d threads: may reduce AV1 4K drops or power; vendor-dependent, needs native thread ids. Measure first.
+  dav1d threads: may reduce AV1 4K drops or power; vendor-dependent. Implemented behind a setting (default
+  off) as P10-06; the device A/B (drops and current, setting off vs on) decides whether it stays.
 - FFmpeg MediaCodec wrapper patch: set `priority=0` and `frame-rate`, then check whether the 2x
   operating-rate hint can be lowered for the same zero drops at less power. Needs a battery A/B.
 - HDR output (`setDesiredHdrHeadroom`, `COLOR_MODE_HDR`): depends on mpv/libplacebo Android HDR support;

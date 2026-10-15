@@ -204,6 +204,32 @@ class PlayerEngine(
         _stats.update { it.copy(thermalStatus = status) }
     }
 
+    @Volatile private var adpfStatus: String? = null
+
+    /** P10-06: ADPF hint session status shown in the stats overlay. */
+    fun setAdpfStatus(status: String?) {
+        adpfStatus = status
+        _stats.update { it.copy(adpfStatus = status) }
+    }
+
+    private val _fileLoadedSerial = MutableStateFlow(0)
+    /** Counts mpv file-loaded events (new file, reload after reconfigure or fallback); never reset. */
+    val fileLoadedSerial: StateFlow<Int> = _fileLoadedSerial.asStateFlow()
+
+    /**
+     * Sum of `frame-drop-count` and `decoder-frame-drop-count`, bounded like [currentPositionMs]: null
+     * when mpv does not answer within [timeoutMs] (decoder stall), when there is no handle or no value.
+     */
+    suspend fun readTotalDropCount(timeoutMs: Long = POSITION_READ_TIMEOUT_MS): Long? {
+        if (released) return null
+        return BoundedCall.onExecutor(commandExecutor, timeoutMs) {
+            if (released || handle == 0L) return@onExecutor null
+            val vo = MpvNative.getPropertyLong(handle, "frame-drop-count")
+            val dec = MpvNative.getPropertyLong(handle, "decoder-frame-drop-count")
+            if (vo == null && dec == null) null else (vo ?: 0L) + (dec ?: 0L)
+        }
+    }
+
     private val _isInPip = MutableStateFlow(false)
 
     val isInPip: StateFlow<Boolean> = _isInPip.asStateFlow()
@@ -503,6 +529,7 @@ class PlayerEngine(
                 }
                 MpvEvent.FILE_LOADED -> {
                     fileLoaded = true
+                    _fileLoadedSerial.update { it + 1 }
                     PerfLog.mark("file-loaded")
                     Log.i("VP", "mpv event file-loaded")
                     if (!pendingPauseOnLoad) {
@@ -841,7 +868,8 @@ class PlayerEngine(
                     formatProfileReason = currentResolvedConfig?.reason ?: _state.value.formatProfileReason,
                     detectedFormat = currentFormat,
                     containerFps = _state.value.containerFps,
-                    thermalStatus = _thermalStatus.value
+                    thermalStatus = _thermalStatus.value,
+                    adpfStatus = adpfStatus
                 )
 
 
