@@ -349,6 +349,16 @@ The logcat line `Operating rate for <format> fps=... -> <n>` and the `Loading ..
 A/B baseline without the hint: `--es mpv_opts 'vd-lavc-o=operating_rate=0'` (a debug `vd-lavc-o` disables the
 per-file hint). Battery cost still to be measured (TASKS.md P6-08).
 
+**`[vd] AVOption 'operating_rate' not found` (device log 2026-10-15, H.264 load; source check, CLAUDE-D2, no phone):**
+mpv applies `vd-lavc-o` to every decoder context it opens (`vd_lavc.c:837`, first hwdec attempt, every fallback and
+reinit) and only FFmpeg's `*_mediacodec` decoders know `operating_rate` (`mediacodecdec.c:601-602`, range
+0..INT_MAX, so 60..240 is fine). The line therefore means a non-MediaCodec (software) context was opened in that
+load, once per open; it is logged and ignored (`av_common.c:384`, return value unused at `vd_lavc.c:837`), so it does
+not cause a fallback, it shows one. The engine now sets the hint only when mpv will open MediaCodec with the hwdec
+actually on the handle (incl. the `force_hwdec` extra), the codec on `hwdec-codecs` and not zero-copy on Vulkan
+(ARCHITECTURE.md). The H.264 log did not say which context it was: the confirming run uses
+`--es mpv_msg_level 'vd=v,ffmpeg=v'` and reads the `[vd]` lines before each "not found" (see PROGRESS.md P6-08).
+
 
 ## Shader presets on OpenGL ES: known issues (P8-02, 2026-10-15)
 
