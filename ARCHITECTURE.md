@@ -133,6 +133,11 @@ Common options: `ao=audiotrack`, `vd-lavc-threads=0` (auto; P1-07 confirms dav1d
 - **Mode or renderer switch**: `vo`, `gpu-api` and `gpu-context` cannot change on a live output.
   `PlayerEngine.reconfigure()` saves position and tracks, destroys and recreates the handle with the
   new option table, reloads the file and seeks.
+  External subtitles added with `sub-add fdclose://N` (P4-14) die with the old handle; the engine keeps
+  each one's content URI per file and, at the reload's file-loaded, reopens it through `pathReopener`
+  and adds it again (selected only if it was the selected subtitle). A caller that derives a new
+  configuration from the current one (thermal step-down) starts from `latestRequestedConfig`, so it
+  never undoes a queued Vulkan -> GLES -> software fallback.
 
 ## Vulkan status update (2026-10-13)
 **User decision 2026-10-14 (supersedes the GLES-default notes below; implemented in P6-07): one phone, so the configuration is chosen BEFORE opening from a per-format table of what was measured best on it (Vulkan where it measured best and is available); fallback chain Vulkan -> OpenGL ES -> software only as a safety net. See TASKS.md P6-07.**
