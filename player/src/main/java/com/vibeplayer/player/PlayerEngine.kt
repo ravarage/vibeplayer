@@ -591,7 +591,12 @@ class PlayerEngine(
                 if (released) return@execute
                 attachedSurface = null
                 requestedConfig?.let { playbackConfig = it }
+                // Like reconfigure: a hold ends with the handle, an audio-focus duck carries over.
+                speedOverride = null
                 if (!initHandle()) return@execute
+                if (isDucked && handle != 0L) {
+                    MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
+                }
                 Log.w("VP", "$why: new mpv handle (${if (handle != 0L) "ok" else "failed"}) with ${playbackConfig.mode}/${playbackConfig.renderer}; asking the UI for a fresh surface")
                 // The old Surface still belongs to the abandoned handle's video output.
                 _surfaceEpoch.update { it + 1 }
@@ -1347,12 +1352,12 @@ class PlayerEngine(
             speedOverride = null
             if (!initHandle()) return@executeCommand
 
-            if (surface != null) {
+            if (surface != null && handle != 0L) {
                 MpvNative.attachSurface(handle, surface)
                 savedVid = null
             }
             // P5-03: the new handle starts at full volume; keep an audio-focus duck in progress.
-            if (isDucked) {
+            if (isDucked && handle != 0L) {
                 MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
             }
 
