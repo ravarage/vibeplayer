@@ -588,7 +588,7 @@ class PlayerEngine(
                 if (released) return@execute
                 attachedSurface = null
                 requestedConfig?.let { playbackConfig = it }
-                initHandle()
+                if (!initHandle()) return@execute
                 Log.w("VP", "$why: new mpv handle (${if (handle != 0L) "ok" else "failed"}) with ${playbackConfig.mode}/${playbackConfig.renderer}; asking the UI for a fresh surface")
                 // The old Surface still belongs to the abandoned handle's video output.
                 _surfaceEpoch.update { it + 1 }
@@ -650,9 +650,16 @@ class PlayerEngine(
         }
     }
 
-    private fun markIssued(serial: Int) {
+    private fun markIssued(serial: Int) = synchronized(this) {
         if (serial > loadIssuedSerial) loadIssuedSerial = serial
     }
+
+    /**
+     * True on the thread of an abandoned command executor: a task that was only slow (a reconfigure
+     * past [StallPolicy.STUCK_COMMAND_MS]) returns there after the new handle took over and must not
+     * touch the handle or the shared state any more.
+     */
+    private fun isStaleCommandThread(): Boolean = CommandExecutor.ofCurrentThread() !== commandExecutor
 
     /** Debug only: behave like B-08 for the current load (command thread blocked, no playback-restart). */
     private fun simulateStall() {
@@ -802,14 +809,28 @@ class PlayerEngine(
         }
     }
 
-    private fun initHandle() {
+    /** Returns false when this command thread was abandoned meanwhile (nothing was changed then). */
+    private fun initHandle(): Boolean {
         assertCommandThread()
+        val created = MpvNative.create(BuildConfig.DEBUG)
+        val published = synchronized(this) {
+            if (released || isStaleCommandThread()) {
+                false
+            } else {
+                handle = created
+                true
+            }
+        }
+        if (!published) {
+            Log.w("VP", "initHandle: command thread abandoned or engine released meanwhile; dropping the new handle")
+            if (created != 0L) MpvNative.destroy(created)
+            return false
+        }
         handleCreatedAtMs = System.currentTimeMillis()
         hwdecForcedSoftware = false
-        handle = MpvNative.create(BuildConfig.DEBUG)
         if (handle == 0L) {
             Log.e("VP", "Failed to create mpv handle")
-            return
+            return true
         }
 
         MpvNative.setEventCallback(handle, GatedCallback(handleToken))
@@ -866,6 +887,7 @@ class PlayerEngine(
         MpvNative.setPropertyString(handle, "video-aspect-override", "-1")
         MpvNative.setPropertyDouble(handle, "panscan", 0.0)
         applyShaderPresetInternal()
+        return true
     }
 
     fun setControlsVisible(visible: Boolean) {
@@ -984,7 +1006,7 @@ class PlayerEngine(
                 paused = false,
                 identity = fileIdentity
             )
-            markIssued(serial)
+            if (!isStaleCommandThread()) markIssued(serial)
         }
     }
 
@@ -1003,6 +1025,10 @@ class PlayerEngine(
         identity: String = path
     ) {
         assertCommandThread()
+        if (isStaleCommandThread()) {
+            Log.w("VP", "loadInternal: command thread was abandoned; $path is not loaded here")
+            return
+        }
         currentFilePath = path
         currentFileIdentity = identity
         // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
@@ -1283,9 +1309,18 @@ class PlayerEngine(
             val curAudioDelay = _state.value.audioDelayMs
             val surface = attachedSurface
 
-            if (handle != 0L) {
-                MpvNative.detachSurface(handle)
-                MpvNative.destroy(handle)
+            val old = handle
+            if (old != 0L) {
+                MpvNative.detachSurface(old)
+                MpvNative.destroy(old)
+            }
+            // A destroy (or create) that took longer than STUCK_COMMAND_MS may have been abandoned by the
+            // B-08 watchdog: the new command thread owns handle and config from then on.
+            synchronized(this) {
+                if (isStaleCommandThread()) {
+                    Log.w("VP", "reconfigure: command thread was abandoned while destroying the old handle; leaving it to the new one")
+                    return@executeCommand
+                }
                 handle = 0L
             }
             fileLoaded = false
@@ -1294,7 +1329,7 @@ class PlayerEngine(
             // P3-09: the new mpv handle starts at speed 1.0; a hold in progress ends with the reconfigure
             // (curSpeed above is the file's own speed, never the hold override).
             speedOverride = null
-            initHandle()
+            if (!initHandle()) return@executeCommand
 
             if (surface != null) {
                 MpvNative.attachSurface(handle, surface)
@@ -1578,6 +1613,7 @@ class PlayerEngine(
             }
             val currentAid = MpvNative.getPropertyString(handle, "aid")?.toIntOrNull()
             val currentSid = MpvNative.getPropertyString(handle, "sid")?.toIntOrNull()
+            if (isStaleCommandThread()) return@executeCommand
             _state.update {
                 it.copy(
                     tracks = trackList,

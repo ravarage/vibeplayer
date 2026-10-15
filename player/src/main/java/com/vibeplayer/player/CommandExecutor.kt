@@ -23,6 +23,7 @@ internal class CommandExecutor(
         private set
 
     override fun beforeExecute(t: Thread?, r: Runnable?) {
+        owner.set(this)
         busySinceMs = clock()
         super.beforeExecute(t, r)
     }
@@ -34,6 +35,13 @@ internal class CommandExecutor(
 
     /** How long the running task has been running, 0 when idle. */
     fun busyForMs(): Long = busySinceMs.let { if (it == 0L) 0L else (clock() - it).coerceAtLeast(0L) }
+
+    companion object {
+        private val owner = ThreadLocal<CommandExecutor?>()
+
+        /** The executor whose task is running on the calling thread, null on any other thread. */
+        fun ofCurrentThread(): CommandExecutor? = owner.get()
+    }
 }
 
 internal object BoundedCall {
