@@ -16,6 +16,7 @@ from make_table import (  # noqa: E402
     choose,
     dumps,
     make_table,
+    operating_rate_policy,
     parse_csv,
     parse_markdown,
 )
@@ -96,6 +97,12 @@ class TestP608Table(unittest.TestCase):
         self.assertEqual(self.rows["h264_10bit"]["renderer"], "vulkan")
         self.assertEqual(self.rows["other"]["renderer"], "gles")
 
+    def test_operating_rate_policy(self):
+        r = self.rows
+        self.assertEqual({f: r[f]["operatingRate"] for f in r},
+                         {"h264_8bit": "auto", "hevc": "auto", "vp9": "auto",
+                          "av1": "off", "h264_10bit": "off", "other": "off"})
+
     def test_default_equals_driver_table(self):
         self.assertEqual(self.doc["tables"][0]["driverHash"], "c0b92d25178c8b21")
         self.assertEqual(self.doc["tables"][0]["rows"], self.doc["default"]["rows"])
@@ -108,6 +115,33 @@ class TestP608Table(unittest.TestCase):
         old = {"tables": [{"driverHash": "0000000000000000", "rows": {}, "source": "old"}]}
         doc = make_table(self.driver, self.ms, NOTES, "x", existing=old)
         self.assertEqual([t["driverHash"] for t in doc["tables"]], ["0000000000000000", "c0b92d25178c8b21"])
+
+
+class TestOperatingRatePolicy(unittest.TestCase):
+
+    def test_software_only_rows_are_off(self):
+        self.assertEqual(operating_rate_policy("av1", {"hwdec": "no", "gles": {"hwdec": "no"}}, NOTES), "off")
+        self.assertEqual(operating_rate_policy("other", {"hwdec": "no"}, NOTES), "off")
+
+    def test_hardware_rows_follow_notes(self):
+        self.assertEqual(operating_rate_policy("hevc", {"hwdec": "mediacodec"}, NOTES), "auto")
+        # A software Vulkan row whose GLES block decodes in hardware still decodes with MediaCodec there.
+        self.assertEqual(operating_rate_policy("x", {"hwdec": "no", "gles": {"hwdec": "mediacodec-copy"}}, NOTES),
+                         "auto")
+        notes = {"operatingRate": {"default": "auto", "formats": {"vp9": "off"}}}
+        self.assertEqual(operating_rate_policy("vp9", {"hwdec": "mediacodec"}, notes), "off")
+        self.assertEqual(operating_rate_policy("hevc", {"hwdec": "mediacodec"}, notes), "auto")
+        self.assertEqual(operating_rate_policy("hevc", {"hwdec": "mediacodec"}, {}), "auto")
+
+    def test_bad_policy_rejected(self):
+        with self.assertRaises(ValueError):
+            operating_rate_policy("hevc", {"hwdec": "mediacodec"}, {"operatingRate": {"default": "fast"}})
+
+    def test_fixed_row_value_kept(self):
+        notes = dict(NOTES, fixedRows={"other": {"hwdec": "mediacodec", "renderer": "gles", "vo": "gpu",
+                                                  "reason": "x", "operatingRate": "off"}})
+        doc = make_table("c0b92d25178c8b21", [], notes, "x")
+        self.assertEqual(doc["default"]["rows"]["other"]["operatingRate"], "off")
 
 
 class TestCsv(unittest.TestCase):

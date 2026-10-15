@@ -8,6 +8,7 @@
           "vo": "gpu"
         },
         "hwdec": "no",
+        "operatingRate": "off",
         "reason": "P6 c0b92d25: 362 drops, 1563 mA, 579% CPU (vs Vulkan gpu-next software 385 drops 1340 mA; GLES gpu software 918 drops 1668 mA)",
         "renderer": "vulkan",
         "vo": "gpu"
@@ -19,6 +20,7 @@
           "vo": "gpu"
         },
         "hwdec": "no",
+        "operatingRate": "off",
         "reason": "no hardware decoder on the 778G",
         "renderer": "vulkan",
         "vo": "gpu"
@@ -30,24 +32,28 @@
           "vo": "gpu"
         },
         "hwdec": "mediacodec-copy",
+        "operatingRate": "auto",
         "reason": "P6 c0b92d25: 0 drops, 549 mA, 36% CPU (vs GLES gpu copy-back 0 drops 720 mA; Vulkan gpu copy-back 0 drops 768 mA); excluded B-08: zero-copy stalled at start in 12/40 and 5/60 cold opens, copy-back 0/80 on GLES",
         "renderer": "vulkan",
         "vo": "gpu-next"
       },
       "hevc": {
         "hwdec": "mediacodec",
+        "operatingRate": "auto",
         "reason": "P6 c0b92d25: 1241 drops, 604 mA, 29% CPU (vs Vulkan gpu copy-back 1207 drops 1254 mA; GLES gpu copy-back 1350 drops 1024 mA)",
         "renderer": "gles",
         "vo": "gpu"
       },
       "other": {
         "hwdec": "no",
+        "operatingRate": "off",
         "reason": "safe default",
         "renderer": "gles",
         "vo": "gpu"
       },
       "vp9": {
         "hwdec": "mediacodec",
+        "operatingRate": "auto",
         "reason": "P6 c0b92d25: 0 drops, 339 mA, 40% CPU (vs GLES gpu copy-back 0 drops 794 mA; Vulkan gpu copy-back 0 drops 913 mA)",
         "renderer": "gles",
         "vo": "gpu"
@@ -67,6 +73,7 @@
             "vo": "gpu"
           },
           "hwdec": "no",
+          "operatingRate": "off",
           "reason": "P6 c0b92d25: 362 drops, 1563 mA, 579% CPU (vs Vulkan gpu-next software 385 drops 1340 mA; GLES gpu software 918 drops 1668 mA)",
           "renderer": "vulkan",
           "vo": "gpu"
@@ -78,6 +85,7 @@
             "vo": "gpu"
           },
           "hwdec": "no",
+          "operatingRate": "off",
           "reason": "no hardware decoder on the 778G",
           "renderer": "vulkan",
           "vo": "gpu"
@@ -89,24 +97,28 @@
             "vo": "gpu"
           },
           "hwdec": "mediacodec-copy",
+          "operatingRate": "auto",
           "reason": "P6 c0b92d25: 0 drops, 549 mA, 36% CPU (vs GLES gpu copy-back 0 drops 720 mA; Vulkan gpu copy-back 0 drops 768 mA); excluded B-08: zero-copy stalled at start in 12/40 and 5/60 cold opens, copy-back 0/80 on GLES",
           "renderer": "vulkan",
           "vo": "gpu-next"
         },
         "hevc": {
           "hwdec": "mediacodec",
+          "operatingRate": "auto",
           "reason": "P6 c0b92d25: 1241 drops, 604 mA, 29% CPU (vs Vulkan gpu copy-back 1207 drops 1254 mA; GLES gpu copy-back 1350 drops 1024 mA)",
           "renderer": "gles",
           "vo": "gpu"
         },
         "other": {
           "hwdec": "no",
+          "operatingRate": "off",
           "reason": "safe default",
           "renderer": "gles",
           "vo": "gpu"
         },
         "vp9": {
           "hwdec": "mediacodec",
+          "operatingRate": "auto",
           "reason": "P6 c0b92d25: 0 drops, 339 mA, 40% CPU (vs GLES gpu copy-back 0 drops 794 mA; Vulkan gpu copy-back 0 drops 913 mA)",
           "renderer": "gles",
           "vo": "gpu"

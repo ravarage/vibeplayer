@@ -536,6 +536,13 @@ current (mark "charging" if plugged in: then current is not comparable) and temp
 Vulkan driver hash. Plus 20 cold opens of ichiban.mp4 per configuration for the start stall. Write a
 short table in docs/BENCHMARK.md "Quick re-check (driver <hash>)" and one line of conclusion per format;
 append the Vulkan rows to vulkan.txt. About 25 minutes of phone time; can be split.
+_Open after the P6-08 fix (2026-10-15, MediaCodec operating-rate hint, ARCHITECTURE.md): the battery cost
+of the higher decoder clock must be measured on battery power (unplugged), before the hint counts as
+settled: HEVC 10-bit 4K, H.264 1080p (ichiban.mp4, hint 60) and VP9 1080p, 60 s each, with the hint
+(default) and without it (`--es mpv_opts 'vd-lavc-o=operating_rate=0'`), interleaved; compare steady
+drops, battery current and app CPU. If a 30 fps clip shows 0 drops either way and a clear current increase
+with the hint, set that row's policy to `off` (table_notes.json "operatingRate.formats") or raise the
+threshold, and regenerate the table._
 
 **P6-01 Quality mode** — Quality option table; mode setting and in-player toggle using
 `reconfigure()`. *Files*: PlaybackMode.kt, PlayerEngine.kt, ui/settings/*. *Accept*: overlay shows

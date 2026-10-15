@@ -126,7 +126,9 @@ class PlayerEngine(
         val subDelayMs: Int = 0,
         val audioDelayMs: Int = 0,
         /** Stable identity of the file (its content:// URI for an fdclose:// path); defaults to the path. */
-        val identity: String = path
+        val identity: String = path,
+        /** Format detection result (frame rate, size) for the MediaCodec operating-rate hint (P6-08 fix). */
+        val clip: ClipInfo? = null
     )
     @Volatile private var lastLoad: LoadRequest? = null
     private val loadSerial = AtomicInteger(0)
@@ -985,14 +987,16 @@ class PlayerEngine(
         aspect: String? = null,
         subDelayMs: Int = 0,
         audioDelayMs: Int = 0,
-        identity: String? = null
+        identity: String? = null,
+        /** What the format detection learned about the video track; null when unknown. */
+        clip: ClipInfo? = null
     ) {
         val fileIdentity = identity ?: path
         val hadOverride = speedOverride != null
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
-        val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity)
+        val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity, clip)
         lastLoad = request
         val serial = loadSerial.incrementAndGet()
         latestOpenSerial = serial
@@ -1016,7 +1020,8 @@ class PlayerEngine(
                 subDelayMs = subDelayMs,
                 audioDelayMs = audioDelayMs,
                 paused = false,
-                identity = fileIdentity
+                identity = fileIdentity,
+                clip = clip
             )
             if (!isStaleCommandThread()) markIssued(serial)
         }
@@ -1034,7 +1039,8 @@ class PlayerEngine(
         subDelayMs: Int = 0,
         audioDelayMs: Int = 0,
         paused: Boolean = false,
-        identity: String = path
+        identity: String = path,
+        clip: ClipInfo? = null
     ) {
         assertCommandThread()
         if (isStaleCommandThread()) {
@@ -1167,6 +1173,21 @@ class PlayerEngine(
                 hwdecForcedSoftware = false
             }
 
+            // P6-08 fix: MediaCodec clock hint, per file (after the B-08 decision: never for software).
+            val hwdecForFile = if (hwdecForcedSoftware) "no" else playbackConfig.getOptionTable()["hwdec"]
+            val clipFormat = clip?.format
+            val ratePolicy = if (clipFormat != null) FormatProfileTable.getProfile(clipFormat).operatingRate else OperatingRatePolicy.OFF
+            val rate = OperatingRate.hint(ratePolicy, hwdecForFile, clip)
+            val rateOption = OperatingRate.loadOption(rate, playbackConfig.debugMpvOptions)
+            if (rateOption != null) {
+                options.add(rateOption)
+            } else if (rate != null) {
+                Log.i("VP", "Operating-rate hint $rate not set: debug mpv_opts set vd-lavc-o")
+            }
+            if (clip != null) {
+                Log.i("VP", "Operating rate for ${clip.format.formatKey} fps=${clip.fps} ${clip.width}x${clip.height} tenBit=${clip.tenBit} hwdec=$hwdecForFile policy=${ratePolicy.token} -> ${rate ?: "none"}")
+            }
+
             val cmd = if (options.isNotEmpty()) {
                 val optStr = options.joinToString(",")
                 Log.i("VP", "Loading $path with options: $optStr")
@@ -1204,7 +1225,8 @@ class PlayerEngine(
             subDelayMs = request.subDelayMs,
             audioDelayMs = request.audioDelayMs,
             paused = paused,
-            identity = request.identity
+            identity = request.identity,
+            clip = request.clip
         )
     }
 
@@ -1381,7 +1403,8 @@ class PlayerEngine(
                 // fdclose://N: mpv closed N with the old handle; reopening it would read a dead or
                 // reused fd, so a fresh one is resolved from the file's content:// identity.
                 val serial = loadSerial.incrementAndGet()
-                val request = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay, curIdentity)
+                val curClip = lastLoad?.takeIf { it.identity == curIdentity }?.clip
+                val request = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay, curIdentity, curClip)
                 reloadOnNewHandle(request, serial, wasPaused, "reconfigure")
             }
         }

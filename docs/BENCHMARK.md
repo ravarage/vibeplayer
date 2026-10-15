@@ -318,6 +318,13 @@ deliver far fewer than 60 frames/s as mpv drives it; `operating_rate=120` brings
 decodes), then re-run P6-08 for HEVC 4K and AV1-free rows. Picture visible was not re-checked per row (benchmark
 runs), and current was not comparable (charging).
 
+**Applied (P6-08 fix, 2026-10-15, CLAUDE-D1, not yet checked on the device):** every MediaCodec-decoded file now
+gets `vd-lavc-o=operating_rate=<2 x container fps, 60..240>` as a loadfile option (120 when the fps is unknown and
+the clip is >= 4K or 10-bit HEVC); rule and table field in ARCHITECTURE.md ("MediaCodec operating-rate hint").
+The logcat line `Operating rate for <format> fps=... -> <n>` and the `Loading ... with options:` line show it.
+A/B baseline without the hint: `--es mpv_opts 'vd-lavc-o=operating_rate=0'` (a debug `vd-lavc-o` disables the
+per-file hint). Battery cost still to be measured (TASKS.md P6-08).
+
 
 ## Shader presets on OpenGL ES: known issues (P8-02, 2026-10-15)
 

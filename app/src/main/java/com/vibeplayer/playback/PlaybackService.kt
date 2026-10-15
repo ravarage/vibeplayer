@@ -815,9 +815,10 @@ class PlaybackService : Service() {
                 if (resolvedFolderKey.isNotEmpty()) folderDao.getByPath(resolvedFolderKey) else null
             }
             val settingsDeferred = async(Dispatchers.IO) { appSettingsRepository.appSettingsFlow.first() }
-            val formatDeferred = async(Dispatchers.IO) {
-                VideoFormatDetector.detect(applicationContext, path, identityKey)
+            val clipDeferred = async(Dispatchers.IO) {
+                VideoFormatDetector.detectClip(applicationContext, path, identityKey)
             }
+            val formatDeferred = async { clipDeferred.await().format }
             // IO: the gpu-api query can create a temporary mpv handle, and the driver cache reads
             // SharedPreferences and stats the Vulkan driver file.
             val vulkanDeferred = async(Dispatchers.IO) {
@@ -834,7 +835,8 @@ class PlaybackService : Service() {
             val fileSettings = fileDeferred.await()
             val folderSettings = folderDeferred.await()
             val appSettings = settingsDeferred.await()
-            val detectedFormat = formatDeferred.await()
+            val detectedClip = clipDeferred.await()
+            val detectedFormat = detectedClip.format
             val isVulkanAvailable = vulkanDeferred.await()
             if (generation != loadGeneration || currentVideoPath != path) return@launch
 
@@ -976,7 +978,8 @@ class PlaybackService : Service() {
                 aspect = aspect,
                 subDelayMs = subDelayMs,
                 audioDelayMs = audioDelayMs,
-                identity = identityKey ?: path
+                identity = identityKey ?: path,
+                clip = detectedClip
             )
             handedToEngine = true
             lastPathHandedToEngine = path
