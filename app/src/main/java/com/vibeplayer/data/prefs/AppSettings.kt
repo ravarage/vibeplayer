@@ -56,7 +56,9 @@ data class AppSettings(
     /** P10-06: ADPF performance hint session while playing (experimental, default off). */
     val performanceHints: Boolean = false,
     /** P10-07: Collect system profiles via ProfilingManager triggers (default off). */
-    val collectSystemProfiles: Boolean = false
+    val collectSystemProfiles: Boolean = false,
+    /** P10-09: HDR output for HDR content on Vulkan gpu-next (experimental, default off). */
+    val hdrOutput: Boolean = false
 ) {
 
     fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
@@ -115,6 +117,7 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_NOTIFICATION_PERMISSION_DENIED = booleanPreferencesKey("notification_permission_denied")
         private val KEY_MATCH_DISPLAY_REFRESH_RATE = booleanPreferencesKey("match_display_refresh_rate")
         private val KEY_PERFORMANCE_HINTS = booleanPreferencesKey("performance_hints")
+        private val KEY_HDR_OUTPUT = booleanPreferencesKey("hdr_output")
         private val KEY_COLLECT_SYSTEM_PROFILES = booleanPreferencesKey("collect_system_profiles")
     }
 
@@ -193,7 +196,8 @@ class AppSettingsRepository(private val context: Context) {
             subtitleAssOverride = prefs[KEY_SUB_ASS_OVERRIDE] ?: false,
             matchDisplayRefreshRate = prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] ?: true,
             performanceHints = prefs[KEY_PERFORMANCE_HINTS] ?: false,
-            collectSystemProfiles = prefs[KEY_COLLECT_SYSTEM_PROFILES] ?: false
+            collectSystemProfiles = prefs[KEY_COLLECT_SYSTEM_PROFILES] ?: false,
+            hdrOutput = prefs[KEY_HDR_OUTPUT] ?: false
         )
     }
 
@@ -268,6 +272,7 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_SUB_ASS_OVERRIDE] = settings.subtitleAssOverride
             prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] = settings.matchDisplayRefreshRate
             prefs[KEY_PERFORMANCE_HINTS] = settings.performanceHints
+            prefs[KEY_HDR_OUTPUT] = settings.hdrOutput
             prefs[KEY_COLLECT_SYSTEM_PROFILES] = settings.collectSystemProfiles
         }
     }

@@ -149,6 +149,15 @@ fun SettingsScreen(
             )
 
             SettingsSwitchRow(
+                title = "HDR output (experimental)",
+                description = "Show HDR10 and HLG videos in HDR when the renderer is Vulkan (quality mode); otherwise they are tone-mapped to SDR",
+                checked = settings.hdrOutput,
+                onCheckedChange = { checked ->
+                    onUpdateSettings(settings.copy(hdrOutput = checked))
+                }
+            )
+
+            SettingsSwitchRow(
                 title = "Performance hints (experimental)",
                 description = "Tell Android how much time each frame needs (ADPF) while a video plays",
                 checked = settings.performanceHints,

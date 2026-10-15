@@ -47,6 +47,7 @@ import androidx.lifecycle.lifecycleScope
 import com.vibeplayer.data.prefs.AppSettingsRepository
 import com.vibeplayer.playback.PlaybackService
 import com.vibeplayer.player.PerfLog
+import com.vibeplayer.player.HdrOutputPolicy
 import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.SubtitleCommands
 import com.vibeplayer.data.thumbs.ThumbnailPause
@@ -84,6 +85,7 @@ import android.view.KeyEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 class PlayerActivity : ComponentActivity() {
@@ -423,6 +425,13 @@ class PlayerActivity : ComponentActivity() {
                 .map { PipState(it.videoWidth, it.videoHeight, it.paused, it.durationMs > 0L) }
                 .distinctUntilChanged()
                 .collect { state -> updatePipParams(state) }
+        }
+
+        // P10-09: window HDR colour mode and headroom follow the engine's HDR decision (SDR in PiP).
+        lifecycleScope.launch {
+            combine(playerEngine.hdrDecision.map { it.active }, _isInPipFlow) { hdr, pip -> hdr && !pip }
+                .distinctUntilChanged()
+                .collect { applyHdrWindowMode(it) }
         }
 
         // Listen for engine on-screen messages (e.g. Vulkan fallback)
@@ -1149,6 +1158,17 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** P10-09: HDR colour mode and desired headroom on the window; the default (SDR) values when off. */
+    private fun applyHdrWindowMode(hdr: Boolean) {
+        try {
+            window.colorMode = if (hdr) ActivityInfo.COLOR_MODE_HDR else ActivityInfo.COLOR_MODE_DEFAULT
+            window.desiredHdrHeadroom = if (hdr) HdrOutputPolicy.DESIRED_HEADROOM else 0f
+            Log.i("VP-HDR", "window colorMode=${window.colorMode} headroom=${window.desiredHdrHeadroom}")
+        } catch (e: Throwable) {
+            Log.w("VP-HDR", "window HDR mode not applied: ${e.message}")
+        }
+    }
+
     override fun onPause() {
         super.onPause()
         Log.i("VP", "PlayerActivity onPause (isInPip=$isInPictureInPictureMode)")
@@ -1262,6 +1282,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        applyHdrWindowMode(false)
         Log.i("VP", "PlayerActivity onDestroy")
         ThumbnailPause.setPaused(false)
     }

@@ -302,6 +302,12 @@ class PlaybackService : Service() {
             appSettingsRepository.appSettingsFlow.map { it.performanceHints }
         ).start(serviceScope)
 
+        // P10-09: HDR output for HDR content on Vulkan gpu-next (setting, default off).
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.hdrOutput }.distinctUntilChanged()
+                .collect { playerEngine.setHdrOutputEnabled(it) }
+        }
+
         // Shader presets (P7): the service owns the engine, so it owns the directory and the setting.
         playerEngine.setShaderDirectory(File(filesDir, "shaders").absolutePath)
         // P7-02: extraction is only needed before a load that uses a shader preset (awaited there);

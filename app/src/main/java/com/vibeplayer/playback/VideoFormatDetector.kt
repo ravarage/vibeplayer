@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import com.vibeplayer.player.ClipInfo
+import com.vibeplayer.player.HdrOutputPolicy
 import com.vibeplayer.player.OperatingRate
 import com.vibeplayer.player.VideoFormat
 import java.io.File
@@ -137,10 +138,11 @@ object VideoFormatDetector {
                         fps = OperatingRate.sanitizeFps(fps),
                         width = width,
                         height = height,
-                        tenBit = isTenBit(mime, profile, bitDepth)
+                        tenBit = isTenBit(mime, profile, bitDepth),
+                        hdrTransfer = HdrOutputPolicy.transferFromMediaFormat(intOrNull(format, MediaFormat.KEY_COLOR_TRANSFER))
                     )
                     val costMs = SystemClock.elapsedRealtime() - startMs
-                    Log.i("VP-Perf", "Format detection for $pathOrUri took ${costMs} ms: mime=$mime profile=$profile bitDepth=$bitDepth fps=$fps ${width}x$height -> $detected")
+                    Log.i("VP-Perf", "Format detection for $pathOrUri took ${costMs} ms: mime=$mime profile=$profile bitDepth=$bitDepth hdr=${clip.hdrTransfer} fps=$fps ${width}x$height -> $detected")
                     return clip
                 }
             }

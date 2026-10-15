@@ -24,6 +24,11 @@ Clips are in `/sdcard/Movies/vibeplayer-test/` (SPEC.md). Tasks are sequential u
   player/.../PlayerEngine.kt, PlayerState.kt, the new AdpfHintPolicy.kt (+ test), app/.../playback/PlaybackService.kt,
   the new playback/PerformanceHintController.kt, data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt,
   ui/player/DebugOverlay.kt, ARCHITECTURE.md, docs/ROADMAP.md, TASKS.md and its PROGRESS.md row. No phone.
+- **HDR output track** (`par/hdr`, /home/rava/vibeplayer-worktrees/hdr) **[parallel safe]**: P10-09. Touches
+  player/.../HdrOutputPolicy.kt (+ test), PlayerEngine.kt, PlayerState.kt, OperatingRate.kt (ClipInfo),
+  app/.../playback/VideoFormatDetector.kt, PlaybackService.kt, data/prefs/AppSettings.kt,
+  ui/settings/SettingsScreen.kt, ui/player/PlayerActivity.kt, DebugOverlay.kt, ARCHITECTURE.md, TASKS.md and its
+  PROGRESS.md row. No phone.
 - **Profiling & HDR track** (`par/prof`, /home/rava/vibeplayer-worktrees/prof) **[parallel safe]**: P10-07, P10-08.
   ProfilingManager triggers (API 37) and HDR output spike research. Touches app/src/main/java/com/vibeplayer/profiling/*,
   app/src/debug/*, data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt, VibePlayerApp.kt, docs/HDR.md, TASKS.md and PROGRESS.md. No phone.
@@ -695,4 +700,4 @@ anywhere in the build flags.
 
 **P10-08 HDR output spike** — determine from the sources under /home/rava/vibeplayer/native/mpv-android/buildscripts/deps (mpv 0.41 video/out/opengl/context_android.c, video/out/vulkan/context_android.c, libplacebo swapchain code) whether mpv on Android can output HDR (PQ/HLG/extended-range) on GLES or Vulkan (VK_EXT_swapchain_colorspace, EGL_EXT_gl_colorspace_bt2020_pq, target-colorspace-hint, Android SurfaceView dataspace), what app-side APIs would be needed (Window.setColorMode(COLOR_MODE_HDR), setDesiredHdrHeadroom), and write the findings with file:line citations and a go/no-go recommendation plus a concrete device test plan to docs/HDR.md. Do not guess: mark anything not seen in the sources as unverified. *Files*: docs/HDR.md, TASKS.md, PROGRESS.md. *Accept*: comprehensive report in docs/HDR.md with file:line citations, go/no-go recommendation, and device test plan.
 
-
+**P10-09 HDR output on Vulkan gpu-next** — behind a setting "HDR output (experimental)" (default off). When the setting is on, the file is HDR (PQ or HLG: MediaExtractor KEY_COLOR_TRANSFER before the open, mpv `video-params/gamma` once known) and the effective config is Vulkan + vo=gpu-next (docs/HDR.md), set mpv `target-colorspace-hint=yes` and request `Window.colorMode = COLOR_MODE_HDR` plus `desiredHdrHeadroom`; revert to `auto` / SDR color mode when the file is not HDR, in PiP and on exit. Otherwise change nothing (tone mapping to SDR as today). Pure decision logic with unit tests (HdrOutputPolicy); overlay row "HDR: on/off (reason)". The Vulkan -> GLES -> software fallback chain is untouched. *Files*: see the HDR output track. *Accept*: unit tests and assembleDebug pass; device check per docs/HDR.md section 6 (open).
