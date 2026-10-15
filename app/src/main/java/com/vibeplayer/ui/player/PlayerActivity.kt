@@ -22,8 +22,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -368,6 +371,12 @@ class PlayerActivity : ComponentActivity() {
         _volumeFlow.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val lp = window.attributes
+            lp.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            window.attributes = lp
+        }
         hideSystemBars()
 
         // Auto-orient based on video aspect ratio (P1-09)
@@ -557,7 +566,9 @@ class PlayerActivity : ComponentActivity() {
                                     aspectIndicatorText = nextMode
                                     aspectIndicatorTrigger = System.currentTimeMillis()
                                 },
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .windowInsetsPadding(WindowInsets.displayCutout)
                             )
 
                             AspectIndicator(
@@ -571,6 +582,7 @@ class PlayerActivity : ComponentActivity() {
                                     playerEngine = playerEngine,
                                     onClose = { showDebugOverlay = false },
                                     modifier = Modifier
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
                                         .padding(top = 80.dp, start = 16.dp)
                                         .align(Alignment.TopStart)
                                 )

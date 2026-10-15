@@ -127,7 +127,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 
 | P10-02 | Thermal adaptation | IN PROGRESS | AGY-1 | pending | Code done, unit tests pass. Device check open: PowerManager thermal listener registration, stats overlay THERMAL row, quality step-down at MODERATE+. |
 
-| P10-03 | Display cutout | TODO | | | |
+| P10-03 | Display cutout | IN PROGRESS | AGY-1 | pending | Code done, builds cleanly, unit tests pass. Window layoutInDisplayCutoutMode = ALWAYS in PlayerActivity; controls layer padded by WindowInsets.displayCutout, video extends into punch-hole. Device check open: punch-hole area used in zoom/fill aspect modes, controls clear of notch. |
 | P10-04 | Back handling audit | TODO | | | |
 | P10-05 | Exit diagnostics | TODO | | | |
 
