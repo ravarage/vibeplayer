@@ -75,4 +75,21 @@ class PlaybackLifecyclePolicyTest {
         // Background audio on, paused, timeout expired
         assertTrue(PlaybackLifecyclePolicy.shouldStopService(boundClients = 0, backgroundAudioEnabled = true, isPaused = true, isEof = false, pausedTimeoutExpired = true))
     }
+
+    @Test
+    fun testForegroundKeptDuringTransientFocusLoss() {
+        // Paused by the user with nobody bound: leave the foreground.
+        assertFalse(PlaybackLifecyclePolicy.shouldBeInForeground(0, isPaused = true, resumeOnFocusGain = false))
+        // Paused by a transient focus loss: stay foreground so the resume keeps while-in-use capability.
+        assertTrue(PlaybackLifecyclePolicy.shouldBeInForeground(0, isPaused = true, resumeOnFocusGain = true))
+        assertTrue(PlaybackLifecyclePolicy.shouldBeInForeground(0, isPaused = false, resumeOnFocusGain = false))
+        assertTrue(PlaybackLifecyclePolicy.shouldBeInForeground(1, isPaused = true, resumeOnFocusGain = false))
+    }
+
+    @Test
+    fun testForegroundNeededBeforeBackgroundResume() {
+        assertTrue(PlaybackLifecyclePolicy.needsForegroundBeforeResume(boundClients = 0, isForeground = false))
+        assertFalse(PlaybackLifecyclePolicy.needsForegroundBeforeResume(boundClients = 0, isForeground = true))
+        assertFalse(PlaybackLifecyclePolicy.needsForegroundBeforeResume(boundClients = 1, isForeground = false))
+    }
 }

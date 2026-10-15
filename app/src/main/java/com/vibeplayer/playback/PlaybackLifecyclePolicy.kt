@@ -43,11 +43,22 @@ object PlaybackLifecyclePolicy {
      */
     fun shouldBeInForeground(
         boundClients: Int,
-        isPaused: Boolean
+        isPaused: Boolean,
+        resumeOnFocusGain: Boolean = false
     ): Boolean {
-        if (boundClients == 0 && isPaused) return false
+        // P10-10: a transient audio-focus loss (call, navigation prompt) keeps the foreground service, so
+        // the resume on AUDIOFOCUS_GAIN still has the while-in-use capability (Android 17 background-audio
+        // hardening; the timeout stops the service after PAUSED_STOP_TIMEOUT_MS).
+        if (boundClients == 0 && isPaused && !resumeOnFocusGain) return false
         return true
     }
+
+    /**
+     * P10-10: audio (focus request, playback) that starts while no activity is bound needs a running
+     * mediaPlayback foreground service first. True when [startForeground] must be called before resuming.
+     */
+    fun needsForegroundBeforeResume(boundClients: Int, isForeground: Boolean): Boolean =
+        boundClients == 0 && !isForeground
 
     /**
      * Determines whether playback should continue when the app task is removed from recents (onTaskRemoved).
