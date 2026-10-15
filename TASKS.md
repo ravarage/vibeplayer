@@ -20,6 +20,10 @@ Clips are in `/sdcard/Movies/vibeplayer-test/` (SPEC.md). Tasks are sequential u
 - **Platform track** (`par/platform`, /home/rava/vibeplayer-worktrees/platform) **[parallel safe]**: P10-01..P10-05.
   Platform features from the Android 17 research (Surface.setFrameRate, thermal adaptation, display cutout,
   back handling audit, exit diagnostics).
+- **ADPF track** (`par/adpf`, /home/rava/vibeplayer-worktrees/adpf) **[parallel safe]**: P10-06. Touches
+  player/.../PlayerEngine.kt, PlayerState.kt, the new AdpfHintPolicy.kt (+ test), app/.../playback/PlaybackService.kt,
+  the new playback/PerformanceHintController.kt, data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt,
+  ui/player/DebugOverlay.kt, ARCHITECTURE.md, docs/ROADMAP.md, TASKS.md and its PROGRESS.md row. No phone.
 
 
 ## P0 Native build and first playback
@@ -681,4 +685,6 @@ anywhere in the build flags.
 **P10-04 Back handling audit for targetSdk 37** — KEYCODE_BACK and onBackPressed are not delivered. Check PlayerActivity.onKeyDown and every back path (lock state, open sheets, PiP, settings, browser); make sure all use BackHandler/OnBackPressedDispatcher; add android:enableOnBackInvokedCallback="true" to the application in the manifest if missing. Fix whatever depends on KEYCODE_BACK. *Files*: AndroidManifest.xml, ui/player/PlayerActivity.kt, ui/player/PlayerControls.kt, ui/browser/BrowserActivity.kt, etc. *Accept*: predictive back and gestures work on Android 17 without KEYCODE_BACK dependencies.
 
 **P10-05 Exit diagnostics** — on app start, read ActivityManager.getHistoricalProcessExitReasons(packageName, 0, 5); for exits since the last check (store the last seen timestamp), log reason, description (Android 17 memory limiter shows "MemoryLimiter:AnonSwap"), pss/rss and timestamp to logcat with tag VibeExit, and show them in the existing diagnostics/about/stats screen if there is one. IO off the main thread. *Files*: diagnostics/ExitDiagnostics.kt, data/prefs/AppSettings.kt, ui/settings/SettingsScreen.kt, MainActivity.kt. *Accept*: logged to logcat with tag VibeExit, visible in about/diagnostics screen (device check open).
+
+**P10-06 ADPF performance hint session** — behind a setting "Performance hints (experimental)" (default off, existing settings store and Settings screen). While a file plays, create a PerformanceHintManager session for the app's playback threads, found by name in /proc/self/task/*/comm (IO dispatcher); refresh the tid set when a file loads and call setThreads if it changed. Target duration 1e9 / container fps (fallback 60). Report actual work once per second: the target when no frame drops were added that second, 1.5x the target when the drop count increased. setPreferPowerEfficiency(true) for zero-copy hardware decode (HEVC, VP9 rows), false for software AV1. Close the session on pause, stop and file end; null-safe when unsupported (log once, tag VP-ADPF). Overlay shows "ADPF: on (n threads)". Pure logic in a helper with unit tests. *Files*: see the ADPF track. *Accept*: setting on, AV1 4K plays, `adb shell dumpsys performance_hint` shows the session; A/B of drops and battery current with the setting off and on (device check open).
 
