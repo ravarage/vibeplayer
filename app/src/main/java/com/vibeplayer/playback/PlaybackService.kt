@@ -252,6 +252,7 @@ class PlaybackService : Service() {
     private var periodicSaveJob: Job? = null
     private var loadJob: Job? = null
     @Volatile private var loadGeneration = 0L
+    @Volatile private var lastPathHandedToEngine: String? = null
 
     private val _currentPath = MutableStateFlow<String?>(null)
     val currentPath: StateFlow<String?> = _currentPath.asStateFlow()
@@ -975,11 +976,15 @@ class PlaybackService : Service() {
                 identity = identityKey ?: path
             )
             handedToEngine = true
+            lastPathHandedToEngine = path
             currentKey = key
             if (playAfterLoad) playerEngine.play()
         }
         loadJob?.invokeOnCompletion {
-            if (!handedToEngine && currentVideoPath != path) PlayerEngine.closeFdPath(path)
+            // Never a path mpv may own: one an earlier or a parallel open of the same string handed over.
+            if (!handedToEngine && currentVideoPath != path && lastPathHandedToEngine != path) {
+                PlayerEngine.closeFdPath(path)
+            }
         }
     }
 
