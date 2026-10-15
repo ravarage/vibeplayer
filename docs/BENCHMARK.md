@@ -336,9 +336,11 @@ per-file hint). Battery cost still to be measured (TASKS.md P6-08).
   (`src/shaders/custom_mpv.c`, `bind_pass_tex`), so the error says the Adreno GLSL front end left
   `MAINPRESUB_texOff` unexpanded. The same pass, rebuilt with exactly those defines, compiles with
   `glslangValidator` for `#version 300 es`, `310 es` and `320 es`, and it compiles on Vulkan (shaderc); the
-  CNN stages use the same `MAIN_texOff` alias (inside their own `go_0` macro) and compile on GLES. The
-  cause is therefore the driver's preprocessor, not invalid GLSL, and a shader edit could not be verified
-  without the phone. Because the failed first pass never saves `STATSMAX`, the stage's later passes had no
+  CNN stages use the same `MAIN_texOff` alias (inside their own `go_0` macro) and SGSR uses the same
+  object-to-function alias directly (`HOOKED_texOff(0)`), and both compile on GLES. So the failure is on the
+  driver side (the GLSL is valid), but the exact trigger was not identified (a guess: the alias called
+  directly with an argument that itself contains a comma, `vec2(i - KERNELHALFSIZE, 0)`), and a shader edit
+  could not be verified without the phone. Because the failed first pass never saves `STATSMAX`, the stage's later passes had no
   input either; libplacebo then disables that one hook (`rr->disabled_hooks` in `src/renderer.c`, per user-shader
 file) and the other stages keep running, so on GLES the stage never ran. Fix (P8-02 fix): `ShaderPreset.getShaderFiles(mode,
   renderer)` leaves `Anime4K_Clamp_Highlights.glsl` out of A, B and C when the handle's renderer is OpenGL
