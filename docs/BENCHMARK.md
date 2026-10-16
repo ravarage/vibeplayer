@@ -433,3 +433,25 @@ file) and the other stages keep running, so on GLES the stage never ran. Fix (P8
 - **GLES gpu-next logs `Can't generate LUT: no compatible methods!` / `Failed generating/uploading block
   offsets LUT!` with no shader loaded at all.** This is libplacebo on the GLES backend (a LUT format or
   method the driver does not offer), not caused by the presets and not fixable in the app; known, left as is.
+
+## Benchmark Matrix: SHORT (2026-10-16 04:04:55)
+
+- **Vulkan Driver Build**: `c0b92d25178c8b21` (mtime: `2026-10-13 21:09:43.096808520 +0300`)
+- **Initial Battery**: 43%
+- **Charging Status**: No (on battery)
+
+| File | Mode | VO | Renderer | Profile | Decoder | Shader | Cache | Sec | Drops (Start/Steady/Total) | Dec Drops (Start/Steady/Total) | FPS | CPU % | Avg Current (mA) | Temp Start/End (°C) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `ichiban.mp4` | quality | gpu-next | vulkan | default | auto | none | warm | 300 | 0 / 0 / 0 | 0 / 0 / 0 | 30.0 | 25.4% | 611 | 27.0 → 28.0 |
+| `ichiban.mp4` | quality | gpu | vulkan | default | auto | none | warm | 300 | 0 / 0 / 0 | 0 / 0 / 0 | 30.0 | 26.6% | 672 | 28.0 → 29.0 |
+| `ichiban.mp4` | quality | gpu-next | gles | default | auto | none | warm | 300 | 0 / 0 / 0 | 0 / 0 / 0 | 30.0 | 20.9% | 509 | 29.0 → 28.0 |
+| `ichiban.mp4` | quality | gpu | gles | default | auto | none | warm | 300 | 0 / 0 / 0 | 0 / 0 / 0 | 30.0 | 20.9% | 496 | 28.0 → 28.0 |
+| `hevc10_4k.mp4` | quality | gpu-next | vulkan | default | auto | none | warm | 300 | 79 / 545 / 624 | 0 / 0 / 0 | 60.0 | 103.2% | 1139 | 28.0 → 31.0 |
+| `hevc10_4k.mp4` | quality | gpu | vulkan | default | auto | none | warm | 300 | 57 / 1288 / 1345 | 0 / 0 / 0 | 60.0 | 102.9% | 1138 | 31.0 → 34.0 |
+| `hevc10_4k.mp4` | quality | gpu-next | gles | default | auto | none | warm | 300 | 63 / 303 / 366 | 0 / 0 / 0 | 60.0 | 114.4% | 1237 | 34.0 → 35.0 |
+| `hevc10_4k.mp4` | quality | gpu | gles | default | auto | none | warm | 300 | 72 / 289 / 361 | 0 / 0 / 0 | 60.0 | 115.3% | 1207 | 35.0 → 37.0 |
+| `av1_1080p60_10bit.mp4` | quality | gpu-next | vulkan | default | auto | none | warm | 300 | 17 / 25 / 42 | 0 / 0 / 0 | 60.0 | 284.0% | 1188 | 37.0 → 37.0 |
+| `av1_1080p60_10bit.mp4` | quality | gpu | vulkan | default | auto | none | warm | 300 | 66 / 144 / 210 | 0 / 0 / 0 | 60.0 | 285.0% | 1160 | 37.0 → 38.0 |
+| `av1_1080p60_10bit.mp4` | quality | gpu-next | gles | default | auto | none | warm | 300 | 0 / 0 / 0 | 0 / 0 / 0 | 60.0 | 162.4% | 956 | 38.0 → 37.0 |
+| `av1_1080p60_10bit.mp4` | quality | gpu | gles | default | auto | none | warm | 300 | 0 / 0 / 0 | 0 / 0 / 0 | 60.0 | 150.5% | 984 | 37.0 → 37.0 |
+
