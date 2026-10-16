@@ -141,6 +141,24 @@ class DebugActionReceiver : BroadcastReceiver() {
                 engine.seekRelative(sec, exact = true)
                 Log.i("VP", "DebugActionReceiver: double_tap side=$side, seekRelative $sec s")
             }
+            // P10-10: drive the audio-focus listener directly so the transient-loss resume path
+            // (docs/BG_AUDIO.md case f / path 8) can be exercised on a device without a second
+            // player or a real call. Debug-only (this receiver is in the debug source set).
+            action.startsWith("focus:") -> {
+                val code = when (action.substringAfter("focus:").lowercase()) {
+                    "loss" -> android.media.AudioManager.AUDIOFOCUS_LOSS
+                    "loss_transient" -> android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+                    "loss_transient_can_duck" -> android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
+                    "gain" -> android.media.AudioManager.AUDIOFOCUS_GAIN
+                    else -> null
+                }
+                if (code != null) {
+                    Log.i("VP", "DebugActionReceiver: simulate focus change -> $code")
+                    service.debugSimulateFocusChange(code)
+                } else {
+                    Log.w("VP", "DebugActionReceiver: unknown focus change '${action.substringAfter("focus:")}'")
+                }
+            }
             else -> {
                 Log.w("VP", "DebugActionReceiver: unknown action '$action'")
             }

@@ -172,6 +172,16 @@ class PlaybackService : Service() {
         }
     }
 
+    /**
+     * P10-10 debug-only: drive the audio-focus listener directly so the transient-loss resume path
+     * (path 8) can be exercised on a device without a second player or a real call. Never called in
+     * release builds (the debug receiver that reaches it is debug-only).
+     */
+    fun debugSimulateFocusChange(focusChange: Int) {
+        Log.i("VP", "debugSimulateFocusChange: focusChange=$focusChange")
+        audioFocusListener.onAudioFocusChange(focusChange)
+    }
+
     private val becomingNoisyReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
