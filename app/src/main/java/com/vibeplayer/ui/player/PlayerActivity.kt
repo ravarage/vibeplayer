@@ -1208,15 +1208,16 @@ class PlayerActivity : ComponentActivity() {
         Log.i("VP", "PlayerActivity onStop (isInPip=$isInPictureInPictureMode, wasInPip=${_isInPipFlow.value})")
         val inPip = isInPictureInPictureMode || _isInPipFlow.value
         if (inPip) {
-            // P10-10: screen-off dismisses the PiP window and arrives here with isInPictureInPictureMode
-            // still true, which is indistinguishable from the user closing the mini player. With
-            // background audio on, keep playing (the foreground service keeps the audio alive); only
-            // pause when the user has background audio off.
-            if (!viewModel.isBackgroundAudioEnabled()) {
-                Log.i("VP", "PiP dismissed/closed onStop -> stopping playback (background audio off)")
-                playerEngine.pause()
+            // P10-10: screen-off also stops the PiP activity (isInPictureInPictureMode still true).
+            // Tell it apart from the user closing the mini player by the screen state: with the
+            // screen off and background audio on, keep playing (the foreground service keeps the
+            // audio alive); a mini player closed by the user pauses as before.
+            val screenOff = !getSystemService(android.os.PowerManager::class.java).isInteractive
+            if (screenOff && viewModel.isBackgroundAudioEnabled()) {
+                Log.i("VP", "PiP stopped by screen-off -> background audio is on, continuing playback")
             } else {
-                Log.i("VP", "PiP dismissed/closed onStop -> background audio is on, continuing playback")
+                Log.i("VP", "PiP dismissed/closed onStop -> stopping playback")
+                playerEngine.pause()
             }
             _isInPipFlow.value = false
         } else {
