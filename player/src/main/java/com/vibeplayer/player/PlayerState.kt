@@ -36,6 +36,12 @@ data class PlayerStats(
     val hdrStatus: String? = null
 )
 
+data class Chapter(
+    val index: Int,
+    val title: String,
+    val startMs: Long
+)
+
 data class PlayerState(
     val paused: Boolean = true,
     val durationMs: Long = 0L,
@@ -60,7 +66,9 @@ data class PlayerState(
     val formatProfileReason: String? = null,
     val detectedFormat: VideoFormat? = null,
     val containerFps: Double? = null,
-    val thermalStatus: String? = null
+    val thermalStatus: String? = null,
+    val chapters: List<Chapter> = emptyList(),
+    val currentChapter: Int = -1
 )
 
 

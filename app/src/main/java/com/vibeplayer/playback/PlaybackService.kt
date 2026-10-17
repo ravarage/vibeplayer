@@ -1256,6 +1256,18 @@ class PlaybackService : Service() {
         persistDelays { it.copy(audioDelayMs = v) }
     }
 
+    fun seekToChapter(index: Int) {
+        playerEngine.seekToChapter(index)
+    }
+
+    fun nextChapter() {
+        playerEngine.nextChapter()
+    }
+
+    fun previousChapter() {
+        playerEngine.previousChapter()
+    }
+
     private fun persistDelays(change: (FileSettings) -> FileSettings) {
         if (benchmarkRun) return
         val key = currentKey ?: return

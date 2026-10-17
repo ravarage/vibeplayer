@@ -464,6 +464,8 @@ class PlayerEngine(
         const val REPLY_SID = 13L
         const val REPLY_CONTAINER_FPS = 14L
         const val REPLY_HDR_GAMMA = 15L
+        const val REPLY_CHAPTER = 16L
+        const val REPLY_CHAPTER_LIST = 17L
     }
 
 
@@ -601,6 +603,17 @@ class PlayerEngine(
                         _state.update { it.copy(containerFps = f) }
                     }
                 }
+                "chapter" -> {
+                    val ch = when (value) {
+                        is Number -> value.toInt()
+                        is String -> value.toIntOrNull() ?: -1
+                        else -> -1
+                    }
+                    _state.update { it.copy(currentChapter = if (it.chapters.isEmpty()) -1 else ch) }
+                }
+                "chapter-list" -> {
+                    updateChapters()
+                }
             }
         }
 
@@ -649,6 +662,7 @@ class PlayerEngine(
                         }
                     }
                     updateTracks(allowPendingSelection = true)
+                    updateChapters()
                     // After the remembered-track selection (queued just above): a pending external subtitle
                     // added with "select" then wins over a stale remembered sid, and one added without
                     // selection leaves that choice alone.
@@ -680,6 +694,10 @@ class PlayerEngine(
                 MpvEvent.TRACK_SWITCHED -> {
                     Log.i("VP", "mpv event track-switched")
                     updateTracks()
+                }
+                MpvEvent.CHAPTER_CHANGE -> {
+                    Log.i("VP", "mpv event chapter-change")
+                    updateChapters()
                 }
                 else -> {
                     Log.d("VP", "onEvent: $id")
@@ -1098,6 +1116,8 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_SID, "sid", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_CONTAINER_FPS, "container-fps", MpvFormat.DOUBLE)
         MpvNative.observeProperty(handle, REPLY_HDR_GAMMA, "video-params/gamma", MpvFormat.STRING)
+        MpvNative.observeProperty(handle, REPLY_CHAPTER, "chapter", MpvFormat.INT64)
+        MpvNative.observeProperty(handle, REPLY_CHAPTER_LIST, "chapter-list", MpvFormat.NONE)
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -1285,7 +1305,9 @@ class PlayerEngine(
                 aspect = aspect,
                 rendererInUse = if (playbackConfig.mode == PlaybackMode.QUALITY) playbackConfig.renderer.name else "GLES",
                 lastVulkanError = lastVulkanErrorText,
-                containerFps = clipFps
+                containerFps = clipFps,
+                chapters = emptyList(),
+                currentChapter = -1
             )
         }
 
@@ -1994,6 +2016,65 @@ class PlayerEngine(
                 MpvNative.setPropertyString(handle, "sid", value)
                 Log.i("VP", "setSubtitleTrack: sid=$value")
                 updateTracks()
+            }
+        }
+    }
+
+    fun updateChapters() {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val count = MpvNative.getPropertyLong(handle, "chapter-list/count") ?: 0L
+            val chapterList = ChapterParser.parse(
+                count = count,
+                getTitle = { i -> MpvNative.getPropertyString(handle, "chapter-list/$i/title") },
+                getTimeSec = { i -> MpvNative.getPropertyDouble(handle, "chapter-list/$i/time") }
+            )
+            val curChapter = if (chapterList.isNotEmpty()) {
+                MpvNative.getPropertyLong(handle, "chapter")?.toInt() ?: -1
+            } else {
+                -1
+            }
+            if (isStaleCommandThread()) return@executeCommand
+            _state.update {
+                it.copy(
+                    chapters = chapterList,
+                    currentChapter = curChapter
+                )
+            }
+            Log.i("VP", "Updated chapters (${chapterList.size}): current=$curChapter")
+            for (c in chapterList) {
+                Log.i("VP-Chapter", "index=${c.index} title='${c.title}' startMs=${c.startMs}")
+            }
+        }
+    }
+
+    fun seekToChapter(index: Int) {
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) {
+                MpvNative.setPropertyLong(handle, "chapter", index.toLong())
+                Log.i("VP", "seekToChapter: index=$index")
+            }
+        }
+    }
+
+    fun nextChapter() {
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) {
+                MpvNative.command(handle, arrayOf("add", "chapter", "1"))
+                Log.i("VP", "nextChapter")
+            }
+        }
+    }
+
+    fun previousChapter() {
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) {
+                MpvNative.command(handle, arrayOf("add", "chapter", "-1"))
+                Log.i("VP", "previousChapter")
             }
         }
     }

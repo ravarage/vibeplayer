@@ -615,6 +615,7 @@ class PlayerActivity : ComponentActivity() {
                                         Log.e("VP", "Failed to launch OPEN_DOCUMENT: ${e.message}")
                                     }
                                 },
+                                onSelectChapter = { viewModel.seekToChapter(it) },
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .windowInsetsPadding(WindowInsets.displayCutout)

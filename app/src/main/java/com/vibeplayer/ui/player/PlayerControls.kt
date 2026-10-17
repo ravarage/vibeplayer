@@ -90,6 +90,7 @@ fun PlayerControls(
     onCycleAspect: (() -> Unit)? = null,
     onToggleMode: (() -> Unit)? = null,
     onLoadSubtitle: (() -> Unit)? = null,
+    onSelectChapter: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout)
 ) {
     TrackRecomposition("PlayerControls")
@@ -111,19 +112,21 @@ fun PlayerControls(
     var showSubTrackSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showSyncSheet by remember { mutableStateOf(false) }
+    var showChapterSheet by remember { mutableStateOf(false) }
 
-    val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet
+    val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet || showChapterSheet
     BackHandler(enabled = anySheetOpen) {
         showAudioTrackSheet = false
         showSubTrackSheet = false
         showSpeedSheet = false
         showSyncSheet = false
+        showChapterSheet = false
         interactionEvents.value = System.currentTimeMillis()
     }
 
     // Auto-hide controls after 3 seconds of inactivity (paused while sheet is open)
-    LaunchedEffect(controlsVisible, playerState.paused, showAudioTrackSheet, showSubTrackSheet, showSpeedSheet, showSyncSheet) {
-        if (controlsVisible && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet && !showSpeedSheet && !showSyncSheet) {
+    LaunchedEffect(controlsVisible, playerState.paused, showAudioTrackSheet, showSubTrackSheet, showSpeedSheet, showSyncSheet, showChapterSheet) {
+        if (controlsVisible && !playerState.paused && !showAudioTrackSheet && !showSubTrackSheet && !showSpeedSheet && !showSyncSheet && !showChapterSheet) {
             interactionEvents.collectLatest { timestamp ->
                 if (timestamp != Long.MAX_VALUE) {
                     delay(3000)
@@ -233,13 +236,8 @@ fun PlayerControls(
 
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        Text(
-                            text = title,
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .weight(1f)
                                 .pointerInput(Unit) {
@@ -250,7 +248,30 @@ fun PlayerControls(
                                         }
                                     )
                                 }
-                        )
+                        ) {
+                            Text(
+                                text = title,
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            val curChapter = playerState.chapters.find { it.index == playerState.currentChapter }
+                            if (curChapter != null) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "• ${curChapter.title}",
+                                    color = Color(0xFFCCCCCC),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                            }
+                        }
 
                         if (playerState.fallback) {
                             Spacer(modifier = Modifier.width(8.dp))
@@ -360,6 +381,29 @@ fun PlayerControls(
                                 fontSize = 20.sp,
                                 color = if (playerState.selectedSubTrackId != null) Color(0xFFBB86FC) else Color.White
                             )
+                        }
+
+                        if (playerState.chapters.size >= 2) {
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            IconButton(
+                                onClick = {
+                                    interactionEvents.value = System.currentTimeMillis()
+                                    showChapterSheet = true
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .semantics {
+                                        contentDescription = "chapters"
+                                        testTag = "chapters"
+                                    }
+                            ) {
+                                Text(
+                                    text = "📑",
+                                    fontSize = 20.sp,
+                                    color = Color.White
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(4.dp))
@@ -495,6 +539,7 @@ fun PlayerControls(
                 SeekControls(
                     positionFlow = playerEngine.position,
                     durationMs = durationMs,
+                    chapters = playerState.chapters,
                     onSeekProgress = { playerEngine.seekTo(it, exact = false) },
                     onSeekFinished = { playerEngine.seekTo(it, exact = true) },
                     onScrubbingChanged = { scrubbing ->
@@ -583,6 +628,22 @@ fun PlayerControls(
                     interactionEvents.value = System.currentTimeMillis()
                 }
             )
+        if (showChapterSheet) {
+            ChapterSheet(
+                chapters = playerState.chapters,
+                currentChapterIndex = playerState.currentChapter,
+                onSelectChapter = { id ->
+                    if (onSelectChapter != null) {
+                        onSelectChapter(id)
+                    } else {
+                        playerEngine.seekToChapter(id)
+                    }
+                },
+                onDismiss = {
+                    showChapterSheet = false
+                    interactionEvents.value = System.currentTimeMillis()
+                }
+            )
         }
     }
 }
@@ -607,6 +668,7 @@ private fun formatTimeSeconds(totalSeconds: Long): String {
 private fun SeekControls(
     positionFlow: kotlinx.coroutines.flow.StateFlow<Long>,
     durationMs: Long,
+    chapters: List<com.vibeplayer.player.Chapter> = emptyList(),
     onSeekProgress: (Long) -> Unit,
     onSeekFinished: (Long) -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
@@ -648,6 +710,7 @@ private fun SeekControls(
         VideoSeekBar(
             positionFlow = positionFlow,
             durationMs = durationMs,
+            chapters = chapters,
             onSeekProgress = { targetMs ->
                 userSeeking = true
                 if (durationMs > 0L) seekProgress = (targetMs.toFloat() / durationMs).coerceIn(0f, 1f)

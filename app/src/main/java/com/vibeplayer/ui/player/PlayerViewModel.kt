@@ -237,6 +237,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         (service ?: PlaybackService.currentInstance)?.setAspect(aspect)
     }
 
+    fun seekToChapter(index: Int) {
+        (service ?: PlaybackService.currentInstance)?.seekToChapter(index)
+    }
+
+    fun nextChapter() {
+        (service ?: PlaybackService.currentInstance)?.nextChapter()
+    }
+
+    fun previousChapter() {
+        (service ?: PlaybackService.currentInstance)?.previousChapter()
+    }
+
     fun saveCurrentPosition() {
         (service ?: PlaybackService.currentInstance)?.saveCurrentPosition()
     }
