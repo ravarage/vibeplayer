@@ -437,6 +437,32 @@ screen from `BuildConfig`. Keep `applicationId` and package `com.vibeplayer`. *F
 settings.gradle.kts, res/mipmap-*, res/values/strings.xml, manifest, ui/settings/*. *Accept*: screenshot
 of the launcher shows the new icon and the name "Vibe Player"; settings shows the version.
 
+**P4-15 Chapters** (user request 2026-10-17: "some mkv files have chapters") — Show and use the chapters
+mpv reads from the file (MKV, MP4).
+- Engine: after file load (and on mpv `chapter-list` change), read `chapter-list/count` and
+  `chapter-list/N/title`, `chapter-list/N/time` with the existing getProperty calls (same pattern as the
+  track-list reader, off the main thread) into `PlayerState.chapters: List<Chapter(index, title, startMs)>`
+  (title may be empty: show "Chapter N"). Observe `chapter` (INT64) into `PlayerState.currentChapter`
+  (-1 before the first chapter). Commands through PlayerEngine: `seekToChapter(index)` (set `chapter`),
+  `nextChapter()` / `previousChapter()` (`add chapter 1` / `add chapter -1`; mpv's previous goes to the
+  start of the current chapter first). Empty list and -1 when the file has none; reset on each new file.
+- Seek bar: small tick marks at each chapter start (not at 0), drawn in the existing SeekBar canvas,
+  without extra recomposition per position update (ticks depend only on chapters + duration).
+  While scrubbing, the time label also shows the chapter title under the thumb.
+- Controls: a "Chapters" button (only visible when the file has 2+ chapters) opens a bottom sheet like
+  TrackSheet: list of chapters with title and start time, the current one highlighted; tapping seeks there
+  and closes the sheet. Current chapter title shown small next to the file title in the top bar.
+- No new gestures; double-tap and swipe seeking are unchanged. Back closes the sheet (predictive back as
+  the other sheets). No mpv call on the main thread.
+- Tests: unit test for the chapter parsing/mapping (empty titles, unsorted or zero-length entries kept in
+  mpv order, count 0).
+*Files*: PlayerEngine.kt, PlayerState.kt, ui/player/SeekBar.kt, PlayerControls.kt, a new ChapterSheet.kt,
+PlayerViewModel.kt. *Accept*: on the device, an MKV with chapters (make one with ffmpeg + an ffmetadata
+chapter file if none exists; remove it afterwards) shows ticks on the seek bar, the Chapters sheet lists
+all chapters with titles, tapping one seeks to its start (logged time-pos within 1 s), the top bar shows
+the current chapter, and a file without chapters shows no button and no ticks; unit tests pass;
+RecompositionTracker shows SeekControls no worse than P7-03 (about 1 per second while playing).
+
 ## P5 PiP and background
 
 **P5-01 PlaybackService** — Move engine ownership into a foreground service; ViewModel binds to it.
