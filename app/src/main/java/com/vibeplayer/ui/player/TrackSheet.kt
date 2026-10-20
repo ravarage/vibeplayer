@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import com.vibeplayer.player.Track
 
 @Composable
@@ -94,7 +96,9 @@ fun SubtitleTrackSheet(
     onSelectTrack: (Int?) -> Unit,
     onDismiss: () -> Unit,
     onOpenSync: (() -> Unit)? = null,
-    onLoadSubtitle: (() -> Unit)? = null
+    onLoadSubtitle: (() -> Unit)? = null,
+    /** Previous (false) or next (true) subtitle line; the panel stays open so the line can be heard again. */
+    onSubSeek: ((Boolean) -> Unit)? = null
 ) {
     TrackRecomposition("SubtitleTrackSheet")
     val subTracks = remember(tracks) { tracks.filter { it.type == "sub" } }
@@ -118,6 +122,17 @@ fun SubtitleTrackSheet(
             }
         }
     ) {
+        if (onSubSeek != null && selectedTrackId != null) {
+            item {
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 4.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)
+                ) {
+                    PanelChip(text = "⏮ Previous line", onClick = { onSubSeek(false) }, tag = "sub_line_prev")
+                    PanelChip(text = "Next line ⏭", onClick = { onSubSeek(true) }, tag = "sub_line_next")
+                }
+            }
+        }
         item {
             TrackRow(
                 title = "Off",

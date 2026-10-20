@@ -469,6 +469,7 @@ class PlayerEngine(
         const val REPLY_HDR_GAMMA = 15L
         const val REPLY_CHAPTER = 16L
         const val REPLY_CHAPTER_COUNT = 17L
+        const val REPLY_ROTATE = 18L
     }
 
 
@@ -571,12 +572,16 @@ class PlayerEngine(
                     _state.update { it.copy(speed = spd) }
                 }
                 "dwidth" -> {
-                    val w = (value as? Number)?.toInt() ?: 0
-                    _state.update { it.copy(videoWidth = w) }
+                    rawVideoWidth = (value as? Number)?.toInt() ?: 0
+                    publishVideoSize()
                 }
                 "dheight" -> {
-                    val h = (value as? Number)?.toInt() ?: 0
-                    _state.update { it.copy(videoHeight = h) }
+                    rawVideoHeight = (value as? Number)?.toInt() ?: 0
+                    publishVideoSize()
+                }
+                "video-params/rotate" -> {
+                    videoRotate = (value as? Number)?.toInt() ?: 0
+                    publishVideoSize()
                 }
                 "aid" -> {
                     val aid = when (value) {
@@ -1104,6 +1109,7 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_SPEED, "speed", MpvFormat.DOUBLE)
         MpvNative.observeProperty(handle, REPLY_DWIDTH, "dwidth", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_DHEIGHT, "dheight", MpvFormat.INT64)
+        MpvNative.observeProperty(handle, REPLY_ROTATE, "video-params/rotate", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_VIDEO_CODEC, "video-codec", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_VIDEO_FORMAT, "video-format", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_AID, "aid", MpvFormat.STRING)
@@ -1579,6 +1585,17 @@ class PlayerEngine(
         }
     }
 
+    // dwidth/dheight are the stored frame size; a phone clip filmed upright is usually stored landscape with
+    // rotate=90, which the VO applies. The state carries the size as shown, so orientation and PiP follow it.
+    @Volatile private var rawVideoWidth = 0
+    @Volatile private var rawVideoHeight = 0
+    @Volatile private var videoRotate = 0
+
+    private fun publishVideoSize() {
+        val (w, h) = VideoRotation.displaySize(rawVideoWidth, rawVideoHeight, videoRotate)
+        _state.update { if (it.videoWidth == w && it.videoHeight == h) it else it.copy(videoWidth = w, videoHeight = h) }
+    }
+
     /** Last file/renderer/preset the "Anime4K needs Vulkan" notice was shown for. */
     private var shaderNoticeKey: String? = null
 
@@ -1940,6 +1957,16 @@ class PlayerEngine(
             if (handle == 0L) return@executeCommand
             val res = MpvNative.command(handle, arrayOf(if (forward) "frame-step" else "frame-back-step"))
             Log.i("VP", "frame step forward=$forward res=$res")
+        }
+    }
+
+    /** Jumps to the start of the previous or next subtitle line (mpv sub-seek; text subtitles mpv has read). */
+    fun subSeek(next: Boolean) {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.command(handle, arrayOf("sub-seek", if (next) "1" else "-1"))
+            Log.i("VP", "sub-seek next=$next res=$res")
         }
     }
 

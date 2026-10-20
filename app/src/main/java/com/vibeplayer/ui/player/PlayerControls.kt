@@ -650,6 +650,10 @@ fun PlayerControls(
                     showSubTrackSheet = false
                     showSyncSheet = true
                 },
+                onSubSeek = { next ->
+                    interactionEvents.value = System.currentTimeMillis()
+                    playerEngine.subSeek(next)
+                },
                 onLoadSubtitle = if (onLoadSubtitle != null) {
                     {
                         showSubTrackSheet = false
