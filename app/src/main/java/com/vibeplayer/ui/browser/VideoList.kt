@@ -85,7 +85,8 @@ fun VideoListScreen(
         searching = false
         query = ""
     }
-    val shownVideos = remember(sortedVideos, query) { VideoSearch.filter(sortedVideos, query) }
+    val searchIndex = remember(sortedVideos) { VideoSearch.index(sortedVideos) }
+    val shownVideos = remember(searchIndex, query) { VideoSearch.filter(searchIndex, query) }
 
     Scaffold(
         topBar = {

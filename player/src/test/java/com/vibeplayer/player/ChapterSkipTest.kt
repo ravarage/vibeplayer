@@ -22,7 +22,8 @@ class ChapterSkipTest {
 
     @Test
     fun otherTitlesAreNotSkipped() {
-        for (t in listOf("", "Part A", "Part B", "Operation", "Edward", "Prologue", "Preview", "Episode", "Chapter 1", "Opened")) {
+        for (t in listOf("", "Part A", "Part B", "Operation", "Edward", "Prologue", "Preview", "Episode", "Chapter 1", "Opened",
+                "Ed's Story", "Op", "ed")) {
             assertEquals(t, ChapterKind.OTHER, ChapterSkip.kindOf(t))
         }
     }

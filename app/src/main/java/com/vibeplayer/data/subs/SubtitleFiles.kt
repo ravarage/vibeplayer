@@ -86,6 +86,13 @@ class SubtitleFiles(private val context: Context) {
     }
 
     companion object {
+        /** The document id of a document URI (plain or under a tree), or null for any other URI. */
+        fun documentIdOrNull(uri: Uri): String? = try {
+            DocumentsContract.getDocumentId(uri)
+        } catch (_: Exception) {
+            null
+        }
+
         /** Bigger files are handed to mpv unread (no text subtitle is this large). */
         const val MAX_BYTES = 16 * 1024 * 1024
     }

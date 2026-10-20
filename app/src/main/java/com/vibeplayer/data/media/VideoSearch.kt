@@ -19,8 +19,16 @@ object VideoSearch {
         return queryWords.all { n.contains(it) }
     }
 
-    fun filter(videos: List<VideoItem>, query: String): List<VideoItem> {
+    fun filter(videos: List<VideoItem>, query: String): List<VideoItem> = filter(index(videos), query)
+
+    /** Videos with their normalized names, built once per list so typing does not re-normalize every name. */
+    class Index internal constructor(val videos: List<VideoItem>, internal val names: List<String>)
+
+    fun index(videos: List<VideoItem>): Index = Index(videos, videos.map { normalize(it.displayName) })
+
+    fun filter(index: Index, query: String): List<VideoItem> {
         val w = words(query)
-        return if (w.isEmpty()) videos else videos.filter { matches(it.displayName, w) }
+        if (w.isEmpty()) return index.videos
+        return index.videos.filterIndexed { i, _ -> w.all { index.names[i].contains(it) } }
     }
 }

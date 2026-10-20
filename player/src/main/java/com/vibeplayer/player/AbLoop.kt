@@ -14,6 +14,13 @@ object AbLoop {
         else -> null to null
     }
 
+    /**
+     * The mpv `ab-loop-a` / `ab-loop-b` values: both "no" until B is set too. mpv loops from A to the end
+     * of the file when only A is set, which would keep the file from ever ending while B is awaited.
+     */
+    fun mpvValues(a: Long?, b: Long?): Pair<String, String> =
+        if (a != null && b != null) seconds(a) to seconds(b) else "no" to "no"
+
     /** mpv seconds with millisecond precision. */
     fun seconds(ms: Long): String = String.format(java.util.Locale.US, "%.3f", ms / 1000.0)
 }

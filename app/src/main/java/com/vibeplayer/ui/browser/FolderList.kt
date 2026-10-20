@@ -74,9 +74,12 @@ fun FolderListScreen(
         searching = false
         query = ""
     }
-    val results = remember(allVideos, query) {
-        if (query.isBlank()) emptyList()
-        else VideoSearch.filter(allVideos, query).sortedBy { it.displayName.lowercase() }
+    // Built only while searching, and once per video list rather than on every keystroke.
+    val searchIndex = remember(allVideos, searching) {
+        if (searching) VideoSearch.index(allVideos.sortedBy { it.displayName.lowercase() }) else null
+    }
+    val results = remember(searchIndex, query) {
+        if (query.isBlank() || searchIndex == null) emptyList() else VideoSearch.filter(searchIndex, query)
     }
     Scaffold(
         topBar = {

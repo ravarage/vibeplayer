@@ -9,19 +9,23 @@ enum class ChapterKind(val skipLabel: String?) {
 
 object ChapterSkip {
 
-    private val OPENING_WORDS = setOf("op", "opening", "intro", "introduction")
-    private val ENDING_WORDS = setOf("ed", "ending", "outro", "credits")
-    private val NUMBERED_OP = Regex("op\\d{1,2}")
-    private val NUMBERED_ED = Regex("ed\\d{1,2}")
+    private val OPENING_WORDS = setOf("opening", "intro", "introduction")
+    private val ENDING_WORDS = setOf("ending", "outro", "credits")
+    private val NUMBERED_OP = Regex("op\\d{1,2}", RegexOption.IGNORE_CASE)
+    private val NUMBERED_ED = Regex("ed\\d{1,2}", RegexOption.IGNORE_CASE)
 
     /**
      * Classifies by whole words of the title, so "Opening", "OP", "OP2", "Intro" or "Ending Credits"
-     * match and "Operation" or "Edward" do not. Opening wins when a title has both.
+     * match and "Operation" or "Edward" do not. The bare short forms count only in capitals ("OP",
+     * "ED"), so a name such as "Ed's Story" is not an ending; numbered ones in any case ("op2").
+     * Opening wins when a title has both.
      */
     fun kindOf(title: String): ChapterKind {
-        val words = title.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
-        if (words.any { it in OPENING_WORDS || NUMBERED_OP.matches(it) }) return ChapterKind.OPENING
-        if (words.any { it in ENDING_WORDS || NUMBERED_ED.matches(it) }) return ChapterKind.ENDING
+        val words = title.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+        fun isWord(w: String, long: Set<String>, short: String, numbered: Regex) =
+            w.lowercase() in long || w == short || numbered.matches(w)
+        if (words.any { isWord(it, OPENING_WORDS, "OP", NUMBERED_OP) }) return ChapterKind.OPENING
+        if (words.any { isWord(it, ENDING_WORDS, "ED", NUMBERED_ED) }) return ChapterKind.ENDING
         return ChapterKind.OTHER
     }
 

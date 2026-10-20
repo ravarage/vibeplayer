@@ -1345,8 +1345,9 @@ class PlayerEngine(
             // A-B repeat and loop are global mpv options: written on every load so a new file starts
             // without them and a reload of the same file (reconfigure, fallback) keeps them.
             val st = _state.value
-            options.add("ab-loop-a=" + (st.abLoopAMs?.let { AbLoop.seconds(it) } ?: "no"))
-            options.add("ab-loop-b=" + (st.abLoopBMs?.let { AbLoop.seconds(it) } ?: "no"))
+            val (loopA, loopB) = AbLoop.mpvValues(st.abLoopAMs, st.abLoopBMs)
+            options.add("ab-loop-a=$loopA")
+            options.add("ab-loop-b=$loopB")
             options.add("loop-file=" + if (st.loopFile) "inf" else "no")
 
             // P4-13: the delays are per file; a new file must not inherit the previous file's values,
@@ -1891,10 +1892,22 @@ class PlayerEngine(
                 ?: return@executeCommand
             val st = _state.value
             val (a, b) = AbLoop.next(st.abLoopAMs, st.abLoopBMs, posMs)
-            MpvNative.setPropertyString(handle, "ab-loop-a", a?.let { AbLoop.seconds(it) } ?: "no")
-            MpvNative.setPropertyString(handle, "ab-loop-b", b?.let { AbLoop.seconds(it) } ?: "no")
+            val (loopA, loopB) = AbLoop.mpvValues(a, b)
+            MpvNative.setPropertyString(handle, "ab-loop-a", loopA)
+            MpvNative.setPropertyString(handle, "ab-loop-b", loopB)
             _state.update { it.copy(abLoopAMs = a, abLoopBMs = b) }
             Log.i("VP", "A-B repeat: a=$a b=$b")
+        }
+    }
+
+    /** Clears both A-B repeat points. */
+    fun clearAbLoop() {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            MpvNative.setPropertyString(handle, "ab-loop-a", "no")
+            MpvNative.setPropertyString(handle, "ab-loop-b", "no")
+            _state.update { it.copy(abLoopAMs = null, abLoopBMs = null) }
         }
     }
 
@@ -2093,8 +2106,7 @@ class PlayerEngine(
     private fun skipChapterInternal(chapters: List<Chapter>, chapter: Chapter) {
         val target = ChapterSkip.skipTargetMs(chapters, chapter)
         val res = if (target != null) {
-            val sec = String.format(java.util.Locale.US, "%.3f", target / 1000.0)
-            MpvNative.command(handle, arrayOf("seek", sec, "absolute+exact"))
+            MpvNative.command(handle, arrayOf("seek", AbLoop.seconds(target), "absolute+exact"))
         } else {
             // The last chapter: to the end, so auto-play next (or keep-open) takes over.
             MpvNative.command(handle, arrayOf("seek", "100", "absolute-percent+exact"))

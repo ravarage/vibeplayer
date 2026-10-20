@@ -482,6 +482,11 @@ class PlaybackService : Service() {
         sleepTimerJob = null
         _sleepTimer.value = timer
         Log.i("VP", "Sleep timer: $timer")
+        if (timer?.atEndOfFile == true) {
+            // A loop would keep the file from ever ending, so the timer could never fire.
+            playerEngine.setLoopFile(false)
+            playerEngine.clearAbLoop()
+        }
         val endsAt = timer?.endsAtElapsedMs ?: return
         sleepTimerJob = serviceScope.launch {
             delay((endsAt - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L))
@@ -1280,7 +1285,13 @@ class PlaybackService : Service() {
      */
     private fun autoLoadSubtitles(path: String, generation: Long, folders: List<String>, skipUri: String?, rememberedTitle: String?) {
         serviceScope.launch(Dispatchers.IO) {
-            val found = subtitleFiles.findNextTo(path, folders).filter { it.uri.toString() != skipUri }
+            // The remembered file may be the same document under another URI form (picker document URI
+            // vs. tree URI): compare document ids so it is not added twice.
+            val skipId = skipUri?.let { com.vibeplayer.data.subs.SubtitleFiles.documentIdOrNull(Uri.parse(it)) }
+            val found = subtitleFiles.findNextTo(path, folders).filter {
+                it.uri.toString() != skipUri &&
+                    (skipId == null || com.vibeplayer.data.subs.SubtitleFiles.documentIdOrNull(it.uri) != skipId)
+            }
             if (found.isEmpty()) return@launch
             withTimeoutOrNull(AUTO_SUB_WAIT_MS) { playerEngine.state.first { it.durationMs > 0L } } ?: return@launch
             for (sub in found) {

@@ -19,3 +19,7 @@ native/out/
 
 # Release distribution artifacts
 dist/
+
+# Python bytecode
+__pycache__/
+*.pyc

@@ -346,13 +346,8 @@ fun PlayerControls(
                                     .padding(horizontal = 10.dp, vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                val speedText = if (playerState.speed % 1.0 == 0.0) {
-                                    "${playerState.speed.toInt()}x"
-                                } else {
-                                    "${playerState.speed}x"
-                                }
                                 Text(
-                                    text = speedText,
+                                    text = HoldGesture.label(playerState.speed),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (playerState.speed != 1.0) Color(0xFFBB86FC) else Color.White
@@ -693,8 +688,7 @@ fun PlayerControls(
                 },
                 quickActions = if (!compactBar) emptyList() else buildList {
                     val quality = playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY
-                    val speedLabel = if (playerState.speed % 1.0 == 0.0) "${playerState.speed.toInt()}x" else "${playerState.speed}x"
-                    add(QuickAction("Speed $speedLabel", "speed", selected = playerState.speed != 1.0) {
+                    add(QuickAction("Speed ${HoldGesture.label(playerState.speed)}", "speed", selected = playerState.speed != 1.0) {
                         showMoreSheet = false
                         showSpeedSheet = true
                     })

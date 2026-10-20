@@ -19,6 +19,13 @@ class AbLoopTest {
     }
 
     @Test
+    fun mpvLoopsOnlyOnceBothPointsAreSet() {
+        assertEquals("no" to "no", AbLoop.mpvValues(null, null))
+        assertEquals("no" to "no", AbLoop.mpvValues(1_000L, null))
+        assertEquals("1.000" to "5.000", AbLoop.mpvValues(1_000L, 5_000L))
+    }
+
+    @Test
     fun secondsForMpv() {
         assertEquals("83.250", AbLoop.seconds(83_250L))
         assertEquals("0.000", AbLoop.seconds(0L))

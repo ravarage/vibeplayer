@@ -195,8 +195,22 @@ class PlayerActivity : ComponentActivity() {
         if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) != split.systemVolume) {
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, split.systemVolume, 0)
         }
-        playerEngine.setBoostVolume(split.mpvVolume)
-        _volumeFlow.value = l
+        // Android may hold the media volume below its maximum (safe headphone volume): no boost then.
+        val actual = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val mpvVolume = if (actual < maxMusicVolume) VolumeBoost.NONE.toDouble() else split.mpvVolume
+        playerEngine.setBoostVolume(mpvVolume)
+        _volumeFlow.value = if (actual == split.systemVolume) l else VolumeBoost.level(actual, mpvVolume, maxMusicVolume, boostMax)
+    }
+
+    /**
+     * The boost lives in the engine across files and player screens, while the media volume may have
+     * been lowered meanwhile without this screen seeing it (its receiver runs only while started).
+     */
+    private fun reconcileVolumeBoost() {
+        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) < maxMusicVolume) {
+            playerEngine.setBoostVolume(VolumeBoost.NONE.toDouble())
+        }
+        _volumeFlow.value = currentVolumeLevel()
     }
 
     private fun resolveConfig(
@@ -410,7 +424,7 @@ class PlayerActivity : ComponentActivity() {
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeControlStream = AudioManager.STREAM_MUSIC
-        _volumeFlow.value = currentVolumeLevel()
+        reconcileVolumeBoost()
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -495,9 +509,11 @@ class PlayerActivity : ComponentActivity() {
             val sleepTimer by viewModel.sleepTimer.collectAsState()
             val currentRotation by rotationMode.collectAsState()
             // A lower boost setting takes effect at once (the level may now be past the new top).
+            // Only mpv's volume is lowered: the media volume is never raised here (the first value can be
+            // the StateFlow's initial 100 before the settings load, with the media volume turned down).
             LaunchedEffect(volumeBoostMax) {
-                if (playerEngine.boostVolume > volumeBoostMax) applyVolumeLevel(Int.MAX_VALUE)
-                else _volumeFlow.value = currentVolumeLevel()
+                if (playerEngine.boostVolume > volumeBoostMax) playerEngine.setBoostVolume(volumeBoostMax.toDouble())
+                _volumeFlow.value = currentVolumeLevel()
             }
             val zoomState = playerEngine.zoomState
 
@@ -1179,6 +1195,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Log.i("VP", "PlayerActivity onStart")
+        reconcileVolumeBoost()
         try {
             val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
             ContextCompat.registerReceiver(this, volumeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)

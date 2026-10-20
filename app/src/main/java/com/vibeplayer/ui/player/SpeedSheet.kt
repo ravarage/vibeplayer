@@ -93,9 +93,8 @@ fun SpeedSheet(
                 presets.chunked(4).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { speed ->
-                            val label = if (speed % 1.0 == 0.0) "${speed.toInt()}x" else "${speed}x"
                             PanelChip(
-                                text = label,
+                                text = HoldGesture.label(speed),
                                 selected = abs(currentSpeed - speed) < 0.02,
                                 tag = "speed_$speed",
                                 onClick = {
