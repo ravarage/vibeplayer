@@ -22,6 +22,13 @@ Built without the phone; every item still needs its device check (PROGRESS.md).
 - **More sheet (P11-05)**: sleep timer, A-B repeat, loop this video, rotate.
 - **Frame step (P11-06)** while paused.
 - **Search (P11-07)** across all videos and within a folder.
+- **Compact panels (P11-08)**: audio, subtitles, speed, sync, chapters and More open as a side panel in
+  landscape, so the video stays visible; smaller popups; the portrait top bar fits.
+- **ViPER4Android and equalizer apps (P11-09)** can attach to the player's audio.
+
+### Fixed
+- **Anime4K on OpenGL ES (P8-02)**: the de-ring pass is rewritten so it can compile on the Adreno driver (device
+  check open).
 
 ## [0.5.0] - 2026-10-15
 

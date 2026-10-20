@@ -783,3 +783,14 @@ video to portrait and back; the top bar still fits in portrait (check: one more 
 **P11-07 Browser search** — a search button on the folder screen (all videos) and in a folder (that folder); every
 word of the query must appear, ignoring case, accents and punctuation (`VideoSearch`). *Accept*: "bocchi 01" finds
 the Bocchi file; typing in the 925-video WhatsApp folder stays smooth (gfxinfo janky frames no worse than P7-05).
+
+**P11-08 Compact player panels** — the track, speed, sync, chapter and More sheets become one PlayerPanel: a
+360 dp side panel in landscape (video stays visible), a bottom panel of at most 60 % height in portrait; 44 dp
+rows; slimmer brightness/volume/seek/aspect popups. In portrait the top bar keeps back, title, audio,
+subtitles, More and lock; the rest are chips in More. *Accept*: `p11_panels_look` screenshots look right; the
+existing track_memory and speed checks still pass; the portrait bar does not overlap.
+
+**P11-09 Effect apps (ViPER4Android)** — one audio session id per service passed to mpv
+(`audiotrack-session-id`) and announced with ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION (CLOSE on service end).
+*Accept*: `p11_audio_session` passes; with ViPER4Android installed its effects are audible on Vibe Player.
+
