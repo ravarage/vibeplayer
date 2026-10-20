@@ -62,6 +62,8 @@ fun GestureLayer(
     maxVolume: Int = 20,
     triggerVolumeIndicatorFlow: StateFlow<Long> = MutableStateFlow(0L),
     onVolumeChanged: (Int) -> Unit = {},
+    /** Text of the volume indicator for a level (above 100 % while boosted); null shows level / max. */
+    volumePercent: ((Int) -> Int)? = null,
     getCurrentPositionMs: suspend () -> Long = { 0L },
     durationMs: Long = 0L,
     zoomState: StateFlow<Double> = MutableStateFlow(0.0),
@@ -117,6 +119,7 @@ fun GestureLayer(
 
     val currentVolume by volumeFlow.collectAsState()
     val latestVolume by rememberUpdatedState(currentVolume)
+    val latestMaxVolume by rememberUpdatedState(maxVolume)
     var localVolumeFraction by remember { mutableFloatStateOf(currentVolume.toFloat()) }
     LaunchedEffect(currentVolume) { localVolumeFraction = currentVolume.toFloat() }
     var showVolumeIndicator by remember { mutableStateOf(false) }
@@ -349,8 +352,9 @@ fun GestureLayer(
                             }
                             GestureType.RIGHT_VERTICAL -> {
                                 val deltaPercent = -dy / height
-                                localVolumeFraction = (localVolumeFraction + deltaPercent * maxVolume).coerceIn(0f, maxVolume.toFloat())
-                                val newVol = localVolumeFraction.roundToInt().coerceIn(0, maxVolume)
+                                val maxVol = latestMaxVolume
+                                localVolumeFraction = (localVolumeFraction + deltaPercent * maxVol).coerceIn(0f, maxVol.toFloat())
+                                val newVol = localVolumeFraction.roundToInt().coerceIn(0, maxVol)
                                 if (newVol != latestVolume) {
                                     onVolumeChanged(newVol)
                                 }
@@ -501,6 +505,7 @@ fun GestureLayer(
             visible = showVolumeIndicator,
             volume = currentVolume,
             maxVolume = maxVolume,
+            percent = volumePercent?.invoke(currentVolume),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 64.dp)

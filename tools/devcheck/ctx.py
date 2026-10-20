@@ -69,7 +69,7 @@ class Ctx:
         self.phone = phone
         self.outdir = outdir
         self.sleep = sleep
-        self.log = LogView(phone.logcat_dump, phone.pids)
+        self.log = LogView(phone.logcat_recent, phone.pids)
         self.crashes = []
         self.cur = "init"
         self.evidence = []
@@ -83,7 +83,13 @@ class Ctx:
         self.cur = name
         self.evidence = []
         self._shot_n = 0
+        self._t0 = time.time()
+        self.trace_lines = []
         os.makedirs(os.path.join(self.outdir, name), exist_ok=True)
+
+    def trace(self, msg):
+        """A timestamped step, written to <out>/<check>/trace.txt when the check fails."""
+        self.trace_lines.append(f"{time.time() - getattr(self, '_t0', time.time()):7.1f}s  {msg}")
 
     @property
     def dp(self):
@@ -250,7 +256,9 @@ class Ctx:
         w, h = self.size()
         return w - self.dpx(k_dp), self.dpx(45)
 
-    TOP = {"lock": 37, "pip": 86, "aspect": 135, "sub": 184, "audio": 232, "speed": 279}
+    # Fallback positions (dp from the right) in landscape: lock, More (⋮, P11-05), mini player, aspect, sub, audio;
+    # the speed chip moves left by one button when the file has chapters (P4-15).
+    TOP = {"lock": 37, "more": 86, "pip": 135, "aspect": 184, "sub": 233, "audio": 281, "speed": 328}
 
     def tap_top(self, which, ns=None):
         if not ns:

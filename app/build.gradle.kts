@@ -15,8 +15,8 @@ android {
         applicationId = "com.vibeplayer"
         minSdk = 37
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.6.0"
+        versionCode = 5
+        versionName = "0.7.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -49,6 +49,19 @@ android {
         debug {
             applicationIdSuffix = ""
             signingConfig = signingConfigs.getByName("local")
+        }
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // ./gradlew :app:testDebugUnitTest -Proborazzi.record=true writes the PNGs under build/outputs/roborazzi;
+            // without it the screenshot tests only render (no files, no comparison).
+            it.systemProperty("roborazzi.test.record", project.findProperty("roborazzi.record") ?: "false")
+            // Robolectric sets FileDescriptor internals (shared memory) on JDK 17+.
+            it.jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED", "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+            // Robolectric downloads its Android runtime from Maven Central; -Probolectric.repo=<url> uses a mirror.
+            project.findProperty("robolectric.repo")?.let { url -> it.systemProperty("robolectric.dependency.repo.url", url) }
         }
     }
 
@@ -98,6 +111,16 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
+    // Screenshot tests of composables on the JVM (Robolectric + Roborazzi); see ScreenshotTest.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    // ui-test-junit4 brings Espresso 3.5, which calls InputManager.getInstance() (gone in Android 17).
+    testImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    testImplementation("androidx.test:core:1.7.0")
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

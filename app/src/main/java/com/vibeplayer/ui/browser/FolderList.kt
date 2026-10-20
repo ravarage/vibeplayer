@@ -27,7 +27,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import com.vibeplayer.data.media.VideoSearch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,19 +63,50 @@ fun FolderListScreen(
     onPlayVideo: ((VideoItem) -> Unit)? = null,
     onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier,
-    thumbnailCache: ThumbnailCache? = null
+    thumbnailCache: ThumbnailCache? = null,
+    /** Every video, for the search across folders. */
+    allVideos: List<VideoItem> = emptyList(),
+    historyMap: Map<String, com.vibeplayer.data.db.FileSettings> = emptyMap()
 ) {
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    BackHandler(enabled = searching) {
+        searching = false
+        query = ""
+    }
+    // Built only while searching, and once per video list rather than on every keystroke.
+    val searchIndex = remember(allVideos, searching) {
+        if (searching) VideoSearch.index(allVideos.sortedBy { it.displayName.lowercase() }) else null
+    }
+    val results = remember(searchIndex, query) {
+        if (query.isBlank() || searchIndex == null) emptyList() else VideoSearch.filter(searchIndex, query)
+    }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Vibe Player",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
+                    if (searching) {
+                        SearchField(query = query, onQueryChange = { query = it }, placeholder = "Search all videos")
+                    } else {
+                        Text(
+                            text = "Vibe Player",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
+                    }
                 },
                 actions = {
+                    if (!searching) {
+                        IconButton(
+                            onClick = { searching = true },
+                            modifier = Modifier.semantics {
+                                contentDescription = "search"
+                                testTag = "search"
+                            }
+                        ) {
+                            Text(text = "🔍", fontSize = 18.sp)
+                        }
+                    }
                     IconButton(onClick = onSettingsClick) {
                         Text(
                             text = "⚙",
@@ -91,6 +129,33 @@ fun FolderListScreen(
                 .padding(innerPadding)
         ) {
             when {
+                searching && query.isNotBlank() -> {
+                    if (results.isEmpty()) {
+                        Text(
+                            text = "No videos match \"$query\"",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            items(items = results, key = { it.id }) { video ->
+                                VideoItemRow(
+                                    video = video,
+                                    fileSettings = historyMap["${video.path}:${video.sizeBytes}"] ?: historyMap[video.path],
+                                    onClick = { onPlayVideo?.invoke(video) },
+                                    thumbnailCache = thumbnailCache,
+                                    folderName = video.bucketName
+                                )
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier.padding(start = 124.dp)
+                                )
+                            }
+                        }
+                    }
+                }
                 isLoading -> {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center)

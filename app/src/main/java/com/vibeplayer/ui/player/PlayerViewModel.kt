@@ -48,6 +48,41 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         .map { it.skipSeconds }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, 10)
 
+    val volumeBoostMax: StateFlow<Int> = appSettingsRepository.appSettingsFlow
+        .map { it.volumeBoostMax }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, com.vibeplayer.player.VolumeBoost.NONE)
+
+    val nightMode: StateFlow<Boolean> = appSettingsRepository.appSettingsFlow
+        .map { it.nightMode }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, false)
+
+    val pictureAdjust: StateFlow<com.vibeplayer.player.PictureAdjust> = appSettingsRepository.appSettingsFlow
+        .map { it.pictureAdjust() }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, com.vibeplayer.player.PictureAdjust())
+
+    /** Live while a slider moves (engine only); [savePictureAdjust] persists it when the slider is let go. */
+    fun previewPictureAdjust(a: com.vibeplayer.player.PictureAdjust) = playerEngine.setPictureAdjust(a)
+
+    fun savePictureAdjust(a: com.vibeplayer.player.PictureAdjust) {
+        playerEngine.setPictureAdjust(a)
+        viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setPictureAdjust(a) }
+    }
+
+    val equalizer: StateFlow<com.vibeplayer.player.Equalizer> = appSettingsRepository.appSettingsFlow
+        .map { it.equalizer() }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, com.vibeplayer.player.Equalizer())
+
+    fun previewEqualizer(eq: com.vibeplayer.player.Equalizer) = playerEngine.setEqualizer(eq)
+
+    fun saveEqualizer(eq: com.vibeplayer.player.Equalizer) {
+        playerEngine.setEqualizer(eq)
+        viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setEqualizer(eq) }
+    }
+
+    fun setNightMode(on: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setNightMode(on) }
+    }
+
     val matchDisplayRefreshRate: StateFlow<Boolean> = appSettingsRepository.appSettingsFlow
         .map { it.matchDisplayRefreshRate }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, true)
@@ -81,6 +116,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentPath = MutableStateFlow<String?>(null)
     val currentPath: StateFlow<String?> = _currentPath.asStateFlow()
 
+    private val _sleepTimer = MutableStateFlow<com.vibeplayer.playback.SleepTimer?>(null)
+    val sleepTimer: StateFlow<com.vibeplayer.playback.SleepTimer?> = _sleepTimer.asStateFlow()
+
+    fun setSleepTimer(timer: com.vibeplayer.playback.SleepTimer?) {
+        (service ?: PlaybackService.currentInstance)?.setSleepTimer(timer)
+    }
+
     private val _neighbours = MutableStateFlow(Neighbours())
     val neighbours: StateFlow<Neighbours> = _neighbours.asStateFlow()
 
@@ -102,6 +144,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 launch {
                     s.neighbours.collect { _neighbours.value = Neighbours(it.previous, it.next) }
+                }
+                launch {
+                    s.sleepTimer.collect { _sleepTimer.value = it }
                 }
             }
             pendingOpen?.let { req ->

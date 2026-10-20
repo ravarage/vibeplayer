@@ -5,7 +5,7 @@
 <p align="center">
   <img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
   <img alt="Platform: Android 17 arm64" src="https://img.shields.io/badge/platform-Android%2017%20%7C%20arm64--v8a-green">
-  <img alt="Version 0.5.0" src="https://img.shields.io/badge/version-0.5.0-orange">
+  <img alt="Version 0.7.0" src="https://img.shields.io/badge/version-0.7.0-orange">
 </p>
 
 Vibe Player is a personal Android video player built on libmpv, with MX Player-style touch gestures,
@@ -94,8 +94,9 @@ what will not.
 
 - **Start stall (B-08)**: MediaCodec sometimes never delivers the first frame of an H.264 file (1 in 10 to 1 in
   20 cold opens on the default row). A watchdog recovers it within 6 to 10 seconds; it never stays black.
-- **Anime4K on OpenGL ES**: presets A, B and C fail to compile one pass on OpenGL ES; a fix is in progress. They
-  work on Vulkan; Snapdragon GSR works on both.
+- **Anime4K is Vulkan-only**: the phone's Adreno OpenGL ES compiler rejects the Anime4K passes (libplacebo's
+  texture-offset macro through its alias), so on OpenGL ES the presets are off with a short notice. Snapdragon GSR
+  works on both renderers.
 - **External subtitles**: `.srt` / `.ass` files next to a video in shared storage are not auto-loaded on
   Android 13 and later, because the app only asks for access to videos; users can load them via the "Load subtitle file…" SAF picker.
 - **Vulkan is experimental**: it depends on the owner's unfinished Vulkan 1.3 driver port.
@@ -106,14 +107,14 @@ Releases and pre-built APKs are available on the [GitHub Releases](https://githu
 
 ## Install
 
-1. Download `VibePlayer-0.5.0-arm64.apk` and `SHA256SUMS` from the [GitHub Releases](https://github.com/ravarage/vibeplayer/releases/tag/v0.5.0) page.
+1. Download `VibePlayer-0.7.0-arm64.apk` (the latest release) and `SHA256SUMS` from the [GitHub Releases](https://github.com/ravarage/vibeplayer/releases/tag/v0.7.0) page.
 2. Verify the SHA-256 checksum:
    ```sh
    sha256sum -c SHA256SUMS
    ```
 3. Install the APK via adb:
    ```sh
-   adb install -r VibePlayer-0.5.0-arm64.apk
+   adb install -r VibePlayer-0.7.0-arm64.apk
    ```
 
 Requirements: Android 17 (arm64-v8a) on the reference device (POCO X5 Pro 5G). The APK is signed with the developer's debug key, so it updates in place only over builds signed with the same key; builds from source signed with your own key must be uninstalled first (this deletes app data).

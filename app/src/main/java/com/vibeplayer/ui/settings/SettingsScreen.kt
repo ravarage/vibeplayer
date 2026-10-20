@@ -61,6 +61,26 @@ fun SettingsScreen(
     var showAudioLangDialog by remember { mutableStateOf(false) }
     var showSubLangDialog by remember { mutableStateOf(false) }
     var showSubtitleModeDialog by remember { mutableStateOf(false) }
+    var showVolumeBoostDialog by remember { mutableStateOf(false) }
+    var showSubEncodingDialog by remember { mutableStateOf(false) }
+    var showSubColorDialog by remember { mutableStateOf(false) }
+    var showSubOutlineDialog by remember { mutableStateOf(false) }
+    var showSubFoldersDialog by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Subtitle folders: a persisted read grant per folder (SAF), so files next to videos can be listed.
+    val pickSubtitleFolder = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val folders = (settings.subtitleFolders + uri.toString()).distinct()
+                onUpdateSettings(settings.copy(subtitleFolders = folders))
+            } catch (e: SecurityException) {
+                android.util.Log.w("VP", "Subtitle folder grant failed for $uri: ${e.message}")
+            }
+        }
+    }
 
     val availableGpuApis = remember { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() }
     val vulkanSupported = remember(availableGpuApis) {
@@ -140,6 +160,15 @@ fun SettingsScreen(
             )
 
             SettingsSwitchRow(
+                title = "Auto-skip openings and endings",
+                description = "Jump past chapters named Opening, OP, Intro, Ending, ED or Credits as soon as they start (once per file)",
+                checked = settings.autoSkipChapters,
+                onCheckedChange = { checked ->
+                    onUpdateSettings(settings.copy(autoSkipChapters = checked))
+                }
+            )
+
+            SettingsSwitchRow(
                 title = "Match display refresh rate",
                 description = "Seamlessly switch display refresh rate to match video frame rate",
                 checked = settings.matchDisplayRefreshRate,
@@ -198,6 +227,20 @@ fun SettingsScreen(
                 subtitle = "${settings.skipSeconds} seconds",
                 description = "Time skipped when double-tapping left or right screen edges",
                 onClick = { showSkipDialog = true }
+            )
+
+            SettingsSwitchRow(
+                title = "Night mode",
+                description = "Even out loud music and quiet dialogue; also in the player's audio menu",
+                checked = settings.nightMode,
+                onCheckedChange = { onUpdateSettings(settings.copy(nightMode = it)) }
+            )
+
+            SettingsClickableRow(
+                title = "Volume boost",
+                subtitle = volumeBoostLabel(settings.volumeBoostMax),
+                description = "Lets the volume swipe and the volume keys go past 100 % when the media volume is at its maximum",
+                onClick = { showVolumeBoostDialog = true }
             )
 
             SettingsClickableRow(
@@ -259,6 +302,49 @@ fun SettingsScreen(
                 description = "Off keeps styled (ASS) subtitles exactly as authored. On applies the size and position above to them too.",
                 checked = settings.subtitleAssOverride,
                 onCheckedChange = { onUpdateSettings(settings.copy(subtitleAssOverride = it)) }
+            )
+
+            val subStyle = settings.subtitleStyle()
+            SettingsClickableRow(
+                title = "Subtitle color",
+                subtitle = subStyle.color.label,
+                description = "For plain subtitles (SRT, VTT); styled ASS keeps its own unless Override ASS style is on",
+                onClick = { showSubColorDialog = true }
+            )
+
+            SettingsClickableRow(
+                title = "Subtitle outline",
+                subtitle = subStyle.outline.label,
+                onClick = { showSubOutlineDialog = true }
+            )
+
+            SettingsSwitchRow(
+                title = "Subtitle background box",
+                description = "A dark box behind plain subtitles, easier to read on bright scenes",
+                checked = settings.subtitleBox,
+                onCheckedChange = { onUpdateSettings(settings.copy(subtitleBox = it)) }
+            )
+
+            SettingsSwitchRow(
+                title = "Bold subtitles",
+                checked = settings.subtitleBold,
+                onCheckedChange = { onUpdateSettings(settings.copy(subtitleBold = it)) }
+            )
+
+            SettingsClickableRow(
+                title = "Subtitle folders",
+                subtitle = if (settings.subtitleFolders.isEmpty()) "None" else "${settings.subtitleFolders.size} folder(s)",
+                description = "Subtitle files next to a video in these folders (and their subfolders) load automatically, e.g. Ep01.srt or Ep01.en.ass for Ep01.mkv",
+                onClick = {
+                    if (settings.subtitleFolders.isEmpty()) pickSubtitleFolder.launch(null) else showSubFoldersDialog = true
+                }
+            )
+
+            SettingsClickableRow(
+                title = "Subtitle encoding",
+                subtitle = com.vibeplayer.data.subs.SubtitleCharset.label(settings.subtitleEncoding),
+                description = "For external subtitle files that are not UTF-8 (garbled letters in old SRT files)",
+                onClick = { showSubEncodingDialog = true }
             )
 
             HorizontalDivider(
@@ -335,6 +421,102 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    if (showSubColorDialog) {
+        SettingsChoiceDialog(
+            title = "Subtitle color",
+            options = com.vibeplayer.player.SubColor.entries,
+            selected = settings.subtitleStyle().color,
+            label = { it.label },
+            onSelect = { onUpdateSettings(settings.copy(subtitleColor = it.name)) },
+            onDismiss = { showSubColorDialog = false }
+        )
+    }
+
+    if (showSubOutlineDialog) {
+        SettingsChoiceDialog(
+            title = "Subtitle outline",
+            options = com.vibeplayer.player.SubOutline.entries,
+            selected = settings.subtitleStyle().outline,
+            label = { it.label },
+            description = { if (it == com.vibeplayer.player.SubOutline.NORMAL) "mpv default" else null },
+            onSelect = { onUpdateSettings(settings.copy(subtitleOutline = it.name)) },
+            onDismiss = { showSubOutlineDialog = false }
+        )
+    }
+
+    if (showSubEncodingDialog) {
+        SettingsChoiceDialog(
+            title = "Subtitle encoding",
+            options = com.vibeplayer.data.subs.SubtitleCharset.CHOICES.map { it.first },
+            selected = settings.subtitleEncoding,
+            label = { com.vibeplayer.data.subs.SubtitleCharset.label(it) },
+            description = { if (it == com.vibeplayer.data.subs.SubtitleCharset.DEFAULT) "UTF-8 and UTF-16 files are always read as they are" else null },
+            onSelect = { onUpdateSettings(settings.copy(subtitleEncoding = it)) },
+            onDismiss = { showSubEncodingDialog = false }
+        )
+    }
+
+    if (showSubFoldersDialog) {
+        AlertDialog(
+            onDismissRequest = { showSubFoldersDialog = false },
+            title = { Text("Subtitle folders") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    settings.subtitleFolders.forEach { folder ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = subtitleFolderLabel(folder),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = {
+                                try {
+                                    context.contentResolver.releasePersistableUriPermission(
+                                        android.net.Uri.parse(folder), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                } catch (_: SecurityException) {
+                                }
+                                val left = settings.subtitleFolders - folder
+                                onUpdateSettings(settings.copy(subtitleFolders = left))
+                                if (left.isEmpty()) showSubFoldersDialog = false
+                            }) {
+                                Text("Remove")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSubFoldersDialog = false
+                    pickSubtitleFolder.launch(null)
+                }) {
+                    Text("Add folder")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSubFoldersDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    if (showVolumeBoostDialog) {
+        SettingsChoiceDialog(
+            title = "Volume boost",
+            options = com.vibeplayer.player.VolumeBoost.CHOICES,
+            selected = settings.volumeBoostMax,
+            label = ::volumeBoostLabel,
+            description = { if (it > 100) "Loud: can distort on the phone speaker" else null },
+            onSelect = { onUpdateSettings(settings.copy(volumeBoostMax = it)) },
+            onDismiss = { showVolumeBoostDialog = false }
+        )
     }
 
     // Playback Mode Dialog
@@ -853,4 +1035,77 @@ fun SettingsInfoRow(
             )
         }
     }
+}
+
+private fun volumeBoostLabel(max: Int): String = if (max <= 100) "Off" else "Up to $max %"
+
+/** A radio list that closes on a choice; shared by the newer settings. */
+@Composable
+fun <T> SettingsChoiceDialog(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    description: (T) -> String? = { null },
+    onSelect: (T) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                options.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(option)
+                                onDismiss()
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = option == selected,
+                            onClick = {
+                                onSelect(option)
+                                onDismiss()
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(text = label(option), fontWeight = FontWeight.SemiBold)
+                            description(option)?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+/** "Movies/Anime" for a tree URI of primary:Movies/Anime. */
+private fun subtitleFolderLabel(treeUri: String): String = try {
+    val id = android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(treeUri))
+    val volume = id.substringBefore(':')
+    val rel = id.substringAfter(':')
+    when {
+        volume == "primary" && rel.isEmpty() -> "Internal storage"
+        volume == "primary" -> rel
+        else -> "$volume: $rel"
+    }
+} catch (_: Exception) {
+    treeUri
 }

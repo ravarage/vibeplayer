@@ -66,7 +66,24 @@ def run_check(ctx, name, fn, timeout):
         ctx.scan_crash()
     except Exception:
         pass
+    if status == "FAIL":
+        _save_failure_evidence(ctx, name, reason)
     return status, " ".join(str(reason).split()), time.time() - t0
+
+
+def _save_failure_evidence(ctx, name, reason):
+    """trace.txt (timed steps) and logcat.txt (the app's log since the check's launch) next to the screenshots."""
+    d = os.path.join(ctx.outdir, name)
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "trace.txt"), "w") as f:
+            f.write(f"FAIL: {reason}\n\n" + "\n".join(getattr(ctx, "trace_lines", [])) + "\n")
+        ctx.log.refresh()
+        with open(os.path.join(d, "logcat.txt"), "w") as f:
+            f.write(f"{ctx.log.raw_count} lines in the buffer; the app's last 800:\n")
+            f.write("\n".join(l.raw for l in ctx.log.lines[-800:]) + "\n")
+    except Exception as e:
+        print(f"    (could not save failure evidence: {e})")
 
 
 def main(argv=None):
@@ -107,6 +124,8 @@ def main(argv=None):
                  ("started", datetime.datetime.now().isoformat(timespec="seconds"))]
     vol0 = phone.music_volume()
     env_lines.append(("media volume at start", str(vol0)))
+    auto_play = phone.auto_play_next()
+    env_lines.append(("auto-play next", {True: "on", False: "OFF", None: "unknown"}[auto_play]))
 
     def restore():
         try:
@@ -122,6 +141,9 @@ def main(argv=None):
     print(f"devcheck -> {out}")
     for k, v in env_lines:
         print(f"  {k}: {v}")
+    if auto_play is False:
+        print("  WARNING: Settings > Auto-play next is off: autoplay, pip_autoadvance and double_tap will fail."
+              " Turn it on and run again.")
     for name, desc, fn in selected:
         timeout = PER_CHECK_TIMEOUT + (60 * a.stall_opens if name == "stall" else 0)
         print(f"... {name}", flush=True)

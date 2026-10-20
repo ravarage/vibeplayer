@@ -169,7 +169,9 @@ def play_pause(ctx):
 @check("double_tap", "Double tap right/left seeks +-10 s")
 def double_tap(ctx):
     _need_clip(ctx, MULTI)
-    ctx.play_clip(MULTI)
+    # fixed start: from a resume point near the end of the 46 s clip, +10 s reaches the end and the
+    # picture stops (end of file), which looked like a frozen player
+    ctx.play_clip(MULTI, extras="--el start_ms 5000")
     ctx.sleep(3)
     w, h = ctx.size()
     out = []
@@ -370,7 +372,12 @@ def pip_autoadvance(ctx):
     mark = ctx.play_clip(MULTI)
     ctx.seek_near_end(remaining_s=14.0)
     ctx.phone.key("KEYCODE_HOME")
-    need(ctx.log.wait(r"isInPictureInPictureMode=true", 8, since=mark), "Home did not enter PiP")
+    # 15 s: right after a swipe seek the first Home can be slow to hand over to PiP over Wi-Fi adb
+    if not ctx.log.wait(r"isInPictureInPictureMode=true", 15, since=mark):
+        resumed = [l.strip() for l in ctx.phone.sh("dumpsys activity activities").splitlines()
+                   if "topResumedActivity" in l or "mResumedActivity" in l]
+        ctx.trace("no PiP after Home; resumed: " + " | ".join(resumed[:2]))
+        need(False, "Home did not enter PiP")
     hit = ctx.log.wait(r"Auto-play: .* ended -> (.*)$", 40, since=mark)
     need(hit, "no auto-play while in PiP within 40 s")
     need(hit[1].group(1).endswith(nxt), f"auto-play went to {hit[1].group(1)}, expected {nxt}")
@@ -617,6 +624,19 @@ def speed(ctx):
     return f"1.5x remembered after force-stop (speed={sp}); reset to 1x"
 
 
+def _tap_aspect(ctx, tries=3):
+    """Taps the aspect button until a setAspect line follows. Only setAspect counts: the periodic VP-Check
+    state line also says aspect=..., so a missed tap (controls hid while the layout was read) used to read
+    as the current mode again (2026-10-20: crop, crop, stretch, stretch)."""
+    for _ in range(tries):
+        m = ctx.log.mark()
+        ctx.tap_top("aspect", None)
+        hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m, tag="VP")
+        if hit:
+            return hit
+    return None
+
+
 @check("aspect", "Aspect button cycles fit/crop/stretch/16:9/4:3 and returns to fit")
 def aspect(ctx):
     ctx.play_clip(H264)
@@ -624,11 +644,8 @@ def aspect(ctx):
     imgs = {}
     try:
         for i in range(5):
-            ns = None
-            m = ctx.log.mark()
-            ctx.tap_top("aspect", ns)
-            hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m) or ctx.log.wait(r"aspect=(\S+)", 4, since=m, tag="VP-Check")
-            need(hit, f"tap {i + 1} on the aspect button produced no setAspect log")
+            hit = _tap_aspect(ctx)
+            need(hit, f"tap {i + 1} on the aspect button produced no setAspect log (3 tries)")
             seq.append(hit[1].group(1))
             ctx.sleep(0.8)
             imgs[seq[-1]] = ctx.shot(seq[-1].replace(":", "_"))
@@ -646,10 +663,7 @@ def aspect(ctx):
             if seq and seq[-1] == "fit":
                 break
             try:
-                ns = None
-                m = ctx.log.mark()
-                ctx.tap_top("aspect", ns)
-                hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m) or ctx.log.wait(r"aspect=(\S+)", 4, since=m, tag="VP-Check")
+                hit = _tap_aspect(ctx)
                 if hit:
                     seq.append(hit[1].group(1))
             except Exception:
@@ -856,3 +870,9 @@ MANUAL = [
     ("haptics", "Haptic ticks", "Play a video: feel a short tick on double-tap skip, on each swipe-seek step start and when the volume/brightness swipe begins."),
     ("audio", "Audio quality", "Play multi_track.mkv and switch AC3/E-AC3/DTS/TrueHD: tones are clean, no crackle, A/V in sync; play ichiban.mp4 for 30 s with headphones: no dropouts."),
 ]
+
+
+# P4-15 / P11 / P8-02 checks register themselves (after MANUAL exists).
+from . import checks_p11  # noqa: E402,F401
+# no_fatal scans the whole run: keep it last.
+CHECKS.sort(key=lambda c: c[0] == "no_fatal")

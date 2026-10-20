@@ -73,6 +73,8 @@ class PlaybackService : Service() {
     companion object {
         /** P7-02: deferred start-up work (MediaSession, shader extraction) runs at the latest after this. */
         private const val DEFERRED_WORK_TIMEOUT_MS = 3000L
+        /** How long auto-loaded subtitles wait for their file to load. */
+        private const val AUTO_SUB_WAIT_MS = 15_000L
         const val CHANNEL_ID = "vibeplayer_playback"
         /** Benchmark runs: silent channel for the notification Android requires after startForegroundService. */
         const val BENCHMARK_CHANNEL_ID = "vibeplayer_benchmark"
@@ -120,12 +122,14 @@ class PlaybackService : Service() {
     private var mediaSession: androidx.media3.session.MediaSession? = null
 
     private lateinit var audioManager: AudioManager
+    private lateinit var audioEffectSession: AudioEffectSession
     private var audioFocusRequest: android.media.AudioFocusRequest? = null
     private var resumeOnFocusGain = false
     private var hasAudioFocus = false
     private var isDucked = false
     private var isNoisyReceiverRegistered = false
     private val thermalManager by lazy { ThermalManager(this, playerEngine) }
+    private val subtitleFiles by lazy { com.vibeplayer.data.subs.SubtitleFiles(this) }
 
     private val audioFocusListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
 
@@ -285,6 +289,10 @@ class PlaybackService : Service() {
         db = AppDatabase.getInstance(this)
         appSettingsRepository = AppSettingsRepository(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // One audio session for the service's lifetime, so effect apps (ViPER4Android, equalizers) can
+        // attach to mpv's AudioTrack; announced when playback starts.
+        audioEffectSession = AudioEffectSession(this, audioManager.generateAudioSessionId())
+        playerEngine.setAudioSessionId(audioEffectSession.sessionId)
 
         createNotificationChannel()
         FormatTableLoader.loadAsync(this) // P6-06: per-format table for this Vulkan driver (background)
@@ -304,6 +312,7 @@ class PlaybackService : Service() {
         // reconfigure (quality toggle, Vulkan/GLES fallback) or a B-08 reload asks for a fresh one
         // from the file's identity, the original content URI. The engine calls this on IO.
         playerEngine.pathReopener = { identity -> reopenContentUri(identity) }
+        playerEngine.subtitleReopener = { uri -> subtitleFiles.openForMpv(Uri.parse(uri)) }
         serviceScope.launch(Dispatchers.IO) {
             appSettingsRepository.migrateRendererDefaultIfNeeded()
         }
@@ -355,6 +364,27 @@ class PlaybackService : Service() {
             createMediaSession()
         }
         PerfLog.mark("service-created")
+
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.autoSkipChapters }.distinctUntilChanged()
+                .collect { playerEngine.autoSkipChapters = it }
+        }
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.subtitleEncoding }.distinctUntilChanged()
+                .collect { subtitleFiles.encoding = it }
+        }
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.equalizer() }.distinctUntilChanged()
+                .collect { playerEngine.setEqualizer(it) }
+        }
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.pictureAdjust() }.distinctUntilChanged()
+                .collect { playerEngine.setPictureAdjust(it) }
+        }
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.nightMode }.distinctUntilChanged()
+                .collect { playerEngine.setNightMode(it) }
+        }
 
         // Listen for background audio setting changes
         serviceScope.launch {
@@ -434,6 +464,15 @@ class PlaybackService : Service() {
             }
         }
 
+        // Effect apps (ViPER4Android): announce the session once a file is actually playing. Not tied to the
+        // paused -> playing edge above: mpv reports pause=false right at initialisation, so when that happens
+        // before this service collects, no edge is ever seen (device run 2026-10-20).
+        serviceScope.launch {
+            playerEngine.state.map { !it.paused && it.durationMs > 0L }.distinctUntilChanged().collect { playing ->
+                if (playing) audioEffectSession.open()
+            }
+        }
+
         // Auto-play the next file in the folder when the current one reaches its end
         serviceScope.launch {
             var wasEof = false
@@ -447,6 +486,37 @@ class PlaybackService : Service() {
     }
 
     private var pausedTimeoutJob: Job? = null
+
+    private val _sleepTimer = MutableStateFlow<SleepTimer?>(null)
+    /** The running sleep timer, or null. */
+    val sleepTimer: kotlinx.coroutines.flow.StateFlow<SleepTimer?> = _sleepTimer
+    private var sleepTimerJob: Job? = null
+
+    /** Starts a sleep timer (replacing a running one), or stops it with null. */
+    fun setSleepTimer(timer: SleepTimer?) {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _sleepTimer.value = timer
+        Log.i("VP", "Sleep timer: $timer")
+        if (timer?.atEndOfFile == true) {
+            // A loop would keep the file from ever ending, so the timer could never fire.
+            playerEngine.setLoopFile(false)
+            playerEngine.clearAbLoop()
+        }
+        val endsAt = timer?.endsAtElapsedMs ?: return
+        sleepTimerJob = serviceScope.launch {
+            delay((endsAt - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L))
+            onSleepTimerFired()
+        }
+    }
+
+    private fun onSleepTimerFired() {
+        Log.i("VP", "Sleep timer fired: pausing")
+        sleepTimerJob = null
+        _sleepTimer.value = null
+        playerEngine.pause()
+        playerEngine.showOnScreenMessage("Sleep timer: paused")
+    }
     @Volatile private var isForegroundService = false
 
     private fun mapShaderPreset(option: ShaderPresetOption): ShaderPreset = when (option) {
@@ -728,6 +798,12 @@ class PlaybackService : Service() {
 
     private suspend fun onPlaybackEnded() {
         val endedPath = currentVideoPath ?: return
+        if (_sleepTimer.value?.atEndOfFile == true) {
+            // keep-open already holds the last frame paused; nothing more is played.
+            onSleepTimerFired()
+            checkShouldStop()
+            return
+        }
         if (!appSettingsRepository.appSettingsFlow.first().autoPlayNext) {
             checkShouldStop()
             return
@@ -906,7 +982,7 @@ class PlaybackService : Service() {
             } else if (fileSettings != null) {
                 val dur = fileSettings.durationMs
                 val pos = fileSettings.positionMs
-                if (dur > 0L && pos >= (dur * 0.95)) {
+                if (com.vibeplayer.data.db.WatchProgress.isWatched(pos, dur)) {
                     Log.i("VP", "Resume: pos $pos ms is in last 5% of duration $dur ms -> restarting from 0")
                     0L
                 } else if (pos > 0L) {
@@ -1030,12 +1106,12 @@ class PlaybackService : Service() {
             val externalSub: Pair<String, String>? = if (externalSubUri.isNullOrEmpty()) null else withContext(Dispatchers.IO) {
                 try {
                     val subUri = Uri.parse(externalSubUri)
-                    val pfd = contentResolver.openFileDescriptor(subUri, "r")
-                    if (pfd != null) {
-                        val title = queryDisplayName(subUri)
-                        "fdclose://${pfd.detachFd()}" to title
+                    val title = queryDisplayName(subUri)
+                    val subPath = subtitleFiles.openForMpv(subUri, title)
+                    if (subPath != null) {
+                        subPath to title
                     } else {
-                        Log.w("VP", "Reopening external subtitle: null descriptor for $externalSubUri")
+                        Log.w("VP", "Reopening external subtitle: cannot open $externalSubUri")
                         null
                     }
                 } catch (e: Exception) {
@@ -1071,6 +1147,10 @@ class PlaybackService : Service() {
                 val selectExternal = (fileSettings?.subEnabled ?: true) && fileSettings?.subTrackTitle == subTitle
                 playerEngine.addSubtitleTrack(fdPath = subFdPath, title = subTitle, select = selectExternal, sourceUri = externalSubUri)
                 Log.i("VP", "Reopening video: re-added external subtitle $externalSubUri ($subTitle, select=$selectExternal)")
+            }
+            if (appSettings.subtitleFolders.isNotEmpty() && path.startsWith("/")) {
+                val rememberedTitle = if (fileSettings?.subEnabled != false) fileSettings?.subTrackTitle else null
+                autoLoadSubtitles(path, generation, appSettings.subtitleFolders, externalSubUri, rememberedTitle)
             }
             handedToEngine = true
             lastPathHandedToEngine = path
@@ -1185,22 +1265,15 @@ class PlaybackService : Service() {
     }
 
     /**
-     * P4-14: Opens external subtitle [uri] through a file descriptor on IO, hands it to mpv with `sub-add`
-     * using `fdclose://<fd>` (mpv owns and closes the fd), and remembers it per file in Room.
+     * P4-14: Opens external subtitle [uri] on IO, hands it to mpv with `sub-add` (see
+     * [com.vibeplayer.data.subs.SubtitleFiles.openForMpv]), and remembers it per file in Room.
      */
     fun loadSubtitleFile(uri: Uri) {
         serviceScope.launch(Dispatchers.IO) {
             val key = currentKey ?: return@launch
             val displayName = queryDisplayName(uri)
-            val pfd = try {
-                contentResolver.openFileDescriptor(uri, "r")
-            } catch (e: Exception) {
-                Log.w("VP", "Failed to open subtitle descriptor for $uri: ${e.message}")
-                null
-            } ?: return@launch
-
-            val fd = pfd.detachFd()
-            val fdPath = "fdclose://$fd"
+            // A UTF-8 file goes to mpv as fdclose://<fd>; any other encoding as a converted UTF-8 copy.
+            val fdPath = subtitleFiles.openForMpv(uri, displayName) ?: return@launch
 
             playerEngine.addSubtitleTrack(fdPath, displayName, select = true, sourceUri = uri.toString())
 
@@ -1219,6 +1292,30 @@ class PlaybackService : Service() {
             )
             dao.upsert(updated)
             Log.i("VP", "Loaded external subtitle $uri (title=$displayName) for key=$key")
+        }
+    }
+
+    /**
+     * Subtitle files next to [path] in the granted folders, added once the file has loaded (sub-add
+     * then runs at once, one per file). A file whose title was the last chosen subtitle is selected.
+     */
+    private fun autoLoadSubtitles(path: String, generation: Long, folders: List<String>, skipUri: String?, rememberedTitle: String?) {
+        serviceScope.launch(Dispatchers.IO) {
+            // The remembered file may be the same document under another URI form (picker document URI
+            // vs. tree URI): compare document ids so it is not added twice.
+            val skipId = skipUri?.let { com.vibeplayer.data.subs.SubtitleFiles.documentIdOrNull(Uri.parse(it)) }
+            val found = subtitleFiles.findNextTo(path, folders).filter {
+                it.uri.toString() != skipUri &&
+                    (skipId == null || com.vibeplayer.data.subs.SubtitleFiles.documentIdOrNull(it.uri) != skipId)
+            }
+            if (found.isEmpty()) return@launch
+            withTimeoutOrNull(AUTO_SUB_WAIT_MS) { playerEngine.state.first { it.durationMs > 0L } } ?: return@launch
+            for (sub in found) {
+                if (generation != loadGeneration || currentVideoPath != path) return@launch
+                val subPath = subtitleFiles.openForMpv(sub.uri, sub.name) ?: continue
+                playerEngine.addSubtitleTrack(subPath, sub.name, select = sub.name == rememberedTitle, sourceUri = sub.uri.toString())
+                Log.i("VP", "Auto-loaded subtitle ${sub.name} for $path")
+            }
         }
     }
 
@@ -1506,6 +1603,7 @@ class PlaybackService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i("VP", "PlaybackService onDestroy")
+        audioEffectSession.close()
         periodicSaveJob?.cancel()
         stopCheckJob?.cancel()
         pausedTimeoutJob?.cancel()

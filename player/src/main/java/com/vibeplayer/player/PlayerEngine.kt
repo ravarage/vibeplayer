@@ -106,6 +106,9 @@ class PlayerEngine(
      * Installed by the owner of the engine (PlaybackService, which holds the ContentResolver).
      */
     @Volatile var pathReopener: ((identity: String) -> String?)? = null
+
+    /** Like [pathReopener] for external subtitles (they may need a UTF-8 conversion); IO only. */
+    @Volatile var subtitleReopener: ((uri: String) -> String?)? = null
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var attachedSurface: Surface? = null
     @Volatile private var shaderDirectory: String = ""
@@ -464,6 +467,8 @@ class PlayerEngine(
         const val REPLY_SID = 13L
         const val REPLY_CONTAINER_FPS = 14L
         const val REPLY_HDR_GAMMA = 15L
+        const val REPLY_CHAPTER = 16L
+        const val REPLY_CHAPTER_COUNT = 17L
     }
 
 
@@ -595,6 +600,12 @@ class PlayerEngine(
                     hdrMpvGamma = value as? String
                     executeCommand { evaluateHdr() }
                 }
+                "chapter" -> {
+                    val chapter = (value as? Number)?.toInt() ?: -1
+                    _state.update { it.copy(currentChapter = chapter) }
+                    executeCommand { maybeAutoSkipChapter() }
+                }
+                "chapter-list/count" -> updateChapters()
                 "container-fps" -> {
                     val f = (value as? Number)?.toDouble() ?: (value as? String)?.toDoubleOrNull()
                     if (SurfaceFrameRateHelper.isValidFps(f)) {
@@ -649,6 +660,7 @@ class PlayerEngine(
                         }
                     }
                     updateTracks(allowPendingSelection = true)
+                    updateChapters()
                     // After the remembered-track selection (queued just above): a pending external subtitle
                     // added with "select" then wins over a stale remembered sid, and one added without
                     // selection leaves that choice alone.
@@ -787,7 +799,7 @@ class PlayerEngine(
                 speedOverride = null
                 if (!initHandle()) return@execute
                 if (isDucked && handle != 0L) {
-                    MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
+                    MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: boostVolume) * 0.3)
                 }
                 Log.w("VP", "$why: new mpv handle (${if (handle != 0L) "ok" else "failed"}) with ${playbackConfig.mode}/${playbackConfig.renderer}; asking the UI for a fresh surface")
                 // The old Surface still belongs to the abandoned handle's video output.
@@ -1098,6 +1110,15 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_SID, "sid", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_CONTAINER_FPS, "container-fps", MpvFormat.DOUBLE)
         MpvNative.observeProperty(handle, REPLY_HDR_GAMMA, "video-params/gamma", MpvFormat.STRING)
+        MpvNative.observeProperty(handle, REPLY_CHAPTER, "chapter", MpvFormat.INT64)
+        MpvNative.observeProperty(handle, REPLY_CHAPTER_COUNT, "chapter-list/count", MpvFormat.INT64)
+
+        // Volume boost: mpv may go above 100 %; a new handle starts at the current boost.
+        MpvNative.setPropertyLong(handle, "volume-max", VolumeBoost.MPV_VOLUME_MAX.toLong())
+        MpvNative.setPropertyDouble(handle, "volume", boostVolume)
+        if (nightMode || equalizer.isActive) MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode, equalizer))
+        if (audioSessionId > 0) MpvNative.setPropertyString(handle, "audiotrack-session-id", audioSessionId.toString())
+        if (!pictureAdjust.isDefault) pictureAdjust.mpvProperties().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -1205,7 +1226,7 @@ class PlayerEngine(
         val hadOverride = speedOverride != null
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
-        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
+        _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, chapters = emptyList(), currentChapter = -1, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
         val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity, clip)
         lastLoad = request
         val serial = loadSerial.incrementAndGet()
@@ -1259,6 +1280,10 @@ class PlayerEngine(
         }
         loadInternalCount++
         currentFilePath = path
+        if (identity != currentFileIdentity) {
+            autoSkippedChapters.clear()
+            _state.update { it.copy(abLoopAMs = null, abLoopBMs = null, loopFile = false) }
+        }
         currentFileIdentity = identity
         externalSubSources.removeAll { it.fileIdentity != identity }
         // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
@@ -1317,6 +1342,14 @@ class PlayerEngine(
             // Always written: setSpeed() changes mpv's global speed, so a file without its own
             // speed (1.0) would otherwise inherit the previous file's.
             options.add("speed=" + String.format(java.util.Locale.US, "%.2f", speed))
+
+            // A-B repeat and loop are global mpv options: written on every load so a new file starts
+            // without them and a reload of the same file (reconfigure, fallback) keeps them.
+            val st = _state.value
+            val (loopA, loopB) = AbLoop.mpvValues(st.abLoopAMs, st.abLoopBMs)
+            options.add("ab-loop-a=$loopA")
+            options.add("ab-loop-b=$loopB")
+            options.add("loop-file=" + if (st.loopFile) "inf" else "no")
 
             // P4-13: the delays are per file; a new file must not inherit the previous file's values,
             // so the defaults are written explicitly. The subtitle style is global.
@@ -1546,6 +1579,9 @@ class PlayerEngine(
         }
     }
 
+    /** Last file/renderer/preset the "Anime4K needs Vulkan" notice was shown for. */
+    private var shaderNoticeKey: String? = null
+
     private fun applyShaderPresetInternal() {
         assertCommandThread()
         if (handle == 0L) return
@@ -1553,6 +1589,14 @@ class PlayerEngine(
         // the preset again, so the GLES chain (without Clamp_Highlights, P8-02) is picked up there.
         val renderer = playbackConfig.renderer
         val glslShadersValue = currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory, renderer)
+        // Anime4K is Vulkan-only (P8-02): say so once per file and renderer instead of silently showing nothing.
+        if (currentShaderPreset.unavailableOn(playbackConfig.mode, renderer)) {
+            val key = "$currentFileIdentity|$renderer|$currentShaderPreset"
+            if (key != shaderNoticeKey) {
+                shaderNoticeKey = key
+                _onScreenMessage.tryEmit("Anime4K needs the Vulkan renderer")
+            }
+        }
         MpvNative.setPropertyString(handle, "glsl-shaders", glslShadersValue)
         Log.i("VP", "Applied shader preset $currentShaderPreset (mode=${playbackConfig.mode}, renderer=$renderer): $glslShadersValue")
     }
@@ -1633,7 +1677,7 @@ class PlayerEngine(
             }
             // P5-03: the new handle starts at full volume; keep an audio-focus duck in progress.
             if (isDucked && handle != 0L) {
-                MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
+                MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: boostVolume) * 0.3)
             }
 
             if (curPath.isNotEmpty() && reloadCurrentFile) {
@@ -1851,6 +1895,54 @@ class PlayerEngine(
         }
     }
 
+    /** A-B repeat: the first call sets A at the current position, the second sets B, the third clears both. */
+    fun cycleAbLoop() {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val posMs = MpvNative.getPropertyDouble(handle, "time-pos")?.takeIf { !it.isNaN() }?.let { (it * 1000.0).toLong() }
+                ?: return@executeCommand
+            val st = _state.value
+            val (a, b) = AbLoop.next(st.abLoopAMs, st.abLoopBMs, posMs)
+            val (loopA, loopB) = AbLoop.mpvValues(a, b)
+            MpvNative.setPropertyString(handle, "ab-loop-a", loopA)
+            MpvNative.setPropertyString(handle, "ab-loop-b", loopB)
+            _state.update { it.copy(abLoopAMs = a, abLoopBMs = b) }
+            Log.i("VP", "A-B repeat: a=$a b=$b")
+        }
+    }
+
+    /** Clears both A-B repeat points. */
+    fun clearAbLoop() {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            MpvNative.setPropertyString(handle, "ab-loop-a", "no")
+            MpvNative.setPropertyString(handle, "ab-loop-b", "no")
+            _state.update { it.copy(abLoopAMs = null, abLoopBMs = null) }
+        }
+    }
+
+    fun setLoopFile(on: Boolean) {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            MpvNative.setPropertyString(handle, "loop-file", if (on) "inf" else "no")
+            _state.update { it.copy(loopFile = on) }
+            Log.i("VP", "loop-file $on")
+        }
+    }
+
+    /** One frame forward or back while paused (mpv frame-step / frame-back-step). */
+    fun frameStep(forward: Boolean) {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.command(handle, arrayOf(if (forward) "frame-step" else "frame-back-step"))
+            Log.i("VP", "frame step forward=$forward res=$res")
+        }
+    }
+
     fun togglePause() {
         scope.launch {
             assertCommandThread()
@@ -1974,6 +2066,95 @@ class PlayerEngine(
         }
     }
 
+    /** P4-15: reads mpv's chapter-list into [PlayerState.chapters] (command thread, like [updateTracks]). */
+    fun updateChapters() {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val count = MpvNative.getPropertyLong(handle, "chapter-list/count") ?: 0L
+            val chapters = Chapters.build(
+                count,
+                titleAt = { MpvNative.getPropertyString(handle, "chapter-list/$it/title") },
+                timeSecondsAt = { MpvNative.getPropertyDouble(handle, "chapter-list/$it/time") }
+            )
+            val current = MpvNative.getPropertyLong(handle, "chapter")?.toInt() ?: -1
+            if (isStaleCommandThread()) return@executeCommand
+            _state.update { it.copy(chapters = chapters, currentChapter = current) }
+            Log.i("VP", "Updated chapters (${chapters.size}): current=$current")
+            maybeAutoSkipChapter()
+        }
+    }
+
+    /** Skip openings and endings by chapter title as soon as one starts (setting, default off). */
+    @Volatile var autoSkipChapters: Boolean = false
+
+    /** Chapters auto-skipped in the current file: each at most once, so seeking back into one plays it. */
+    private val autoSkippedChapters = HashSet<Int>()
+
+    private fun maybeAutoSkipChapter() {
+        assertCommandThread()
+        if (!autoSkipChapters || handle == 0L) return
+        val st = _state.value
+        val chapter = ChapterSkip.skippableCurrent(st.chapters, st.currentChapter) ?: return
+        if (!autoSkippedChapters.add(chapter.index)) return
+        val kind = ChapterSkip.kindOf(chapter.title)
+        Log.i("VP", "Auto-skip chapter ${chapter.index} (${chapter.title}, $kind)")
+        skipChapterInternal(st.chapters, chapter)
+        _onScreenMessage.tryEmit(if (kind == ChapterKind.ENDING) "Skipped ending" else "Skipped opening")
+    }
+
+    /** Skip button: jumps past chapter [index] (the start of the next one, or the end of the file). */
+    fun skipChapter(index: Int) {
+        lastPlaybackRestartMs = System.currentTimeMillis()
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val chapters = _state.value.chapters
+            val chapter = chapters.firstOrNull { it.index == index } ?: return@executeCommand
+            skipChapterInternal(chapters, chapter)
+        }
+    }
+
+    private fun skipChapterInternal(chapters: List<Chapter>, chapter: Chapter) {
+        val target = ChapterSkip.skipTargetMs(chapters, chapter)
+        val res = if (target != null) {
+            MpvNative.command(handle, arrayOf("seek", AbLoop.seconds(target), "absolute+exact"))
+        } else {
+            // The last chapter: to the end, so auto-play next (or keep-open) takes over.
+            MpvNative.command(handle, arrayOf("seek", "100", "absolute-percent+exact"))
+        }
+        Log.i("VP", "skipChapter ${chapter.index} -> ${target ?: "end"} res=$res")
+    }
+
+    /** P4-15: jumps to the start of chapter [index] (mpv index). */
+    fun seekToChapter(index: Int) {
+        lastPlaybackRestartMs = System.currentTimeMillis()
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) {
+                val res = MpvNative.setPropertyLong(handle, "chapter", index.toLong())
+                Log.i("VP", "seekToChapter $index res=$res")
+            }
+        }
+    }
+
+    /** P4-15: next chapter (`add chapter 1`). */
+    fun nextChapter() = addChapter(1)
+
+    /** P4-15: previous chapter; mpv first goes to the start of the current one when past it. */
+    fun previousChapter() = addChapter(-1)
+
+    private fun addChapter(delta: Int) {
+        lastPlaybackRestartMs = System.currentTimeMillis()
+        executeCommand {
+            assertCommandThread()
+            if (handle != 0L) {
+                val res = MpvNative.command(handle, arrayOf("add", "chapter", delta.toString()))
+                Log.i("VP", "add chapter $delta res=$res")
+            }
+        }
+    }
+
     fun setAudioTrack(trackId: Int?) {
         executeCommand {
             assertCommandThread()
@@ -2040,7 +2221,7 @@ class PlayerEngine(
 
     /** Re-adds the external subtitles of the current file after a reload on a new handle ([subRestore]). */
     private fun restoreExternalSubtitles(restore: SubRestore) {
-        val reopener = pathReopener ?: return
+        val reopener = subtitleReopener ?: pathReopener ?: return
         val identity = currentFileIdentity
         for (src in externalSubSources.filter { it.fileIdentity == identity }) {
             val select = restore.selectByUri[src.uri] ?: continue
@@ -2159,6 +2340,95 @@ class PlayerEngine(
     @Volatile private var preDuckVolume: Double? = null
 
     /**
+     * The audio session mpv's AudioTrack uses (`audiotrack-session-id`), announced to effect apps by
+     * the service; 0 lets Android pick a new one for every AudioTrack, which no effect app can find.
+     */
+    @Volatile var audioSessionId: Int = 0
+        private set
+
+    fun setAudioSessionId(id: Int) {
+        if (id == audioSessionId) return
+        audioSessionId = id
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L || id <= 0) return@executeCommand
+            MpvNative.setPropertyString(handle, "audiotrack-session-id", id.toString())
+            // A file already playing keeps its AudioTrack until the audio output is rebuilt.
+            if (fileLoaded) MpvNative.command(handle, arrayOf("ao-reload"))
+            Log.i("VP", "audiotrack-session-id $id")
+        }
+    }
+
+    /** Picture adjustments (video equalizer), kept for every file and new handle. */
+    @Volatile var pictureAdjust: PictureAdjust = PictureAdjust()
+        private set
+
+    fun setPictureAdjust(adjust: PictureAdjust) {
+        val a = adjust.normalized()
+        if (a == pictureAdjust) return
+        pictureAdjust = a
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            a.mpvProperties().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
+            Log.i("VP", "setPictureAdjust $a")
+        }
+    }
+
+    /** Night mode (dynaudnorm), kept for every file and new handle. */
+    @Volatile var nightMode: Boolean = false
+        private set
+
+    fun setNightMode(on: Boolean) {
+        if (on == nightMode) return
+        nightMode = on
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.setPropertyString(handle, "af", AudioFilters.chain(on, equalizer))
+            Log.i("VP", "setNightMode $on res=$res")
+        }
+    }
+
+    /** The 10-band equalizer, kept for every file and new handle (in the same af chain as night mode). */
+    @Volatile var equalizer: Equalizer = Equalizer()
+        private set
+
+    fun setEqualizer(eq: Equalizer) {
+        val e = eq.normalized()
+        if (e == equalizer) return
+        equalizer = e
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode, e))
+            Log.i("VP", "setEqualizer enabled=${e.enabled} gains=${e.gains} res=$res")
+        }
+    }
+
+    /** mpv volume in percent: 100, or more while the volume is boosted above the media maximum. */
+    @Volatile var boostVolume: Double = VolumeBoost.NONE.toDouble()
+        private set
+
+    /** Sets mpv's own volume (100..[VolumeBoost.MPV_VOLUME_MAX]); an audio-focus duck in progress stays ducked. */
+    fun setBoostVolume(percent: Double) {
+        val v = percent.coerceIn(VolumeBoost.NONE.toDouble(), VolumeBoost.MPV_VOLUME_MAX.toDouble())
+        if (v == boostVolume) return
+        boostVolume = v
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            if (isDucked) {
+                preDuckVolume = v
+                MpvNative.setPropertyDouble(handle, "volume", v * 0.3)
+            } else {
+                MpvNative.setPropertyDouble(handle, "volume", v)
+            }
+            Log.i("VP", "setBoostVolume $v (ducked=$isDucked)")
+        }
+    }
+
+    /**
      * Lowers mpv volume to 30% of its current value on transient audio focus loss (CAN_DUCK),
      * and restores it when focus is regained.
      */
@@ -2168,7 +2438,7 @@ class PlayerEngine(
             if (handle == 0L) return@executeCommand
             if (duck) {
                 if (isDucked) return@executeCommand
-                val cur = MpvNative.getPropertyDouble(handle, "volume") ?: 100.0
+                val cur = MpvNative.getPropertyDouble(handle, "volume") ?: boostVolume
                 preDuckVolume = cur
                 isDucked = true
                 val ducked = cur * 0.3
@@ -2176,7 +2446,7 @@ class PlayerEngine(
                 Log.i("VP", "PlayerEngine ducking audio: volume $cur -> $ducked")
             } else {
                 if (!isDucked) return@executeCommand
-                val restore = preDuckVolume ?: 100.0
+                val restore = preDuckVolume ?: boostVolume
                 MpvNative.setPropertyDouble(handle, "volume", restore)
                 Log.i("VP", "PlayerEngine unducking audio: volume restored to $restore")
                 preDuckVolume = null

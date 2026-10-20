@@ -21,6 +21,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// Vibe Player change (P8-02): the texture offsets are computed into a local vec2 before the
+// lookup, and the first pass reads through HOOKED_texOff. Same result; the Adreno GLES compiler
+// rejected MAIN_texOff(vec2(i - KERNELHALFSIZE, 0)) ("no matching overloaded function").
+
 //!DESC Anime4K-v4.0-De-Ring-Compute-Statistics
 //!HOOK MAIN
 //!BIND HOOKED
@@ -39,7 +43,9 @@ vec4 hook() {
 	float gmax = 0.0;
 	
 	for (int i=0; i<KERNELSIZE; i++) {
-		float g = get_luma(MAIN_texOff(vec2(i - KERNELHALFSIZE, 0)));
+		vec2 off = vec2(float(i - KERNELHALFSIZE), 0.0);
+		vec4 texel = HOOKED_texOff(off);
+		float g = get_luma(texel);
 		
 		gmax = max(g, gmax);
 	}
@@ -62,7 +68,8 @@ vec4 hook() {
 	float gmax = 0.0;
 	
 	for (int i=0; i<KERNELSIZE; i++) {
-		float g = STATSMAX_texOff(vec2(0, i - KERNELHALFSIZE)).x;
+		vec2 off = vec2(0.0, float(i - KERNELHALFSIZE));
+		float g = STATSMAX_texOff(off).x;
 		
 		gmax = max(g, gmax);
 	}

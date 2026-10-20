@@ -54,7 +54,15 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
 
 ## Ideas
 
-- Lower minSdk for wider device support (needs code changes and testing on other phones).
+minSdk stays 37 (Android 17): the app is built for one phone and one OS version and uses Android 17 APIs.
+
+Casting (Chromecast, DLNA) stays a non-goal (SPEC.md), decided with the owner 2026-10-20: on a TV the TV decodes
+and renders, so styled ASS, the shaders and the tuned decoding do not apply; the Google Cast library is closed
+source, which clashes with the GPL build; and the app cannot transcode (encoders are disabled). For the TV, use
+Android's screen cast (mirrors the player as it looks, ASS and shaders included). DLNA "send to TV" would be the
+clean option if ever wanted, for files the TV plays itself.
+
+
 - An LGPL build option without GPL-only FFmpeg components.
 - Testing on more devices, and hardware AV1 decode where available.
 

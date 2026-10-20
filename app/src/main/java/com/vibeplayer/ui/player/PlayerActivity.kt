@@ -50,6 +50,7 @@ import com.vibeplayer.player.PerfLog
 import com.vibeplayer.player.HdrOutputPolicy
 import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.SubtitleCommands
+import com.vibeplayer.player.VolumeBoost
 import com.vibeplayer.data.thumbs.ThumbnailPause
 import com.vibeplayer.data.prefs.AppSettings
 import kotlinx.coroutines.Deferred
@@ -121,6 +122,8 @@ class PlayerActivity : ComponentActivity() {
 
     private lateinit var audioManager: AudioManager
     private val _volumeFlow = MutableStateFlow(0)
+    /** Rotate button in the More sheet; Auto follows the video. For this player screen only. */
+    private val rotationMode = MutableStateFlow(RotationMode.AUTO)
     private val _triggerVolumeIndicatorFlow = MutableStateFlow(0L)
     private val volumeFlow = _volumeFlow.asStateFlow()
     private val triggerVolumeIndicatorFlow = _triggerVolumeIndicatorFlow.asStateFlow()
@@ -151,7 +154,9 @@ class PlayerActivity : ComponentActivity() {
                 val streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
                 if (streamType == AudioManager.STREAM_MUSIC) {
                     val vol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                    _volumeFlow.value = vol
+                    // Turned down elsewhere (shade, another app): the boost ends with it.
+                    if (vol < maxMusicVolume) playerEngine.setBoostVolume(VolumeBoost.NONE.toDouble())
+                    _volumeFlow.value = currentVolumeLevel()
                     _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
                 }
             }
@@ -163,24 +168,49 @@ class PlayerActivity : ComponentActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
-                val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                val next = (current + 1).coerceAtMost(max)
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-                _volumeFlow.value = next
+                applyVolumeLevel(currentVolumeLevel() + 1)
                 _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
                 return true
             }
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                val next = (current - 1).coerceAtLeast(0)
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-                _volumeFlow.value = next
+                applyVolumeLevel(currentVolumeLevel() - 1)
                 _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
                 return true
             }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    /** Media volume plus the mpv boost as one level (0..[VolumeBoost.totalLevels]). */
+    private fun currentVolumeLevel(): Int = VolumeBoost.level(
+        audioManager.getStreamVolume(AudioManager.STREAM_MUSIC), playerEngine.boostVolume,
+        maxMusicVolume, viewModel.volumeBoostMax.value
+    )
+
+    /** Sets one level of the combined scale: the media volume, then mpv's volume above 100 %. */
+    private fun applyVolumeLevel(level: Int) {
+        val boostMax = viewModel.volumeBoostMax.value
+        val l = level.coerceIn(0, VolumeBoost.totalLevels(maxMusicVolume, boostMax))
+        val split = VolumeBoost.split(l, maxMusicVolume, boostMax)
+        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) != split.systemVolume) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, split.systemVolume, 0)
+        }
+        // Android may hold the media volume below its maximum (safe headphone volume): no boost then.
+        val actual = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val mpvVolume = if (actual < maxMusicVolume) VolumeBoost.NONE.toDouble() else split.mpvVolume
+        playerEngine.setBoostVolume(mpvVolume)
+        _volumeFlow.value = if (actual == split.systemVolume) l else VolumeBoost.level(actual, mpvVolume, maxMusicVolume, boostMax)
+    }
+
+    /**
+     * The boost lives in the engine across files and player screens, while the media volume may have
+     * been lowered meanwhile without this screen seeing it (its receiver runs only while started).
+     */
+    private fun reconcileVolumeBoost() {
+        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) < maxMusicVolume) {
+            playerEngine.setBoostVolume(VolumeBoost.NONE.toDouble())
+        }
+        _volumeFlow.value = currentVolumeLevel()
     }
 
     private fun resolveConfig(
@@ -394,7 +424,7 @@ class PlayerActivity : ComponentActivity() {
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeControlStream = AudioManager.STREAM_MUSIC
-        _volumeFlow.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        reconcileVolumeBoost()
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -405,21 +435,14 @@ class PlayerActivity : ComponentActivity() {
         }
         hideSystemBars()
 
-        // Auto-orient based on video aspect ratio (P1-09)
+        // Auto-orient based on video aspect ratio (P1-09), unless the Rotate button fixed it.
         lifecycleScope.launch {
-            playerEngine.state.collect { state ->
-                val w = state.videoWidth
-                val h = state.videoHeight
-                if (w > 0 && h > 0) {
-                    val targetOrientation = if (w >= h) {
-                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                    } else {
-                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                    }
-                    if (!isInPictureInPictureMode && !_isInPipFlow.value && requestedOrientation != targetOrientation) {
-                        Log.i("VP", "Auto-orienting: ${w}x${h} -> orientation=$targetOrientation")
-                        requestedOrientation = targetOrientation
-                    }
+            kotlinx.coroutines.flow.combine(playerEngine.state, rotationMode) { state, mode ->
+                mode.orientationFor(state.videoWidth, state.videoHeight)
+            }.collect { targetOrientation ->
+                if (targetOrientation != null && !isInPictureInPictureMode && !_isInPipFlow.value && requestedOrientation != targetOrientation) {
+                    Log.i("VP", "Orienting (${rotationMode.value}): orientation=$targetOrientation")
+                    requestedOrientation = targetOrientation
                 }
             }
         }
@@ -481,6 +504,19 @@ class PlayerActivity : ComponentActivity() {
             val gesturesEnabled by viewModel.gesturesEnabled.collectAsState()
             val skipSeconds by viewModel.skipSeconds.collectAsState()
             val matchDisplayRefreshRate by viewModel.matchDisplayRefreshRate.collectAsState()
+            val volumeBoostMax by viewModel.volumeBoostMax.collectAsState()
+            val nightMode by viewModel.nightMode.collectAsState()
+            val sleepTimer by viewModel.sleepTimer.collectAsState()
+            val pictureAdjust by viewModel.pictureAdjust.collectAsState()
+            val equalizer by viewModel.equalizer.collectAsState()
+            val currentRotation by rotationMode.collectAsState()
+            // A lower boost setting takes effect at once (the level may now be past the new top).
+            // Only mpv's volume is lowered: the media volume is never raised here (the first value can be
+            // the StateFlow's initial 100 before the settings load, with the media volume turned down).
+            LaunchedEffect(volumeBoostMax) {
+                if (playerEngine.boostVolume > volumeBoostMax) playerEngine.setBoostVolume(volumeBoostMax.toDouble())
+                _volumeFlow.value = currentVolumeLevel()
+            }
             val zoomState = playerEngine.zoomState
 
             val isInPip by _isInPipFlow.collectAsState()
@@ -516,7 +552,7 @@ class PlayerActivity : ComponentActivity() {
                 showDebugOverlay = false
             }
 
-            MaterialTheme {
+            com.vibeplayer.ui.theme.VibeTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = Color.Black
@@ -543,12 +579,10 @@ class PlayerActivity : ComponentActivity() {
                                     window.attributes = lp
                                 },
                                 volumeFlow = volumeFlow,
-                                maxVolume = maxMusicVolume,
+                                maxVolume = VolumeBoost.totalLevels(maxMusicVolume, volumeBoostMax),
                                 triggerVolumeIndicatorFlow = triggerVolumeIndicatorFlow,
-                                onVolumeChanged = { newVol ->
-                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                                    _volumeFlow.value = newVol
-                                },
+                                onVolumeChanged = { level -> applyVolumeLevel(level) },
+                                volumePercent = { level -> VolumeBoost.percent(level, maxMusicVolume, volumeBoostMax) },
                                 getCurrentPositionMs = { playerEngine.currentPositionMs() },
                                 durationMs = playerState.durationMs,
                                 zoomState = zoomState,
@@ -599,6 +633,18 @@ class PlayerActivity : ComponentActivity() {
                                 onSetSubDelay = { viewModel.setSubDelay(it) },
                                 onSetAudioDelay = { viewModel.setAudioDelay(it) },
                                 onToggleMode = { viewModel.togglePlaybackMode() },
+                                nightMode = nightMode,
+                                onToggleNightMode = { viewModel.setNightMode(!nightMode) },
+                                sleepTimer = sleepTimer,
+                                onSetSleepTimer = { viewModel.setSleepTimer(it) },
+                                rotationMode = currentRotation,
+                                onCycleRotation = { rotationMode.value = rotationMode.value.next() },
+                                pictureAdjust = pictureAdjust,
+                                onPreviewPicture = { viewModel.previewPictureAdjust(it) },
+                                onSavePicture = { viewModel.savePictureAdjust(it) },
+                                equalizer = equalizer,
+                                onPreviewEqualizer = { viewModel.previewEqualizer(it) },
+                                onSaveEqualizer = { viewModel.saveEqualizer(it) },
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                                     val current = playerState.aspect ?: "fit"
@@ -619,6 +665,19 @@ class PlayerActivity : ComponentActivity() {
                                     .fillMaxSize()
                                     .windowInsetsPadding(WindowInsets.displayCutout)
                             )
+
+                            if (!isLocked) {
+                                ChapterSkipButton(
+                                    chapters = playerState.chapters,
+                                    currentChapter = playerState.currentChapter,
+                                    controlsVisible = controlsVisible,
+                                    onSkip = { playerEngine.skipChapter(it) },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
+                                        .padding(end = 24.dp, bottom = 112.dp)
+                                )
+                            }
 
                             AspectIndicator(
                                 visible = showAspectIndicator,
@@ -1144,6 +1203,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Log.i("VP", "PlayerActivity onStart")
+        reconcileVolumeBoost()
         try {
             val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
             ContextCompat.registerReceiver(this, volumeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)

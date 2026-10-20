@@ -1,0 +1,56 @@
+# Compiles the app and runs the JVM unit tests for each release tag (v*, made by tools/release.sh) and when
+# started by hand (Actions > CI > Run workflow), not on every push.
+# The native libraries (native/build.sh) are not built here: compiling Kotlin and the unit tests do not
+# need them. Building the APK and the device checks stay on the owner's machine.
+name: CI
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Android SDK (platform 37.0, build-tools 37.0.0)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Compile and run unit tests
+        run: ./gradlew --no-daemon :player:testDebugUnitTest :app:compileDebugKotlin :app:testDebugUnitTest
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Tool tests (devcheck, bench)
+        run: |
+          python -m pip install --quiet pillow
+          python -m unittest discover tools/devcheck/tests
+          python -m unittest discover -s tools/bench -p 'test_*.py'
+
+      - name: Test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            player/build/reports/tests/
+            app/build/reports/tests/

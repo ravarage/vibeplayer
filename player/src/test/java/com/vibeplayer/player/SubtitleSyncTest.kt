@@ -37,4 +37,20 @@ class SubtitleSyncTest {
         assertEquals("force", t["sub-ass-override"])
         assertEquals("1.00", SubtitleStyle(scale = Double.NaN).mpvOptions().toMap()["sub-scale"])
     }
+
+    @Test fun defaultTextStyleMatchesMpvDefaults() {
+        val d = SubtitleStyle().mpvOptions().toMap()
+        assertEquals("#FFFFFF", d["sub-color"])
+        assertEquals("1.65", d["sub-outline-size"])
+        assertEquals("outline-and-shadow", d["sub-border-style"])
+        assertEquals("no", d["sub-bold"])
+    }
+
+    @Test fun textStyleOptions() {
+        val o = SubtitleStyle(color = SubColor.YELLOW, outline = SubOutline.THICK, box = true, bold = true).mpvOptions().toMap()
+        assertEquals("#FFE14D", o["sub-color"])
+        assertEquals("3.0", o["sub-outline-size"])
+        assertEquals("background-box", o["sub-border-style"])
+        assertEquals("yes", o["sub-bold"])
+    }
 }

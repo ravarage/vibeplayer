@@ -51,5 +51,35 @@ class LogTests(unittest.TestCase):
         self.assertIsNone(v.find(r"Loading", since=3))
 
 
+    def test_view_merges_sliding_windows(self):
+        # logcat -t N returns only the newest N lines; the view must keep every line once, in order.
+        full = [f"10-14 12:00:{i // 10:02d}.{(i % 10) * 100:03d}  2222  2222 I VP      : line {i}" for i in range(300)]
+        state = {"end": 40}
+
+        def fetch():
+            end = state["end"]
+            state["end"] = min(end + 37, len(full))
+            return "\n".join(full[max(0, end - 50):end])  # a 50-line window
+
+        v = logs.LogView(fetch, lambda: {2222})
+        for _ in range(12):
+            v.refresh()
+        msgs = [l.msg for l in v.lines]
+        self.assertEqual(msgs, [f"line {i}" for i in range(0, 300)][-len(msgs):])
+        self.assertEqual(msgs[-1], "line 299")
+        self.assertEqual(len(msgs), len(set(msgs)))
+
+    def test_view_ignores_reordered_window(self):
+        # A later read with the same lines in another order must not add any of them again, so an old
+        # line never shows up after a mark.
+        a = [f"10-14 12:00:00.{i:03d}  2222  2222 I VP      : setAspect: m{i}" for i in range(20)]
+        reads = ["\n".join(a), "\n".join(a[:5] + a[6:] + [a[5]])]
+        v = logs.LogView(lambda: reads.pop(0) if len(reads) > 1 else reads[0], lambda: {2222})
+        m = v.mark()
+        v.refresh()
+        self.assertIsNone(v.find(r"setAspect", since=m))
+        self.assertEqual(len(v.lines), 20)
+
+
 if __name__ == "__main__":
     unittest.main()

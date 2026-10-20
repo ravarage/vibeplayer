@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import com.vibeplayer.data.media.VideoItem
+import com.vibeplayer.data.media.VideoSearch
 import com.vibeplayer.data.prefs.VideoSortOrder
 import java.util.Locale
 
@@ -78,24 +79,36 @@ fun VideoListScreen(
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    BackHandler(enabled = searching) {
+        searching = false
+        query = ""
+    }
+    val searchIndex = remember(sortedVideos) { VideoSearch.index(sortedVideos) }
+    val shownVideos = remember(searchIndex, query) { VideoSearch.filter(searchIndex, query) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = folderName,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${sortedVideos.size} videos",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    if (searching) {
+                        SearchField(query = query, onQueryChange = { query = it }, placeholder = "Search in $folderName")
+                    } else {
+                        Column {
+                            Text(
+                                text = folderName,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${sortedVideos.size} videos",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -109,7 +122,18 @@ fun VideoListScreen(
                     }
                 },
                 actions = {
-                    if (onRefresh != null) {
+                    if (!searching) {
+                        IconButton(
+                            onClick = { searching = true },
+                            modifier = Modifier.semantics {
+                                contentDescription = "search"
+                                testTag = "search"
+                            }
+                        ) {
+                            Text(text = "🔍", fontSize = 18.sp)
+                        }
+                    }
+                    if (onRefresh != null && !searching) {
                         IconButton(onClick = onRefresh) {
                             Text(text = "🔄", fontSize = 18.sp)
                         }
@@ -169,13 +193,13 @@ fun VideoListScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                sortedVideos.isEmpty() -> {
+                shownVideos.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No videos in this folder",
+                            text = if (sortedVideos.isEmpty()) "No videos in this folder" else "No videos match \"$query\"",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -186,7 +210,7 @@ fun VideoListScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(
-                            items = sortedVideos,
+                            items = shownVideos,
                             key = { it.id }
                         ) { video ->
                             val setting = historyMap["${video.path}:${video.sizeBytes}"]
@@ -219,9 +243,12 @@ fun VideoItemRow(
     modifier: Modifier = Modifier,
     fileSettings: com.vibeplayer.data.db.FileSettings? = null,
     thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache? = null,
-    thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
+    thumbnailContent: (@Composable (VideoItem) -> Unit)? = null,
+    /** Shown in the detail line (search results across folders). */
+    folderName: String? = null
 ) {
-    val progress = if (fileSettings != null && fileSettings.durationMs > 0 && fileSettings.positionMs > 0) {
+    val watched = com.vibeplayer.data.db.WatchProgress.isWatched(fileSettings)
+    val progress = if (watched) 0f else if (fileSettings != null && fileSettings.durationMs > 0 && fileSettings.positionMs > 0) {
         (fileSettings.positionMs.toFloat() / fileSettings.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
 
@@ -290,6 +317,20 @@ fun VideoItemRow(
                 }
             }
 
+            // Watched: a ✓ badge instead of a full progress bar
+            if (watched) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(3.dp)
+                        .background(MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(3.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                        .semantics { contentDescription = "watched_${video.displayName}" }
+                ) {
+                    Text(text = "✓", color = MaterialTheme.colorScheme.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
             // Progress bar along the bottom edge of thumbnail
             if (progress > 0f) {
                 Box(
@@ -319,13 +360,15 @@ fun VideoItemRow(
                 text = video.displayName,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
+                // Watched files are dimmed a little, like MX Player.
+                color = if (watched) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(4.dp))
 
             val metaDetails = buildList {
+                if (!folderName.isNullOrEmpty()) add("📁 $folderName")
                 if (video.width > 0 && video.height > 0) {
                     add("${video.width}×${video.height}")
                 }

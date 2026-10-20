@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-20 (versionCode 5)
+
+Every automatic device check passes on the phone (2026-10-20). The by-ear and by-eye checks listed in
+PROGRESS.md (volume boost, subtitle folders and encoding, search, sleep timer, ViPER4Android) are still open.
+
+### Added
+- **Chapters (P4-15)**: ticks on the seek bar, chapter name while scrubbing, a chapter list, the current chapter
+  in the top bar.
+- **Skip opening / ending (P11-01)**: a skip button on chapters named Opening, OP, Ending, ED, Credits; optional
+  auto-skip.
+- **Volume boost (P11-02)**: up to 150 % or 200 % past the media maximum with the swipe and volume keys.
+- **Night mode (P11-03)**: evens out loud music and quiet dialogue (dynaudnorm).
+- **Subtitle folders (P11-04)**: subtitle files next to a video in a granted folder load automatically.
+- **Subtitle encoding (P11-04)**: external subtitles in UTF-16 or a legacy code page (Arabic, Cyrillic, CJK and
+  others) are converted to UTF-8.
+- **More sheet (P11-05)**: sleep timer, A-B repeat, loop this video, rotate.
+- **Frame step (P11-06)** while paused.
+- **Search (P11-07)** across all videos and within a folder.
+- **Compact panels (P11-08)**: audio, subtitles, speed, sync, chapters and More open as a side panel in
+  landscape, so the video stays visible; smaller popups; the portrait top bar fits.
+- **ViPER4Android and equalizer apps (P11-09)** can attach to the player's audio.
+- **Picture adjustments (P11-10)**: brightness, contrast, saturation and gamma in the More panel.
+- **Subtitle text style (P11-11)**: colour, outline, background box and bold for SRT and other plain subtitles.
+- **Equalizer (P11-12)**: 10 bands with presets (Flat, Bass boost, Voice, Treble, Loudness).
+- **Browser (P11-13)**: folder name in search results, a ✓ on watched videos, best matches first.
+- **Screenshot tests**: the player panels and browser rows render on the JVM (Robolectric, Roborazzi).
+
+### Changed
+- **DerpFest 17 colours**: the app and player panels use the system Material You theme, so they follow the ROM.
+- **Anime4K is Vulkan-only (P8-02)**: on the phone the Adreno OpenGL ES compiler rejects every Anime4K pass that
+  reads the video (libplacebo's texture-offset macro through its alias), so on OpenGL ES the presets now load
+  nothing and show "Anime4K needs the Vulkan renderer" instead of running a broken half chain. Snapdragon GSR
+  still works on both renderers.
+
+## [0.6.0] - 2026-10-16 (versionCode 4)
+
+Entry added afterwards from the GitHub release notes.
+
+### Added
+- **HDR output (experimental, off by default)** on Vulkan `gpu-next`: HDR10 and HLG clips play as HDR; SDR again in
+  PiP, on exit and for SDR files.
+- **Baseline profile** generated on the device: the browser and player start from precompiled code.
+
+### Changed
+- Quality mode toggle mid-file keeps position and tracks.
+- Background audio checked on Android 17 with audio hardening on; screen-off no longer stops PiP playback when
+  background audio is on.
+
+### Fixed
+- Native (JNI) null and exception checks, callbacks dropped after release, settings recover from a corrupt file,
+  MediaStore permission and missing-column errors handled.
+- Thumbnails of clips whose keyframes are all black now show a real frame.
+
 ## [0.5.0] - 2026-10-15
 
 Features marked **(beta)** are merged but their device acceptance check is not finished

@@ -67,5 +67,28 @@ class SafetyTests(unittest.TestCase):
         self.bad()
 
 
+class RunAsTests(unittest.TestCase):
+    def test_settings_dump_only(self):
+        self.assertTrue(chk(["shell", "run-as com.vibeplayer od -An -tx1 -v files/datastore/app_settings.preferences_pb"]))
+        for cmd in ("run-as com.vibeplayer cat files/datastore/app_settings.preferences_pb",
+                    "run-as com.vibeplayer rm -rf files",
+                    "run-as com.other od -An -tx1 -v files/datastore/app_settings.preferences_pb"):
+            with self.assertRaises(Refused):
+                chk(["shell", cmd])
+
+
+class AutoPlayTests(unittest.TestCase):
+    def test_parse(self):
+        from devcheck.phone import auto_play_from_hex as f
+        def dump(b):
+            return " ".join(f"{x:02x}" for x in b)
+        entry = lambda v: b"\x0a\x14\x0a\x0eauto_play_next\x12\x02\x08" + bytes([v])
+        self.assertIs(f(dump(entry(0))), False)
+        self.assertIs(f(dump(entry(1))), True)
+        self.assertIs(f(dump(b"\x0a\x05\x0a\x01x\x12\x00")), True)  # key absent: default on
+        self.assertIsNone(f("run-as: package not debuggable: com.vibeplayer"))
+        self.assertIsNone(f(""))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,9 +29,9 @@ enum class RendererOption(val displayName: String, val description: String) {
 
 enum class ShaderPresetOption(val displayName: String, val description: String) {
     NONE("None", "No post-processing shaders"),
-    ANIME4K_A("Anime4K A (Fast)", "Restore CNN + Upscale CNN x2 for fast perceptual anime upscaling (Quality mode only)"),
-    ANIME4K_B("Anime4K B (Fast)", "Restore CNN Soft + Upscale CNN x2 for softer line reconstruction (Quality mode only)"),
-    ANIME4K_C("Anime4K C (Fast)", "Upscale Denoise + Upscale CNN x2 for sharp high-detail anime (Quality mode only)"),
+    ANIME4K_A("Anime4K A (Fast)", "Restore CNN + Upscale CNN x2 for fast perceptual anime upscaling (Quality mode, Vulkan renderer only)"),
+    ANIME4K_B("Anime4K B (Fast)", "Restore CNN Soft + Upscale CNN x2 for softer line reconstruction (Quality mode, Vulkan renderer only)"),
+    ANIME4K_C("Anime4K C (Fast)", "Upscale Denoise + Upscale CNN x2 for sharp high-detail anime (Quality mode, Vulkan renderer only)"),
     SNAPDRAGON_GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution spatial upscaler (Quality mode only)")
 }
 
@@ -62,10 +62,52 @@ data class AppSettings(
     /** P10-07: Collect system profiles via ProfilingManager triggers (default off). */
     val collectSystemProfiles: Boolean = false,
     /** P10-09: HDR output for HDR content on Vulkan gpu-next (experimental, default off). */
-    val hdrOutput: Boolean = false
+    val hdrOutput: Boolean = false,
+    /** Skip chapters titled as openings or endings automatically (default off). */
+    val autoSkipChapters: Boolean = false,
+    /** Highest volume in percent: 100 (off), 150 or 200; above 100 the swipe and volume keys raise mpv volume past the media maximum. */
+    val volumeBoostMax: Int = 100,
+    /** Night mode: even out loud and quiet sounds (dynaudnorm), default off. */
+    val nightMode: Boolean = false,
+    /** Folders (SAF tree URIs) searched for subtitle files next to a video, loaded automatically. */
+    val subtitleFolders: List<String> = emptyList(),
+    /** Code page for external subtitle files that are not UTF-8 (converted before mpv reads them). */
+    val subtitleEncoding: String = com.vibeplayer.data.subs.SubtitleCharset.DEFAULT,
+    /** Picture brightness, -100..100 (0 = unchanged). */
+    val pictureBrightness: Int = 0,
+    /** Picture contrast, -100..100 (0 = unchanged). */
+    val pictureContrast: Int = 0,
+    /** Picture saturation, -100..100 (0 = unchanged). */
+    val pictureSaturation: Int = 0,
+    /** Picture gamma, -100..100 (0 = unchanged). */
+    val pictureGamma: Int = 0,
+    /** Plain-text subtitle colour (SubColor name). */
+    val subtitleColor: String = "WHITE",
+    /** Plain-text subtitle outline (SubOutline name). */
+    val subtitleOutline: String = "NORMAL",
+    /** Dark box behind plain-text subtitles. */
+    val subtitleBox: Boolean = false,
+    /** Bold plain-text subtitles. */
+    val subtitleBold: Boolean = false,
+    /** Built-in 10-band equalizer on. */
+    val eqEnabled: Boolean = false,
+    /** Equalizer gains in dB, comma separated (Equalizer.BANDS order). */
+    val eqGains: String = ""
 ) {
 
-    fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
+    fun equalizer() = com.vibeplayer.player.Equalizer(eqEnabled, com.vibeplayer.player.Equalizer.parseGains(eqGains))
+
+    fun pictureAdjust() = com.vibeplayer.player.PictureAdjust(pictureBrightness, pictureContrast, pictureSaturation, pictureGamma)
+
+    fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(
+        scale = subtitleScale,
+        pos = subtitlePos,
+        assOverride = subtitleAssOverride,
+        color = com.vibeplayer.player.SubColor.entries.firstOrNull { it.name == subtitleColor } ?: com.vibeplayer.player.SubColor.WHITE,
+        outline = com.vibeplayer.player.SubOutline.entries.firstOrNull { it.name == subtitleOutline } ?: com.vibeplayer.player.SubOutline.NORMAL,
+        box = subtitleBox,
+        bold = subtitleBold
+    ).normalized()
 }
 
 object SettingsMigrationPolicy {
@@ -126,6 +168,21 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_PERFORMANCE_HINTS = booleanPreferencesKey("performance_hints")
         private val KEY_HDR_OUTPUT = booleanPreferencesKey("hdr_output")
         private val KEY_COLLECT_SYSTEM_PROFILES = booleanPreferencesKey("collect_system_profiles")
+        private val KEY_EQ_GAINS = stringPreferencesKey("eq_gains")
+        private val KEY_EQ_ENABLED = booleanPreferencesKey("eq_enabled")
+        private val KEY_SUB_BOLD = booleanPreferencesKey("sub_bold")
+        private val KEY_SUB_BOX = booleanPreferencesKey("sub_box")
+        private val KEY_SUB_OUTLINE = stringPreferencesKey("sub_outline")
+        private val KEY_SUB_COLOR = stringPreferencesKey("sub_color")
+        private val KEY_PICTURE_GAMMA = intPreferencesKey("picture_gamma")
+        private val KEY_PICTURE_SATURATION = intPreferencesKey("picture_saturation")
+        private val KEY_PICTURE_CONTRAST = intPreferencesKey("picture_contrast")
+        private val KEY_PICTURE_BRIGHTNESS = intPreferencesKey("picture_brightness")
+        private val KEY_SUBTITLE_ENCODING = stringPreferencesKey("subtitle_encoding")
+        private val KEY_SUBTITLE_FOLDERS = stringPreferencesKey("subtitle_folders")
+        private val KEY_NIGHT_MODE = booleanPreferencesKey("night_mode")
+        private val KEY_VOLUME_BOOST_MAX = intPreferencesKey("volume_boost_max")
+        private val KEY_AUTO_SKIP_CHAPTERS = booleanPreferencesKey("auto_skip_chapters")
     }
 
 
@@ -212,6 +269,21 @@ class AppSettingsRepository(private val context: Context) {
             matchDisplayRefreshRate = prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] ?: true,
             performanceHints = prefs[KEY_PERFORMANCE_HINTS] ?: false,
             collectSystemProfiles = prefs[KEY_COLLECT_SYSTEM_PROFILES] ?: false,
+            autoSkipChapters = prefs[KEY_AUTO_SKIP_CHAPTERS] ?: false,
+            volumeBoostMax = com.vibeplayer.player.VolumeBoost.normalizeMax(prefs[KEY_VOLUME_BOOST_MAX] ?: 100),
+            nightMode = prefs[KEY_NIGHT_MODE] ?: false,
+            subtitleFolders = (prefs[KEY_SUBTITLE_FOLDERS] ?: "").split("\n").filter { it.isNotBlank() },
+            subtitleEncoding = com.vibeplayer.data.subs.SubtitleCharset.normalize(prefs[KEY_SUBTITLE_ENCODING]),
+            pictureBrightness = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_BRIGHTNESS] ?: 0),
+            pictureContrast = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_CONTRAST] ?: 0),
+            pictureSaturation = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_SATURATION] ?: 0),
+            pictureGamma = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_GAMMA] ?: 0),
+            subtitleColor = prefs[KEY_SUB_COLOR] ?: "WHITE",
+            subtitleOutline = prefs[KEY_SUB_OUTLINE] ?: "NORMAL",
+            subtitleBox = prefs[KEY_SUB_BOX] ?: false,
+            subtitleBold = prefs[KEY_SUB_BOLD] ?: false,
+            eqEnabled = prefs[KEY_EQ_ENABLED] ?: false,
+            eqGains = prefs[KEY_EQ_GAINS] ?: "",
             hdrOutput = prefs[KEY_HDR_OUTPUT] ?: false
         )
     }
@@ -264,6 +336,28 @@ class AppSettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { it[KEY_SUB_POS] = com.vibeplayer.player.SubtitleStyle.normalizePos(v) }
     }
 
+    suspend fun setPictureAdjust(a: com.vibeplayer.player.PictureAdjust) {
+        val n = a.normalized()
+        context.settingsDataStore.edit {
+            it[KEY_PICTURE_BRIGHTNESS] = n.brightness
+            it[KEY_PICTURE_CONTRAST] = n.contrast
+            it[KEY_PICTURE_SATURATION] = n.saturation
+            it[KEY_PICTURE_GAMMA] = n.gamma
+        }
+    }
+
+    suspend fun setEqualizer(eq: com.vibeplayer.player.Equalizer) {
+        val n = eq.normalized()
+        context.settingsDataStore.edit {
+            it[KEY_EQ_ENABLED] = n.enabled
+            it[KEY_EQ_GAINS] = com.vibeplayer.player.Equalizer.encodeGains(n.gains)
+        }
+    }
+
+    suspend fun setNightMode(on: Boolean) {
+        context.settingsDataStore.edit { it[KEY_NIGHT_MODE] = on }
+    }
+
     suspend fun setSubtitleAssOverride(on: Boolean) {
         context.settingsDataStore.edit { it[KEY_SUB_ASS_OVERRIDE] = on }
     }
@@ -289,6 +383,21 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_PERFORMANCE_HINTS] = settings.performanceHints
             prefs[KEY_HDR_OUTPUT] = settings.hdrOutput
             prefs[KEY_COLLECT_SYSTEM_PROFILES] = settings.collectSystemProfiles
+            prefs[KEY_EQ_GAINS] = settings.eqGains
+            prefs[KEY_EQ_ENABLED] = settings.eqEnabled
+            prefs[KEY_SUB_BOLD] = settings.subtitleBold
+            prefs[KEY_SUB_BOX] = settings.subtitleBox
+            prefs[KEY_SUB_OUTLINE] = settings.subtitleOutline
+            prefs[KEY_SUB_COLOR] = settings.subtitleColor
+            prefs[KEY_PICTURE_GAMMA] = settings.pictureGamma
+            prefs[KEY_PICTURE_SATURATION] = settings.pictureSaturation
+            prefs[KEY_PICTURE_CONTRAST] = settings.pictureContrast
+            prefs[KEY_PICTURE_BRIGHTNESS] = settings.pictureBrightness
+            prefs[KEY_SUBTITLE_ENCODING] = settings.subtitleEncoding
+            prefs[KEY_SUBTITLE_FOLDERS] = settings.subtitleFolders.joinToString("\n")
+            prefs[KEY_NIGHT_MODE] = settings.nightMode
+            prefs[KEY_VOLUME_BOOST_MAX] = settings.volumeBoostMax
+            prefs[KEY_AUTO_SKIP_CHAPTERS] = settings.autoSkipChapters
         }
     }
 
