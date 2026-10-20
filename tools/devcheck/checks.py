@@ -624,6 +624,19 @@ def speed(ctx):
     return f"1.5x remembered after force-stop (speed={sp}); reset to 1x"
 
 
+def _tap_aspect(ctx, tries=3):
+    """Taps the aspect button until a setAspect line follows. Only setAspect counts: the periodic VP-Check
+    state line also says aspect=..., so a missed tap (controls hid while the layout was read) used to read
+    as the current mode again (2026-10-20: crop, crop, stretch, stretch)."""
+    for _ in range(tries):
+        m = ctx.log.mark()
+        ctx.tap_top("aspect", None)
+        hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m, tag="VP")
+        if hit:
+            return hit
+    return None
+
+
 @check("aspect", "Aspect button cycles fit/crop/stretch/16:9/4:3 and returns to fit")
 def aspect(ctx):
     ctx.play_clip(H264)
@@ -631,11 +644,8 @@ def aspect(ctx):
     imgs = {}
     try:
         for i in range(5):
-            ns = None
-            m = ctx.log.mark()
-            ctx.tap_top("aspect", ns)
-            hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m) or ctx.log.wait(r"aspect=(\S+)", 4, since=m, tag="VP-Check")
-            need(hit, f"tap {i + 1} on the aspect button produced no setAspect log")
+            hit = _tap_aspect(ctx)
+            need(hit, f"tap {i + 1} on the aspect button produced no setAspect log (3 tries)")
             seq.append(hit[1].group(1))
             ctx.sleep(0.8)
             imgs[seq[-1]] = ctx.shot(seq[-1].replace(":", "_"))
@@ -653,10 +663,7 @@ def aspect(ctx):
             if seq and seq[-1] == "fit":
                 break
             try:
-                ns = None
-                m = ctx.log.mark()
-                ctx.tap_top("aspect", ns)
-                hit = ctx.log.wait(r"setAspect: (\S+)", 4, since=m) or ctx.log.wait(r"aspect=(\S+)", 4, since=m, tag="VP-Check")
+                hit = _tap_aspect(ctx)
                 if hit:
                     seq.append(hit[1].group(1))
             except Exception:
