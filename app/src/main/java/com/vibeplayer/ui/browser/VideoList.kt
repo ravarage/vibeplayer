@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import com.vibeplayer.data.media.VideoItem
+import com.vibeplayer.data.media.VideoSearch
 import com.vibeplayer.data.prefs.VideoSortOrder
 import java.util.Locale
 
@@ -78,24 +79,35 @@ fun VideoListScreen(
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    BackHandler(enabled = searching) {
+        searching = false
+        query = ""
+    }
+    val shownVideos = remember(sortedVideos, query) { VideoSearch.filter(sortedVideos, query) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = folderName,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${sortedVideos.size} videos",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    if (searching) {
+                        SearchField(query = query, onQueryChange = { query = it }, placeholder = "Search in $folderName")
+                    } else {
+                        Column {
+                            Text(
+                                text = folderName,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${sortedVideos.size} videos",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -109,7 +121,18 @@ fun VideoListScreen(
                     }
                 },
                 actions = {
-                    if (onRefresh != null) {
+                    if (!searching) {
+                        IconButton(
+                            onClick = { searching = true },
+                            modifier = Modifier.semantics {
+                                contentDescription = "search"
+                                testTag = "search"
+                            }
+                        ) {
+                            Text(text = "🔍", fontSize = 18.sp)
+                        }
+                    }
+                    if (onRefresh != null && !searching) {
                         IconButton(onClick = onRefresh) {
                             Text(text = "🔄", fontSize = 18.sp)
                         }
@@ -169,13 +192,13 @@ fun VideoListScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                sortedVideos.isEmpty() -> {
+                shownVideos.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No videos in this folder",
+                            text = if (sortedVideos.isEmpty()) "No videos in this folder" else "No videos match \"$query\"",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -186,7 +209,7 @@ fun VideoListScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(
-                            items = sortedVideos,
+                            items = shownVideos,
                             key = { it.id }
                         ) { video ->
                             val setting = historyMap["${video.path}:${video.sizeBytes}"]

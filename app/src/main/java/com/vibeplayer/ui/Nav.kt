@@ -66,6 +66,7 @@ fun BrowserNavGraph(
     val historyFlow = remember(db) { db.fileSettingsDao().observeHistory() }
     val allVideosFlow = remember(repository) { repository.observeAllVideos() }
     val historyList by historyFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val allVideos by allVideosFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val continueWatchingFlow = remember(historyFlow, allVideosFlow) {
         combine(historyFlow, allVideosFlow) { history, videos -> history to videos }
             .map { (history, videos) ->
@@ -134,6 +135,8 @@ fun BrowserNavGraph(
                     navController.navigate(NavRoutes.videos(folder.bucketId, folder.name))
                 },
                 onPlayVideo = onPlayVideo,
+                allVideos = allVideos,
+                historyMap = historyMap,
                 onSettingsClick = {
                     Log.d("VP", "Navigating to settings")
                     navController.navigate(NavRoutes.SETTINGS)
