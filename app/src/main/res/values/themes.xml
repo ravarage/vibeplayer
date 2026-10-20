@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Vibeplayer" parent="android:Theme.Material.NoActionBar">
+    <!-- DeviceDefault: the ROM's (DerpFest 17) own window and dialog style. Launch screen and window
+         background use the system's dark neutral palette, so they match the Material You theme in Compose. -->
+    <style name="Theme.Vibeplayer" parent="android:Theme.DeviceDefault.NoActionBar">
         <item name="android:statusBarColor">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowBackground">@android:color/system_neutral1_900</item>
+        <item name="android:windowSplashScreenBackground">@android:color/system_neutral1_900</item>
     </style>
 </resources>

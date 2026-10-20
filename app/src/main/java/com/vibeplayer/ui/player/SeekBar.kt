@@ -177,7 +177,7 @@ fun VideoSeekBar(
                     lastEndHit = null
                 },
                 colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
+                    thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary,
                     inactiveTrackColor = Color(0x66FFFFFF)
                 ),

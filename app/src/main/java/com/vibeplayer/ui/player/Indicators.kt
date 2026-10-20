@@ -50,7 +50,7 @@ private fun LevelIndicator(
     percent: Int,
     fraction: Float,
     modifier: Modifier = Modifier,
-    barColor: Color = Color.White
+    barColor: Color = androidx.compose.material3.MaterialTheme.colorScheme.primary
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -132,7 +132,7 @@ fun VolumeIndicator(
         fraction = fraction,
         modifier = modifier,
         // Orange above 100 % (volume boost).
-        barColor = if (shownPercent > 100) Color(0xFFFFB74D) else Color.White
+        barColor = if (shownPercent > 100) Color(0xFFFFB74D) else androidx.compose.material3.MaterialTheme.colorScheme.primary
     )
 }
 

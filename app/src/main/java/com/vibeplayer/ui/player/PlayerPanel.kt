@@ -49,14 +49,16 @@ import androidx.compose.ui.unit.sp
 
 /** Colours shared by the player panels. */
 internal object PanelColors {
-    val background = Color(0xF2161616)
+    /** The ROM's dark surface (Material You tints it with the theme), nearly opaque over the video. */
+    val background: Color @Composable get() =
+        androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f)
     /** The system accent (Material You, so the ROM's theme colour). */
     val accent: Color @Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.primary
     val accentSoft: Color @Composable get() = accent.copy(alpha = 0.15f)
     /** Text on the accent. */
     val onAccent: Color @Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
-    val chip = Color(0x1AFFFFFF)
-    val secondaryText = Color(0xFF9E9E9E)
+    val chip: Color @Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+    val secondaryText: Color @Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
     val scrim = Color(0x55000000)
 }
 
@@ -112,7 +114,7 @@ fun PlayerPanel(
                         text = title,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -175,7 +177,7 @@ fun TrackRow(
                 text = title,
                 fontSize = 14.sp,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isSelected) PanelColors.accent else Color.White,
+                color = if (isSelected) PanelColors.accent else androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -223,7 +225,7 @@ fun PanelChip(
             text = text,
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (selected) PanelColors.onAccent else Color.White,
+            color = if (selected) PanelColors.onAccent else androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
             maxLines = 1
         )
     }
@@ -255,7 +257,7 @@ fun PanelSlider(
     val colors = androidx.compose.material3.SliderDefaults.colors(
         thumbColor = PanelColors.accent,
         activeTrackColor = PanelColors.accent,
-        inactiveTrackColor = Color(0x33FFFFFF)
+        inactiveTrackColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
     )
     androidx.compose.material3.Slider(
         value = value,
