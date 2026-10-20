@@ -250,7 +250,9 @@ class Ctx:
         w, h = self.size()
         return w - self.dpx(k_dp), self.dpx(45)
 
-    TOP = {"lock": 37, "pip": 86, "aspect": 135, "sub": 184, "audio": 232, "speed": 279}
+    # Fallback positions (dp from the right) in landscape: lock, More (⋮, P11-05), mini player, aspect, sub, audio;
+    # the speed chip moves left by one button when the file has chapters (P4-15).
+    TOP = {"lock": 37, "more": 86, "pip": 135, "aspect": 184, "sub": 233, "audio": 281, "speed": 328}
 
     def tap_top(self, which, ns=None):
         if not ns:

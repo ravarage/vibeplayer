@@ -16,6 +16,10 @@ Look at the screenshots of any check you care about: the pixel test says "someth
 
 Unit tests (no phone): `python3 -m unittest discover tools/devcheck/tests`
 
+The p11_* checks use clips in `/sdcard/Movies/vibeplayer-p11` (not the main test folder, so its order is
+unchanged); `tools/phone_check.sh` creates them with ffmpeg, pushes them, builds and installs the app and runs
+these checks in one go (`--full` adds the whole regression).
+
 ## Safety
 `safety.py` filters every adb call (default deny). Only: shell input tap/swipe/keyevent HOME,BACK,WAKEUP,APP_SWITCH,
 `am start`/`force-stop` of com.vibeplayer, screencap/uiautomator/cat/rm of `/data/local/tmp/vp_*`, dumpsys of a
@@ -47,6 +51,14 @@ streams, pipes/redirects) raises `Refused` and the check FAILs.
 | browser | Continue Watching header, thumbnails of the test folder (luma mean>20, stddev>14 on >=70 % of rows, waits up to ~25 s), tapping ichiban.mp4 plays a moving picture |
 | settings_version | gear opens settings, `Vibe Player <versionName>` (scrolls) matches `dumpsys package` |
 | stall | N (default 5, `--stall-opens`) cold opens of ichiban.mp4 each reach playback-restart within 8 s |
+| p11_chapters | the 4-chapter clip logs `Updated chapters (4)`; the Chapters panel's Part A row logs `seekToChapter 2 res=0` and VP-Check pos is about 120 s |
+| p11_skip | inside the Opening chapter the `skip_chapter` button exists and logs `skipChapter 1 -> 120000 res=0` |
+| p11_more | More panel: two A-B taps log `A-B repeat: a=.. b=..` (B after A), a third clears it; loop logs `loop-file true` then `false` |
+| p11_frame_step | while paused, `frame_forward` / `frame_back` log `frame step forward=true/false res=0` |
+| p11_night_mode | the audio panel's `night_mode` chip logs `setNightMode .. res=0` with no filter error, then is switched back |
+| p11_audio_session | `Audio effect session N: OPEN_AUDIO_EFFECT_CONTROL_SESSION` after playback starts (ViPER4Android) |
+| p11_anime4k_gles | quality + GLES + Anime4K A: the applied chain includes Clamp_Highlights, no shader compile error, picture moves |
+| p11_panels_look | screenshots of the subtitle and speed panels (a human looks: right side, video visible) |
 | no_fatal | no `FATAL EXCEPTION` / `ANR in com.vibeplayer` / native crash seen in logcat or the crash buffer (scanned before every logcat clear and after each check) |
 
 Manual (printed in summary.md, never faked): pinch zoom, haptics, audio quality.

@@ -100,6 +100,7 @@ Filled in and kept current by the tasks that create them (P0-06, P0-07).
 | Run benchmark (P6-03) | `adb shell am broadcast -a com.vibeplayer.BENCHMARK -n com.vibeplayer/.BenchmarkReceiver [--es path <path>] [--ei seconds 15] [--es mode quality\|efficient] [--es renderer gles\|vulkan] [--es vo gpu-next\|gpu] [--es shader none\|...] [--ez cold true\|false] [--es profile fast\|default] [--es decoder auto\|software]` |
 | Run benchmark matrix (P6-03) | `python3 tools/bench/run_matrix.py [--matrix short\|av1_attribution\|stability\|shaders] [--allow-charging]` |
 | Is video really visible? | `tools/check_video.py` (exit 0 = visible, 1 = black/frozen) |
+| P4-15 / P11 / P8-02 device checks in one go (owner, no agent needed; `--full`, `--no-build`) | `tools/phone_check.sh` |
 
 ## Code conventions
 - Follow ARCHITECTURE.md for packages, threading and state flow. If the code must deviate, update

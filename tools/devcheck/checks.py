@@ -856,3 +856,9 @@ MANUAL = [
     ("haptics", "Haptic ticks", "Play a video: feel a short tick on double-tap skip, on each swipe-seek step start and when the volume/brightness swipe begins."),
     ("audio", "Audio quality", "Play multi_track.mkv and switch AC3/E-AC3/DTS/TrueHD: tones are clean, no crackle, A/V in sync; play ichiban.mp4 for 30 s with headphones: no dropouts."),
 ]
+
+
+# P4-15 / P11 / P8-02 checks register themselves (after MANUAL exists).
+from . import checks_p11  # noqa: E402,F401
+# no_fatal scans the whole run: keep it last.
+CHECKS.sort(key=lambda c: c[0] == "no_fatal")
