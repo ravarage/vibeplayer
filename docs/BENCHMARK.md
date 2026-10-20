@@ -426,7 +426,11 @@ actually on the handle (incl. the `force_hwdec` extra), the codec on `hwdec-code
   directly with an argument that itself contains a comma, `vec2(i - KERNELHALFSIZE, 0)`), and a shader edit
   could not be verified without the phone. Because the failed first pass never saves `STATSMAX`, the stage's later passes had no
   input either; libplacebo then disables that one hook (`rr->disabled_hooks` in `src/renderer.c`, per user-shader
-file) and the other stages keep running, so on GLES the stage never ran. Fix (P8-02 fix): `ShaderPreset.getShaderFiles(mode,
+file) and the other stages keep running, so on GLES the stage never ran. **Update 2026-10-20 (no phone):** the bundled
+  copy now computes the offsets into a local `vec2` and reads the first pass through `HOOKED_texOff` (the alias
+  SGSR uses, which compiles on this driver); all three passes compile with glslang as GLSL ES 3.00 under
+  libplacebo-style defines. The GLES exclusion was removed: if the driver still rejects the pass, libplacebo
+  disables only that stage, as before. Device check open (P8-02). Fix (P8-02 fix): `ShaderPreset.getShaderFiles(mode,
   renderer)` leaves `Anime4K_Clamp_Highlights.glsl` out of A, B and C when the handle's renderer is OpenGL
   ES; Vulkan keeps the full chain and GSR is unchanged. The picture on GLES is the same as before; only the
   compile error in the log goes away.
