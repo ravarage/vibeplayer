@@ -16,16 +16,20 @@ enum class ShaderPreset(val displayName: String) {
      * Returns the ordered list of shader file names for this preset.
      * Empty if [mode] is not [PlaybackMode.QUALITY] or if preset is [NONE].
      *
-     * On OpenGL ES ([renderer] = [Renderer.GLES]) the Anime4K chains leave out [CLAMP_HIGHLIGHTS]: the
-     * phone's Adreno GLES compiler cannot call libplacebo's texture-offset macro through the HOOKED_ /
-     * MAIN_ alias ("'MAINPRESUB_texOff' : no matching overloaded function found", P8-02; a rewrite with a
-     * plain vec2 argument failed the same way on the device, 2026-10-20). The same source compiles with
-     * glslang and on Vulkan, where the stage stays.
+     * Anime4K is Vulkan-only: on OpenGL ES ([renderer] = [Renderer.GLES]) its chains are empty. The phone's
+     * Adreno GLES compiler cannot call libplacebo's texture-offset macro through the HOOKED_ / MAIN_ alias
+     * ("'MAINPRESUB_texOff' : no matching overloaded function found", P8-02), which every Anime4K stage that
+     * reads the video uses (Clamp_Highlights and the CNN passes); only the downscale steps would be left. The
+     * same sources compile with glslang and on Vulkan. Snapdragon GSR runs on both.
      */
-    fun getShaderFiles(mode: PlaybackMode, renderer: Renderer = Renderer.VULKAN): List<String> {
-        val files = chain(mode)
-        return if (renderer == Renderer.GLES) files.filter { it != CLAMP_HIGHLIGHTS } else files
-    }
+    fun getShaderFiles(mode: PlaybackMode, renderer: Renderer = Renderer.VULKAN): List<String> =
+        if (renderer == Renderer.GLES && isAnime4K) emptyList() else chain(mode)
+
+    val isAnime4K: Boolean get() = this == ANIME4K_A || this == ANIME4K_B || this == ANIME4K_C
+
+    /** True when this preset is wanted but cannot run on [renderer] in [mode] (Anime4K on OpenGL ES). */
+    fun unavailableOn(mode: PlaybackMode, renderer: Renderer): Boolean =
+        mode == PlaybackMode.QUALITY && renderer == Renderer.GLES && isAnime4K
 
     private fun chain(mode: PlaybackMode): List<String> {
         if (mode != PlaybackMode.QUALITY) return emptyList()
@@ -81,7 +85,7 @@ enum class ShaderPreset(val displayName: String) {
     }
 
     companion object {
-        /** Anime4K de-ring stage (hooks MAIN and PREKERNEL); left out on OpenGL ES, see [getShaderFiles]. */
+        /** Anime4K de-ring stage (hooks MAIN and PREKERNEL); first in the A, B and C chains. */
         const val CLAMP_HIGHLIGHTS = "Anime4K_Clamp_Highlights.glsl"
     }
 }

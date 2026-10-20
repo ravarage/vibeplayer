@@ -1579,6 +1579,9 @@ class PlayerEngine(
         }
     }
 
+    /** Last file/renderer/preset the "Anime4K needs Vulkan" notice was shown for. */
+    private var shaderNoticeKey: String? = null
+
     private fun applyShaderPresetInternal() {
         assertCommandThread()
         if (handle == 0L) return
@@ -1586,6 +1589,14 @@ class PlayerEngine(
         // the preset again, so the GLES chain (without Clamp_Highlights, P8-02) is picked up there.
         val renderer = playbackConfig.renderer
         val glslShadersValue = currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory, renderer)
+        // Anime4K is Vulkan-only (P8-02): say so once per file and renderer instead of silently showing nothing.
+        if (currentShaderPreset.unavailableOn(playbackConfig.mode, renderer)) {
+            val key = "$currentFileIdentity|$renderer|$currentShaderPreset"
+            if (key != shaderNoticeKey) {
+                shaderNoticeKey = key
+                _onScreenMessage.tryEmit("Anime4K needs the Vulkan renderer")
+            }
+        }
         MpvNative.setPropertyString(handle, "glsl-shaders", glslShadersValue)
         Log.i("VP", "Applied shader preset $currentShaderPreset (mode=${playbackConfig.mode}, renderer=$renderer): $glslShadersValue")
     }

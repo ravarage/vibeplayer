@@ -57,7 +57,8 @@ streams, pipes/redirects) raises `Refused` and the check FAILs.
 | p11_frame_step | while paused, `frame_forward` / `frame_back` log `frame step forward=true/false res=0` |
 | p11_night_mode | the audio panel's `night_mode` chip logs `setNightMode .. res=0` with no filter error, then is switched back |
 | p11_audio_session | `Audio effect session N: OPEN_AUDIO_EFFECT_CONTROL_SESSION` after playback starts (ViPER4Android) |
-| p11_anime4k_gles | quality + GLES + Anime4K A: the applied chain includes Clamp_Highlights, no shader compile error, picture moves |
+| p11_anime4k_gles | quality + GLES + Anime4K A: no Anime4K shader is applied (Vulkan-only), no compile error, picture moves |
+| p11_anime4k_vulkan | quality + Vulkan + Anime4K A: the chain includes Clamp_Highlights, no compile error, picture moves |
 | p11_panels_look | screenshots of the subtitle and speed panels (a human looks: right side, video visible) |
 | no_fatal | no `FATAL EXCEPTION` / `ANR in com.vibeplayer` / native crash seen in logcat or the crash buffer (scanned before every logcat clear and after each check) |
 

@@ -29,9 +29,9 @@ enum class RendererOption(val displayName: String, val description: String) {
 
 enum class ShaderPresetOption(val displayName: String, val description: String) {
     NONE("None", "No post-processing shaders"),
-    ANIME4K_A("Anime4K A (Fast)", "Restore CNN + Upscale CNN x2 for fast perceptual anime upscaling (Quality mode only)"),
-    ANIME4K_B("Anime4K B (Fast)", "Restore CNN Soft + Upscale CNN x2 for softer line reconstruction (Quality mode only)"),
-    ANIME4K_C("Anime4K C (Fast)", "Upscale Denoise + Upscale CNN x2 for sharp high-detail anime (Quality mode only)"),
+    ANIME4K_A("Anime4K A (Fast)", "Restore CNN + Upscale CNN x2 for fast perceptual anime upscaling (Quality mode, Vulkan renderer only)"),
+    ANIME4K_B("Anime4K B (Fast)", "Restore CNN Soft + Upscale CNN x2 for softer line reconstruction (Quality mode, Vulkan renderer only)"),
+    ANIME4K_C("Anime4K C (Fast)", "Upscale Denoise + Upscale CNN x2 for sharp high-detail anime (Quality mode, Vulkan renderer only)"),
     SNAPDRAGON_GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution spatial upscaler (Quality mode only)")
 }
 

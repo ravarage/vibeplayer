@@ -101,7 +101,7 @@ PY
 fi
 
 say "Device checks (P4-15, P11, P8-02)"
-ONLY=p11_chapters,p11_skip,p11_more,p11_frame_step,p11_night_mode,p11_audio_session,p11_anime4k_gles,p11_panels_look,no_fatal
+ONLY=p11_chapters,p11_skip,p11_more,p11_frame_step,p11_night_mode,p11_audio_session,p11_anime4k_gles,p11_anime4k_vulkan,p11_panels_look,no_fatal
 set +e
 python3 tools/devcheck/run.py --only "$ONLY" --out "$OUT/p11"
 RC=$?

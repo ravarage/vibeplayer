@@ -102,16 +102,19 @@ class ShaderPresetTest {
     }
 
     @Test
-    fun glesLeavesOutClampHighlightsFromAnime4kChains() {
+    fun anime4kIsVulkanOnly() {
         for (preset in listOf(ShaderPreset.ANIME4K_A, ShaderPreset.ANIME4K_B, ShaderPreset.ANIME4K_C)) {
             val vulkan = preset.getShaderFiles(PlaybackMode.QUALITY, Renderer.VULKAN)
-            val gles = preset.getShaderFiles(PlaybackMode.QUALITY, Renderer.GLES)
             assertEquals(ShaderPreset.CLAMP_HIGHLIGHTS, vulkan.first())
-            assertEquals(vulkan.drop(1), gles)
-            assertFalse(ShaderPreset.CLAMP_HIGHLIGHTS in gles)
+            assertTrue(preset.getShaderFiles(PlaybackMode.QUALITY, Renderer.GLES).isEmpty())
+            assertTrue(preset.unavailableOn(PlaybackMode.QUALITY, Renderer.GLES))
+            assertFalse(preset.unavailableOn(PlaybackMode.QUALITY, Renderer.VULKAN))
+            assertFalse(preset.unavailableOn(PlaybackMode.EFFICIENT, Renderer.GLES))
             // The default (no renderer given) is the full chain.
             assertEquals(vulkan, preset.getShaderFiles(PlaybackMode.QUALITY))
         }
+        assertFalse(ShaderPreset.SNAPDRAGON_GSR.unavailableOn(PlaybackMode.QUALITY, Renderer.GLES))
+        assertFalse(ShaderPreset.NONE.unavailableOn(PlaybackMode.QUALITY, Renderer.GLES))
     }
 
     @Test
@@ -124,9 +127,7 @@ class ShaderPresetTest {
     }
 
     @Test
-    fun glesPropertyStartsWithRestoreStage() {
-        val prop = ShaderPreset.ANIME4K_A.toGlslShadersProperty(PlaybackMode.QUALITY, "/shaders", Renderer.GLES)
-        assertTrue(prop.startsWith("/shaders/Anime4K_Restore_CNN_M.glsl:"))
-        assertFalse(prop.contains("Clamp_Highlights"))
+    fun glesPropertyIsEmptyForAnime4k() {
+        assertEquals("", ShaderPreset.ANIME4K_A.toGlslShadersProperty(PlaybackMode.QUALITY, "/shaders", Renderer.GLES))
     }
 }

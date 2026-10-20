@@ -206,28 +206,41 @@ def p11_audio_session(ctx):
     return f"session {hit[1].group(1)} announced; with ViPER4Android installed, check it lists Vibe Player"
 
 
-@check("p11_anime4k_gles", "Anime4K A on OpenGL ES (quality mode): which shader passes compile, picture moves (P8-02)")
-def p11_anime4k_gles(ctx):
-    m = _play_p11(ctx, extras="--es mode quality --es renderer gles --es shader a", timeout=30)
+def _anime4k(ctx, renderer):
+    """Opens the clip in quality mode with Anime4K A on [renderer]; returns (chain, compile errors)."""
+    m = _play_p11(ctx, extras=f"--es mode quality --es renderer {renderer} --es shader a", timeout=30)
     # The preset is applied more than once while opening (NONE at start-up, then ANIME4K_A while the config is
     # still Efficient, where the list is empty): wait for the Quality one.
-    applied = ctx.log.wait(r"Applied shader preset ANIME4K_A \(mode=QUALITY, renderer=(\w+)\): (\S+)", 12, since=m)
+    applied = ctx.log.wait(r"Applied shader preset ANIME4K_A \(mode=QUALITY, renderer=(\w+)\): ?(\S*)", 12, since=m)
     need(applied, "no 'Applied shader preset ANIME4K_A (mode=QUALITY, ...)' log")
-    need(applied[1].group(1).upper() == "GLES", f"renderer is {applied[1].group(1)}, expected GLES")
-    chain = [x.rsplit("/", 1)[-1] for x in applied[1].group(2).split(":")]
-    ctx.trace("chain: " + ", ".join(chain))
+    need(applied[1].group(1).upper() == renderer.upper(), f"renderer is {applied[1].group(1)}, expected {renderer}")
+    value = applied[1].group(2)
+    chain = [x.rsplit("/", 1)[-1] for x in value.split(":")] if value else []
+    ctx.trace("chain: " + (", ".join(chain) or "(none)"))
     ctx.sleep(4.0)
     ctx.log.refresh()
-    # Every failing shader: the line after a compile failure in libplacebo's source dump names the offending call.
     errs = ctx.log.find_all(r"shader compile log \(status=0\): (.*)", m)
-    disabled = ctx.log.find_all(r"Failed executing hook, disabling", m)
-    for l, mm in errs:
+    for _, mm in errs:
         ctx.trace("compile error: " + mm.group(1))
-    ctx.need_moving("picture with Anime4K A on GLES")
-    ctx.shot("anime4k_gles")
-    need(not errs, f"{len(errs)} shader compile error(s), {len(disabled)} hook(s) disabled on GLES "
-                   f"(chain: {', '.join(chain)}); first: {errs[0][1].group(1) if errs else ''} - see trace.txt")
-    return f"Anime4K A on GLES: {len(chain)} shaders ({', '.join(chain)}), no compile error, picture moves"
+    ctx.need_moving(f"picture with Anime4K A on {renderer}")
+    ctx.shot(f"anime4k_{renderer}")
+    return chain, errs
+
+
+@check("p11_anime4k_gles", "Anime4K is Vulkan-only: on OpenGL ES no Anime4K shader is loaded, nothing fails to compile (P8-02)")
+def p11_anime4k_gles(ctx):
+    chain, errs = _anime4k(ctx, "gles")
+    need(not chain, f"Anime4K shaders loaded on GLES: {', '.join(chain)}")
+    need(not errs, f"{len(errs)} shader compile error(s) on GLES; first: {errs[0][1].group(1) if errs else ''}")
+    return "no Anime4K shaders on GLES (a notice says it needs Vulkan), no compile error, picture moves"
+
+
+@check("p11_anime4k_vulkan", "Anime4K A on Vulkan: the full chain compiles and the picture moves (P8-02)")
+def p11_anime4k_vulkan(ctx):
+    chain, errs = _anime4k(ctx, "vulkan")
+    need("Anime4K_Clamp_Highlights.glsl" in chain, f"Clamp_Highlights missing from the Vulkan chain: {', '.join(chain)}")
+    need(not errs, f"{len(errs)} shader compile error(s) on Vulkan; first: {errs[0][1].group(1) if errs else ''}")
+    return f"Anime4K A on Vulkan: {len(chain)} shaders, no compile error, picture moves (screenshot anime4k_vulkan)"
 
 
 @check("p11_panels_look", "Screenshots of the compact panels for a human look (P11-08)")
