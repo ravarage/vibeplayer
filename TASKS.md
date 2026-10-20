@@ -811,3 +811,33 @@ audibly stronger in the bass without clipping; the mpv log shows the af change w
 rule), results ranked prefix / phrase / rest. *Accept*: a finished episode shows ✓ in the folder and search;
 "bocchi the rock" lists names that start with it first.
 
+## Phase 12: watching series (user request 2026-10-20)
+
+Built in a cloud session without the phone; `tools/shower_check.sh` runs the device checks (checks_p12.py) and
+`tools/overnight.sh` the long runs (P6-05, P8-04, full regression).
+
+**P12-01 Resume chip** — after a file opens at its saved position, "Resumed at 12:30 / Start over" for 8 s (bottom
+left); Start over seeks to 0. *Accept*: `p12_resume_chip` passes.
+
+**P12-02 Up next countdown** — at the end of a file with Auto-play next on, an "Up next" card with the next file's
+name counts down (Settings: Off, 5, 10, 15 s; default 5) with Play now and Cancel; seeking back or opening another
+file drops it; in PiP the card is hidden and the countdown still runs. *Accept*: `p12_up_next`, `autoplay` and
+`pip_autoadvance` pass.
+
+**P12-03 Bookmarks** — Room 6 `bookmarks` (file key, position, chapter label); More > Bookmarks: + Here, tap to
+jump, x to delete. *Accept*: `p12_bookmarks` passes; an update install over 0.7.0 keeps the history.
+
+**P12-04 Per-show settings** — folder_settings gains speed and autoSkipChapters. More > Whole folder: use the
+current speed for every file of the folder that has no speed of its own; auto-skip App / On / Off for the folder.
+*Accept*: `p12_folder_speed` and `p12_folder_lang` pass.
+
+**P12-05 Rename and delete** — long-press a video (folder view, search): Rename or Delete through MediaStore write /
+delete requests (the app only reads media); history and bookmarks move with a rename and go with a delete.
+*Accept*: by hand (MANUAL p12_browser_tools).
+
+**P12-06 Hidden folders** — long-press a folder > Hide; hidden folders are left out of the list, search and Continue
+Watching; Settings > Library > Hidden folders shows them again. *Accept*: by hand (MANUAL p12_browser_tools).
+
+**P12-07 Small fixes** — the engine reports the video size after the container rotation (`video-params/rotate`),
+so clips filmed upright open in portrait with a portrait PiP; Previous / Next line in the Subtitles panel (mpv
+`sub-seek`). *Accept*: `p12_rotated_clip`, `p12_sub_line` pass.

@@ -31,14 +31,15 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
 - P7-03 recomposition counts with the controls visible; P7-06 a 10-minute power comparison (the P1-06 baseline
   has no power figure); P7-07 memory "before" values and seek-back and drop checks with the smaller cache (the
   targets themselves are met: 216 MB at 1080p, 110 MB in the browser after playback).
-- P8-01 a test shader visibly applied and removed; P8-02 Anime4K on OpenGL ES (compile fix in progress);
-  P8-03 GSR sharpening on a 720p clip.
+- P8-01 a test shader visibly applied and removed; P8-03 GSR sharpening on a 720p clip.
+- P11 and P12 (player extras, watching series): the by-hand checks in PROGRESS.md; P12 automatic checks in
+  `tools/shower_check.sh`.
 - HEVC 10-bit 4K drops: operating-rate hint to the decoder, confirmed by a device A/B, fix in progress.
 
 ## Planned
 
-- P6-04 / P6-05: 5-minute matrix and 30-minute stability runs per renderer.
-- P8-04: shader benchmark (5 minutes per preset on 1080p).
+- P6-04 / P6-05: 5-minute matrix and 30-minute stability runs per renderer (P6-05 in `tools/overnight.sh`).
+- P8-04: shader benchmark (5 minutes per preset on 1080p, Vulkan; in `tools/overnight.sh`).
 - P9: tuned native build (`-mcpu=cortex-a78`, ThinLTO) and comparison against the baseline build.
 
 ## Known issues
@@ -47,8 +48,10 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
   in 20 cold opens on the default copy-back row, 4 in 20 on zero-copy). The watchdog abandons the stuck handle
   and reopens the file within 6 to 10 s; none stayed black in 160 test opens, and no ANR in the
   60-open run that recorded it. The stall itself is not fixed.
-- Anime4K presets fail to compile one pass on OpenGL ES (fix in progress).
-- External subtitle files next to a video are not auto-loaded on Android 13+ (video-only storage access).
+- Anime4K runs on Vulkan only: the Adreno OpenGL ES compiler rejects its passes (0.7.0 shows a notice instead).
+- Subtitle files next to a video load automatically only from folders granted in Settings > Subtitle folders
+  (the app may only read videos on its own).
+- ADPF performance hints (P10-06) do nothing on this phone: it has no ADPF support.
 - Vulkan is experimental and depends on the owner's unfinished driver port.
 - The release is signed with a debug key (see README).
 

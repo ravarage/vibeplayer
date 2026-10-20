@@ -5,7 +5,7 @@
 <p align="center">
   <img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
   <img alt="Platform: Android 17 arm64" src="https://img.shields.io/badge/platform-Android%2017%20%7C%20arm64--v8a-green">
-  <img alt="Version 0.7.0" src="https://img.shields.io/badge/version-0.7.0-orange">
+  <img alt="Version 0.8.0" src="https://img.shields.io/badge/version-0.8.0-orange">
 </p>
 
 Vibe Player is a personal Android video player built on libmpv, with MX Player-style touch gestures,
@@ -44,7 +44,12 @@ Features marked **beta** are merged but their device check is not finished (see 
 - Subtitle size, position and ASS style override settings
 - Speed 0.25x to 4x with pitch correction; aspect modes (fit, crop, stretch, 16:9, 4:3)
 - Per-file memory of position, tracks, speed and aspect; per-folder track memory and default languages
-- Auto-play of the next file in the folder; previous / next
+- Auto-play of the next file in the folder with an "Up next" countdown; previous / next
+- Watching series: chapters with skip opening / ending (and auto-skip), a resume chip with Start over, bookmarks, and speed or auto-skip set for a whole folder
+- Sound: volume boost to 200 %, night mode, a 10-band equalizer, and ViPER4Android / equalizer apps see the player's audio
+- More panel: sleep timer, A-B repeat, loop, rotate, frame step, picture adjustments (brightness, contrast, saturation, gamma)
+- Subtitles: automatic loading from chosen folders, legacy encodings (Arabic, Cyrillic, CJK and others), text colour, outline and background box, previous / next line
+- Browser: search across all videos, watched marks, hide folders, rename and delete (with Android's consent)
 - Picture-in-picture mini player with aspect-ratio clamping, auto-enter on home, and auto-advance inside the mini player
 - Background playback in a foreground service with a media notification (**beta**)
 - Folder browser with thumbnails (software thumbnails for AV1 and 10-bit video with dark-frame detection) and a Continue Watching row with progress bars

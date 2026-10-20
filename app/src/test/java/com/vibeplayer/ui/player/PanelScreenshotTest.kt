@@ -68,7 +68,7 @@ class PanelScreenshotTest {
 
     @Test
     fun subtitlesLandscape() = shot("subtitles_land") {
-        SubtitleTrackSheet(tracks, selectedTrackId = 2, onSelectTrack = {}, onDismiss = {}, onOpenSync = {}, onLoadSubtitle = {})
+        SubtitleTrackSheet(tracks, selectedTrackId = 2, onSelectTrack = {}, onDismiss = {}, onOpenSync = {}, onLoadSubtitle = {}, onSubSeek = {})
     }
 
     @Test
@@ -108,8 +108,39 @@ class PanelScreenshotTest {
         MoreSheet(
             sleepTimer = null, onSetSleepTimer = {}, abLoopAMs = 61_000L, abLoopBMs = null, onCycleAbLoop = {},
             loopFile = false, onToggleLoopFile = {}, rotationMode = RotationMode.AUTO, onCycleRotation = {}, onDismiss = {},
-            pictureAdjust = com.vibeplayer.player.PictureAdjust(brightness = 10, saturation = -25)
+            pictureAdjust = com.vibeplayer.player.PictureAdjust(brightness = 10, saturation = -25),
+            bookmarkCount = 2, onOpenBookmarks = {},
+            folderShow = FolderShowControls(
+                show = com.vibeplayer.playback.FolderShow("/sdcard/Anime/Bocchi the Rock", speed = 1.25f, autoSkipChapters = true),
+                currentSpeed = 1.25
+            )
         )
+    }
+
+    @Test
+    fun bookmarksLandscape() = shot("bookmarks_land") {
+        BookmarkSheet(
+            bookmarks = listOf(
+                com.vibeplayer.data.db.Bookmark(id = 1, fileKey = "k", positionMs = 95_000L, label = "Opening"),
+                com.vibeplayer.data.db.Bookmark(id = 2, fileKey = "k", positionMs = 812_000L, label = "Part B")
+            ),
+            onAdd = {}, onJump = {}, onDelete = {}, onDismiss = {}
+        )
+    }
+
+    @Test
+    fun cardsLandscape() = shot("cards_land") {
+        Box(Modifier.fillMaxSize()) {
+            ResumeChip(
+                info = com.vibeplayer.playback.ResumeInfo("/a/ep01.mkv", 750_000L, 1L), onStartOver = {},
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 40.dp)
+            )
+            UpNextCard(
+                upNext = com.vibeplayer.playback.UpNext("/a/ep01.mkv", "/a/ep02.mkv", "[grp] Bocchi the Rock! - 02.mkv", Long.MAX_VALUE / 2),
+                onPlayNow = {}, onCancel = {},
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 40.dp)
+            )
+        }
     }
 
     @Test

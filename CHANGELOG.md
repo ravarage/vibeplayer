@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - unreleased (versionCode 6)
+
+Built in a cloud session without the phone; `tools/shower_check.sh` runs the device checks.
+
+### Added
+- **Resume chip (P12-01)**: a video opened at its saved position shows "Resumed at 12:30" with Start over for 8 s.
+- **Up next countdown (P12-02)**: when a video ends and Auto-play next is on, a card counts down to the next file
+  (Settings: Off, 5, 10 or 15 s) with Play now and Cancel.
+- **Bookmarks (P12-03)**: More > Bookmarks saves spots in a video (named after the chapter), jumps back, deletes.
+- **Per-show settings (P12-04)**: More > Whole folder uses the current speed for every file of the folder, and
+  turns auto-skip of openings and endings on or off for that folder only.
+- **Rename and delete (P12-05)**: long-press a video in the browser; Android asks for permission first. Position,
+  tracks and bookmarks follow a renamed file.
+- **Hidden folders (P12-06)**: long-press a folder to hide it; Settings > Library > Hidden folders shows it again.
+- **Previous / next subtitle line**: two buttons in the Subtitles panel to hear a line again or skip ahead.
+- **Device scripts**: `tools/shower_check.sh` (the P12 checks, about 10 minutes) and `tools/overnight.sh` (30-minute
+  stability runs, the shader benchmark and the full regression).
+
+### Fixed
+- Videos filmed upright on a phone (stored landscape with a 90 degree rotation flag) opened in landscape and got a
+  landscape mini player; the player now uses the size after rotation.
+
+### Changed
+- Gradle 9.8.2; CI runs on release tags and by hand only.
+
 ## [0.7.0] - 2026-10-20 (versionCode 5)
 
 Every automatic device check passes on the phone (2026-10-20). The by-ear and by-eye checks listed in
