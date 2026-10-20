@@ -92,6 +92,8 @@ fun PlayerControls(
     onCycleAspect: (() -> Unit)? = null,
     onToggleMode: (() -> Unit)? = null,
     onLoadSubtitle: (() -> Unit)? = null,
+    nightMode: Boolean = false,
+    onToggleNightMode: (() -> Unit)? = null,
     modifier: Modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout)
 ) {
     TrackRecomposition("PlayerControls")
@@ -568,7 +570,9 @@ fun PlayerControls(
                 onDismiss = {
                     showAudioTrackSheet = false
                     interactionEvents.value = System.currentTimeMillis()
-                }
+                },
+                nightMode = nightMode,
+                onToggleNightMode = onToggleNightMode
             )
         }
 

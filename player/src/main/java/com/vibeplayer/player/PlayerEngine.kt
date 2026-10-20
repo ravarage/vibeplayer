@@ -1113,6 +1113,7 @@ class PlayerEngine(
         // Volume boost: mpv may go above 100 %; a new handle starts at the current boost.
         MpvNative.setPropertyLong(handle, "volume-max", VolumeBoost.MPV_VOLUME_MAX.toLong())
         MpvNative.setPropertyDouble(handle, "volume", boostVolume)
+        if (nightMode) MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode))
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -2263,6 +2264,21 @@ class PlayerEngine(
 
     @Volatile private var isDucked = false
     @Volatile private var preDuckVolume: Double? = null
+
+    /** Night mode (dynaudnorm), kept for every file and new handle. */
+    @Volatile var nightMode: Boolean = false
+        private set
+
+    fun setNightMode(on: Boolean) {
+        if (on == nightMode) return
+        nightMode = on
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.setPropertyString(handle, "af", AudioFilters.chain(on))
+            Log.i("VP", "setNightMode $on res=$res")
+        }
+    }
 
     /** mpv volume in percent: 100, or more while the volume is boosted above the media maximum. */
     @Volatile var boostVolume: Double = VolumeBoost.NONE.toDouble()

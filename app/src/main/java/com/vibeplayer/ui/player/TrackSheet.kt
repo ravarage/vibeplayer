@@ -26,7 +26,9 @@ fun AudioTrackSheet(
     tracks: List<Track>,
     selectedTrackId: Int?,
     onSelectTrack: (Int?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    nightMode: Boolean = false,
+    onToggleNightMode: (() -> Unit)? = null
 ) {
     TrackRecomposition("AudioTrackSheet")
     val audioTracks = remember(tracks) { tracks.filter { it.type == "audio" } }
@@ -56,6 +58,20 @@ fun AudioTrackSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (onToggleNightMode != null) {
+                    item {
+                        TrackRow(
+                            title = if (nightMode) "Night mode: on" else "Night mode: off",
+                            subtitle = "Evens out loud music and quiet dialogue",
+                            isSelected = nightMode,
+                            onClick = onToggleNightMode,
+                            modifier = Modifier.semantics {
+                                contentDescription = "night_mode"
+                                testTag = "night_mode"
+                            }
+                        )
+                    }
+                }
                 item {
                     val isMuted = (selectedTrackId == null)
                     TrackRow(

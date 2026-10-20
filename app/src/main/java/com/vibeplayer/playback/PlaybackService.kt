@@ -360,6 +360,10 @@ class PlaybackService : Service() {
             appSettingsRepository.appSettingsFlow.map { it.autoSkipChapters }.distinctUntilChanged()
                 .collect { playerEngine.autoSkipChapters = it }
         }
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.nightMode }.distinctUntilChanged()
+                .collect { playerEngine.setNightMode(it) }
+        }
 
         // Listen for background audio setting changes
         serviceScope.launch {

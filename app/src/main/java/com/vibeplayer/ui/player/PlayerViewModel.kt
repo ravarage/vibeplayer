@@ -52,6 +52,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         .map { it.volumeBoostMax }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, com.vibeplayer.player.VolumeBoost.NONE)
 
+    val nightMode: StateFlow<Boolean> = appSettingsRepository.appSettingsFlow
+        .map { it.nightMode }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, false)
+
+    fun setNightMode(on: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setNightMode(on) }
+    }
+
     val matchDisplayRefreshRate: StateFlow<Boolean> = appSettingsRepository.appSettingsFlow
         .map { it.matchDisplayRefreshRate }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, true)

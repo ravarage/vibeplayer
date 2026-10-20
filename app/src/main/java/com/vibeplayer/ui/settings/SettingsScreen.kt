@@ -210,6 +210,13 @@ fun SettingsScreen(
                 onClick = { showSkipDialog = true }
             )
 
+            SettingsSwitchRow(
+                title = "Night mode",
+                description = "Even out loud music and quiet dialogue; also in the player's audio menu",
+                checked = settings.nightMode,
+                onCheckedChange = { onUpdateSettings(settings.copy(nightMode = it)) }
+            )
+
             SettingsClickableRow(
                 title = "Volume boost",
                 subtitle = volumeBoostLabel(settings.volumeBoostMax),

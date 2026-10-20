@@ -496,6 +496,7 @@ class PlayerActivity : ComponentActivity() {
             val skipSeconds by viewModel.skipSeconds.collectAsState()
             val matchDisplayRefreshRate by viewModel.matchDisplayRefreshRate.collectAsState()
             val volumeBoostMax by viewModel.volumeBoostMax.collectAsState()
+            val nightMode by viewModel.nightMode.collectAsState()
             // A lower boost setting takes effect at once (the level may now be past the new top).
             LaunchedEffect(volumeBoostMax) {
                 if (playerEngine.boostVolume > volumeBoostMax) applyVolumeLevel(Int.MAX_VALUE)
@@ -617,6 +618,8 @@ class PlayerActivity : ComponentActivity() {
                                 onSetSubDelay = { viewModel.setSubDelay(it) },
                                 onSetAudioDelay = { viewModel.setAudioDelay(it) },
                                 onToggleMode = { viewModel.togglePlaybackMode() },
+                                nightMode = nightMode,
+                                onToggleNightMode = { viewModel.setNightMode(!nightMode) },
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                                     val current = playerState.aspect ?: "fit"
