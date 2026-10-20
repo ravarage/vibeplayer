@@ -80,12 +80,28 @@ data class AppSettings(
     /** Picture saturation, -100..100 (0 = unchanged). */
     val pictureSaturation: Int = 0,
     /** Picture gamma, -100..100 (0 = unchanged). */
-    val pictureGamma: Int = 0
+    val pictureGamma: Int = 0,
+    /** Plain-text subtitle colour (SubColor name). */
+    val subtitleColor: String = "WHITE",
+    /** Plain-text subtitle outline (SubOutline name). */
+    val subtitleOutline: String = "NORMAL",
+    /** Dark box behind plain-text subtitles. */
+    val subtitleBox: Boolean = false,
+    /** Bold plain-text subtitles. */
+    val subtitleBold: Boolean = false
 ) {
 
     fun pictureAdjust() = com.vibeplayer.player.PictureAdjust(pictureBrightness, pictureContrast, pictureSaturation, pictureGamma)
 
-    fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
+    fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(
+        scale = subtitleScale,
+        pos = subtitlePos,
+        assOverride = subtitleAssOverride,
+        color = com.vibeplayer.player.SubColor.entries.firstOrNull { it.name == subtitleColor } ?: com.vibeplayer.player.SubColor.WHITE,
+        outline = com.vibeplayer.player.SubOutline.entries.firstOrNull { it.name == subtitleOutline } ?: com.vibeplayer.player.SubOutline.NORMAL,
+        box = subtitleBox,
+        bold = subtitleBold
+    ).normalized()
 }
 
 object SettingsMigrationPolicy {
@@ -146,6 +162,10 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_PERFORMANCE_HINTS = booleanPreferencesKey("performance_hints")
         private val KEY_HDR_OUTPUT = booleanPreferencesKey("hdr_output")
         private val KEY_COLLECT_SYSTEM_PROFILES = booleanPreferencesKey("collect_system_profiles")
+        private val KEY_SUB_BOLD = booleanPreferencesKey("sub_bold")
+        private val KEY_SUB_BOX = booleanPreferencesKey("sub_box")
+        private val KEY_SUB_OUTLINE = stringPreferencesKey("sub_outline")
+        private val KEY_SUB_COLOR = stringPreferencesKey("sub_color")
         private val KEY_PICTURE_GAMMA = intPreferencesKey("picture_gamma")
         private val KEY_PICTURE_SATURATION = intPreferencesKey("picture_saturation")
         private val KEY_PICTURE_CONTRAST = intPreferencesKey("picture_contrast")
@@ -250,6 +270,10 @@ class AppSettingsRepository(private val context: Context) {
             pictureContrast = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_CONTRAST] ?: 0),
             pictureSaturation = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_SATURATION] ?: 0),
             pictureGamma = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_GAMMA] ?: 0),
+            subtitleColor = prefs[KEY_SUB_COLOR] ?: "WHITE",
+            subtitleOutline = prefs[KEY_SUB_OUTLINE] ?: "NORMAL",
+            subtitleBox = prefs[KEY_SUB_BOX] ?: false,
+            subtitleBold = prefs[KEY_SUB_BOLD] ?: false,
             hdrOutput = prefs[KEY_HDR_OUTPUT] ?: false
         )
     }
@@ -341,6 +365,10 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_PERFORMANCE_HINTS] = settings.performanceHints
             prefs[KEY_HDR_OUTPUT] = settings.hdrOutput
             prefs[KEY_COLLECT_SYSTEM_PROFILES] = settings.collectSystemProfiles
+            prefs[KEY_SUB_BOLD] = settings.subtitleBold
+            prefs[KEY_SUB_BOX] = settings.subtitleBox
+            prefs[KEY_SUB_OUTLINE] = settings.subtitleOutline
+            prefs[KEY_SUB_COLOR] = settings.subtitleColor
             prefs[KEY_PICTURE_GAMMA] = settings.pictureGamma
             prefs[KEY_PICTURE_SATURATION] = settings.pictureSaturation
             prefs[KEY_PICTURE_CONTRAST] = settings.pictureContrast

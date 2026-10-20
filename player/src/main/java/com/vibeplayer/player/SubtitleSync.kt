@@ -24,13 +24,37 @@ object SyncDelay {
     }
 }
 
-/** Global subtitle appearance (settings). [assOverride] false leaves styled ASS subtitles untouched. */
+/** Text colour for plain-text subtitles (mpv `sub-color`). */
+enum class SubColor(val label: String, val mpv: String) {
+    WHITE("White", "#FFFFFF"),
+    YELLOW("Yellow", "#FFE14D"),
+    CYAN("Cyan", "#7FE8FF"),
+    GREEN("Green", "#9CFF8A")
+}
+
+/** Outline thickness (mpv `sub-outline-size`); NORMAL is mpv's own default. */
+enum class SubOutline(val label: String, val mpv: String) {
+    NONE("None", "0"),
+    THIN("Thin", "1.0"),
+    NORMAL("Normal", "1.65"),
+    THICK("Thick", "3.0")
+}
+
+/**
+ * Global subtitle appearance (settings). [assOverride] false leaves styled ASS subtitles untouched: colour,
+ * outline, box and bold then style plain-text subtitles (SRT, VTT, ...) only, like scale and position.
+ */
 data class SubtitleStyle(
     val scale: Double = DEFAULT_SCALE,
     val pos: Int = DEFAULT_POS,
-    val assOverride: Boolean = false
+    val assOverride: Boolean = false,
+    val color: SubColor = SubColor.WHITE,
+    val outline: SubOutline = SubOutline.NORMAL,
+    /** A dark box behind the text (mpv `sub-border-style=background-box`, box colour `sub-back-color`). */
+    val box: Boolean = false,
+    val bold: Boolean = false
 ) {
-    fun normalized() = SubtitleStyle(normalizeScale(scale), normalizePos(pos), assOverride)
+    fun normalized() = copy(scale = normalizeScale(scale), pos = normalizePos(pos))
 
     /** mpv option name/value pairs, usable both as loadfile options and as live properties. */
     fun mpvOptions(): List<Pair<String, String>> {
@@ -40,7 +64,11 @@ data class SubtitleStyle(
             "sub-pos" to s.pos.toString(),
             // "no": styled ASS is rendered exactly as authored (sub-scale/sub-pos then only affect plain text subs).
             // "force": the style above overrides ASS styling too.
-            "sub-ass-override" to if (s.assOverride) "force" else "no"
+            "sub-ass-override" to if (s.assOverride) "force" else "no",
+            "sub-color" to s.color.mpv,
+            "sub-outline-size" to s.outline.mpv,
+            "sub-border-style" to if (s.box) "background-box" else "outline-and-shadow",
+            "sub-bold" to if (s.bold) "yes" else "no"
         )
     }
 

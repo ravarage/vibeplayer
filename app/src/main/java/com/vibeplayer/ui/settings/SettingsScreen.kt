@@ -63,6 +63,8 @@ fun SettingsScreen(
     var showSubtitleModeDialog by remember { mutableStateOf(false) }
     var showVolumeBoostDialog by remember { mutableStateOf(false) }
     var showSubEncodingDialog by remember { mutableStateOf(false) }
+    var showSubColorDialog by remember { mutableStateOf(false) }
+    var showSubOutlineDialog by remember { mutableStateOf(false) }
     var showSubFoldersDialog by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     // Subtitle folders: a persisted read grant per folder (SAF), so files next to videos can be listed.
@@ -302,6 +304,33 @@ fun SettingsScreen(
                 onCheckedChange = { onUpdateSettings(settings.copy(subtitleAssOverride = it)) }
             )
 
+            val subStyle = settings.subtitleStyle()
+            SettingsClickableRow(
+                title = "Subtitle color",
+                subtitle = subStyle.color.label,
+                description = "For plain subtitles (SRT, VTT); styled ASS keeps its own unless Override ASS style is on",
+                onClick = { showSubColorDialog = true }
+            )
+
+            SettingsClickableRow(
+                title = "Subtitle outline",
+                subtitle = subStyle.outline.label,
+                onClick = { showSubOutlineDialog = true }
+            )
+
+            SettingsSwitchRow(
+                title = "Subtitle background box",
+                description = "A dark box behind plain subtitles, easier to read on bright scenes",
+                checked = settings.subtitleBox,
+                onCheckedChange = { onUpdateSettings(settings.copy(subtitleBox = it)) }
+            )
+
+            SettingsSwitchRow(
+                title = "Bold subtitles",
+                checked = settings.subtitleBold,
+                onCheckedChange = { onUpdateSettings(settings.copy(subtitleBold = it)) }
+            )
+
             SettingsClickableRow(
                 title = "Subtitle folders",
                 subtitle = if (settings.subtitleFolders.isEmpty()) "None" else "${settings.subtitleFolders.size} folder(s)",
@@ -392,6 +421,29 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    if (showSubColorDialog) {
+        SettingsChoiceDialog(
+            title = "Subtitle color",
+            options = com.vibeplayer.player.SubColor.entries,
+            selected = settings.subtitleStyle().color,
+            label = { it.label },
+            onSelect = { onUpdateSettings(settings.copy(subtitleColor = it.name)) },
+            onDismiss = { showSubColorDialog = false }
+        )
+    }
+
+    if (showSubOutlineDialog) {
+        SettingsChoiceDialog(
+            title = "Subtitle outline",
+            options = com.vibeplayer.player.SubOutline.entries,
+            selected = settings.subtitleStyle().outline,
+            label = { it.label },
+            description = { if (it == com.vibeplayer.player.SubOutline.NORMAL) "mpv default" else null },
+            onSelect = { onUpdateSettings(settings.copy(subtitleOutline = it.name)) },
+            onDismiss = { showSubOutlineDialog = false }
+        )
     }
 
     if (showSubEncodingDialog) {
