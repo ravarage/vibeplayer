@@ -62,7 +62,9 @@ data class AppSettings(
     /** P10-07: Collect system profiles via ProfilingManager triggers (default off). */
     val collectSystemProfiles: Boolean = false,
     /** P10-09: HDR output for HDR content on Vulkan gpu-next (experimental, default off). */
-    val hdrOutput: Boolean = false
+    val hdrOutput: Boolean = false,
+    /** Skip chapters titled as openings or endings automatically (default off). */
+    val autoSkipChapters: Boolean = false
 ) {
 
     fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
@@ -126,6 +128,7 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_PERFORMANCE_HINTS = booleanPreferencesKey("performance_hints")
         private val KEY_HDR_OUTPUT = booleanPreferencesKey("hdr_output")
         private val KEY_COLLECT_SYSTEM_PROFILES = booleanPreferencesKey("collect_system_profiles")
+        private val KEY_AUTO_SKIP_CHAPTERS = booleanPreferencesKey("auto_skip_chapters")
     }
 
 
@@ -212,6 +215,7 @@ class AppSettingsRepository(private val context: Context) {
             matchDisplayRefreshRate = prefs[KEY_MATCH_DISPLAY_REFRESH_RATE] ?: true,
             performanceHints = prefs[KEY_PERFORMANCE_HINTS] ?: false,
             collectSystemProfiles = prefs[KEY_COLLECT_SYSTEM_PROFILES] ?: false,
+            autoSkipChapters = prefs[KEY_AUTO_SKIP_CHAPTERS] ?: false,
             hdrOutput = prefs[KEY_HDR_OUTPUT] ?: false
         )
     }
@@ -289,6 +293,7 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_PERFORMANCE_HINTS] = settings.performanceHints
             prefs[KEY_HDR_OUTPUT] = settings.hdrOutput
             prefs[KEY_COLLECT_SYSTEM_PROFILES] = settings.collectSystemProfiles
+            prefs[KEY_AUTO_SKIP_CHAPTERS] = settings.autoSkipChapters
         }
     }
 

@@ -600,6 +600,7 @@ class PlayerEngine(
                 "chapter" -> {
                     val chapter = (value as? Number)?.toInt() ?: -1
                     _state.update { it.copy(currentChapter = chapter) }
+                    executeCommand { maybeAutoSkipChapter() }
                 }
                 "chapter-list/count" -> updateChapters()
                 "container-fps" -> {
@@ -1269,6 +1270,7 @@ class PlayerEngine(
         }
         loadInternalCount++
         currentFilePath = path
+        if (identity != currentFileIdentity) autoSkippedChapters.clear()
         currentFileIdentity = identity
         externalSubSources.removeAll { it.fileIdentity != identity }
         // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
@@ -1999,7 +2001,50 @@ class PlayerEngine(
             if (isStaleCommandThread()) return@executeCommand
             _state.update { it.copy(chapters = chapters, currentChapter = current) }
             Log.i("VP", "Updated chapters (${chapters.size}): current=$current")
+            maybeAutoSkipChapter()
         }
+    }
+
+    /** Skip openings and endings by chapter title as soon as one starts (setting, default off). */
+    @Volatile var autoSkipChapters: Boolean = false
+
+    /** Chapters auto-skipped in the current file: each at most once, so seeking back into one plays it. */
+    private val autoSkippedChapters = HashSet<Int>()
+
+    private fun maybeAutoSkipChapter() {
+        assertCommandThread()
+        if (!autoSkipChapters || handle == 0L) return
+        val st = _state.value
+        val chapter = ChapterSkip.skippableCurrent(st.chapters, st.currentChapter) ?: return
+        if (!autoSkippedChapters.add(chapter.index)) return
+        val kind = ChapterSkip.kindOf(chapter.title)
+        Log.i("VP", "Auto-skip chapter ${chapter.index} (${chapter.title}, $kind)")
+        skipChapterInternal(st.chapters, chapter)
+        _onScreenMessage.tryEmit(if (kind == ChapterKind.ENDING) "Skipped ending" else "Skipped opening")
+    }
+
+    /** Skip button: jumps past chapter [index] (the start of the next one, or the end of the file). */
+    fun skipChapter(index: Int) {
+        lastPlaybackRestartMs = System.currentTimeMillis()
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val chapters = _state.value.chapters
+            val chapter = chapters.firstOrNull { it.index == index } ?: return@executeCommand
+            skipChapterInternal(chapters, chapter)
+        }
+    }
+
+    private fun skipChapterInternal(chapters: List<Chapter>, chapter: Chapter) {
+        val target = ChapterSkip.skipTargetMs(chapters, chapter)
+        val res = if (target != null) {
+            val sec = String.format(java.util.Locale.US, "%.3f", target / 1000.0)
+            MpvNative.command(handle, arrayOf("seek", sec, "absolute+exact"))
+        } else {
+            // The last chapter: to the end, so auto-play next (or keep-open) takes over.
+            MpvNative.command(handle, arrayOf("seek", "100", "absolute-percent+exact"))
+        }
+        Log.i("VP", "skipChapter ${chapter.index} -> ${target ?: "end"} res=$res")
     }
 
     /** P4-15: jumps to the start of chapter [index] (mpv index). */

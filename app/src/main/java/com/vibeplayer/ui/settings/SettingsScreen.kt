@@ -140,6 +140,15 @@ fun SettingsScreen(
             )
 
             SettingsSwitchRow(
+                title = "Auto-skip openings and endings",
+                description = "Jump past chapters named Opening, OP, Intro, Ending, ED or Credits as soon as they start (once per file)",
+                checked = settings.autoSkipChapters,
+                onCheckedChange = { checked ->
+                    onUpdateSettings(settings.copy(autoSkipChapters = checked))
+                }
+            )
+
+            SettingsSwitchRow(
                 title = "Match display refresh rate",
                 description = "Seamlessly switch display refresh rate to match video frame rate",
                 checked = settings.matchDisplayRefreshRate,

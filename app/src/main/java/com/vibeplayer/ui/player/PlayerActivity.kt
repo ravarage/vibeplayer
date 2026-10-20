@@ -620,6 +620,19 @@ class PlayerActivity : ComponentActivity() {
                                     .windowInsetsPadding(WindowInsets.displayCutout)
                             )
 
+                            if (!isLocked) {
+                                ChapterSkipButton(
+                                    chapters = playerState.chapters,
+                                    currentChapter = playerState.currentChapter,
+                                    controlsVisible = controlsVisible,
+                                    onSkip = { playerEngine.skipChapter(it) },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
+                                        .padding(end = 24.dp, bottom = 112.dp)
+                                )
+                            }
+
                             AspectIndicator(
                                 visible = showAspectIndicator,
                                 aspect = aspectIndicatorText,

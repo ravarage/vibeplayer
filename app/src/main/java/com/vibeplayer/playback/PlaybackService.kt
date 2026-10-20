@@ -356,6 +356,11 @@ class PlaybackService : Service() {
         }
         PerfLog.mark("service-created")
 
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.autoSkipChapters }.distinctUntilChanged()
+                .collect { playerEngine.autoSkipChapters = it }
+        }
+
         // Listen for background audio setting changes
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow
