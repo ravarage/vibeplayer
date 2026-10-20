@@ -124,6 +124,8 @@ def main(argv=None):
                  ("started", datetime.datetime.now().isoformat(timespec="seconds"))]
     vol0 = phone.music_volume()
     env_lines.append(("media volume at start", str(vol0)))
+    auto_play = phone.auto_play_next()
+    env_lines.append(("auto-play next", {True: "on", False: "OFF", None: "unknown"}[auto_play]))
 
     def restore():
         try:
@@ -139,6 +141,9 @@ def main(argv=None):
     print(f"devcheck -> {out}")
     for k, v in env_lines:
         print(f"  {k}: {v}")
+    if auto_play is False:
+        print("  WARNING: Settings > Auto-play next is off: autoplay, pip_autoadvance and double_tap will fail."
+              " Turn it on and run again.")
     for name, desc, fn in selected:
         timeout = PER_CHECK_TIMEOUT + (60 * a.stall_opens if name == "stall" else 0)
         print(f"... {name}", flush=True)

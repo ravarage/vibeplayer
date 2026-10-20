@@ -374,7 +374,9 @@ def pip_autoadvance(ctx):
     ctx.phone.key("KEYCODE_HOME")
     # 15 s: right after a swipe seek the first Home can be slow to hand over to PiP over Wi-Fi adb
     if not ctx.log.wait(r"isInPictureInPictureMode=true", 15, since=mark):
-        ctx.trace("no PiP after Home; resumed: " + ctx.phone.sh("dumpsys activity activities | grep -m2 -E 'topResumedActivity|mResumedActivity'").strip())
+        resumed = [l.strip() for l in ctx.phone.sh("dumpsys activity activities").splitlines()
+                   if "topResumedActivity" in l or "mResumedActivity" in l]
+        ctx.trace("no PiP after Home; resumed: " + " | ".join(resumed[:2]))
         need(False, "Home did not enter PiP")
     hit = ctx.log.wait(r"Auto-play: .* ended -> (.*)$", 40, since=mark)
     need(hit, "no auto-play while in PiP within 40 s")

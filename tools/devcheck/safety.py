@@ -13,6 +13,7 @@ TMP_RE = re.compile(r"^/data/local/tmp/vp_[A-Za-z0-9_.\-]+$")
 ALLOWED_KEYS = {"KEYCODE_HOME", "KEYCODE_BACK", "KEYCODE_WAKEUP", "KEYCODE_APP_SWITCH", "3", "4", "187", "224"}
 NUM_RE = re.compile(r"^-?\d+(\.\d+)?$")
 PUNCT_OK = {"&", "&&", ";"}
+RUN_AS_SETTINGS_DUMP = [PKG, "od", "-An", "-tx1", "-v", "files/datastore/app_settings.preferences_pb"]
 
 
 class Refused(Exception):
@@ -239,4 +240,6 @@ _SEGMENTS = {
     "getprop": lambda t: None if len(t) <= 2 else (_ for _ in ()).throw(Refused("getprop")),
     "settings": lambda t: None if t[1:2] == ["get"] else (_ for _ in ()).throw(Refused("settings write")),
     "logcat": lambda t: _logcat_tokens(t[1:]),
+    # read-only dump of the app's own settings file (debug build), for the auto-play warning
+    "run-as": lambda t: None if t[1:] == RUN_AS_SETTINGS_DUMP else (_ for _ in ()).throw(Refused("run-as")),
 }

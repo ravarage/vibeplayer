@@ -178,6 +178,31 @@ class Phone:
         dbg = bool(re.search(r"flags=\[[^\]]*DEBUGGABLE", out))
         return (m.group(1) if m else "?"), dbg
 
+    def auto_play_next(self):
+        """The app's 'Auto-play next' setting (debug build, read with run-as), or None if unreadable."""
+        out = self.sh(f"run-as {PKG} od -An -tx1 -v files/datastore/app_settings.preferences_pb", 30)
+        return auto_play_from_hex(out)
+
     def vulkan_hash(self):
         out = self.sh("sha256sum /vendor/lib64/hw/vulkan.adreno.so", 30).split()
         return out[0][:16] if out and re.match(r"^[0-9a-f]{64}$", out[0]) else "unknown"
+
+
+def auto_play_from_hex(hex_text):
+    """Reads auto_play_next from an od -tx1 dump of the settings DataStore (Preferences protobuf).
+    The entry is the key string, then the value message: 0x12 len 0x08 <bool>. No key means the default, on.
+    None when the dump is not hex (no file, run-as refused on a release build)."""
+    try:
+        data = bytes(int(b, 16) for b in hex_text.split())
+    except ValueError:
+        return None
+    if not data:
+        return None
+    key = b"auto_play_next"
+    i = data.find(key)
+    if i < 0:
+        return True
+    rest = data[i + len(key):i + len(key) + 4]
+    if len(rest) == 4 and rest[0] == 0x12 and rest[2] == 0x08:
+        return rest[3] != 0
+    return None
