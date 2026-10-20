@@ -73,6 +73,8 @@ class PlaybackService : Service() {
     companion object {
         /** P7-02: deferred start-up work (MediaSession, shader extraction) runs at the latest after this. */
         private const val DEFERRED_WORK_TIMEOUT_MS = 3000L
+        /** How long auto-loaded subtitles wait for their file to load. */
+        private const val AUTO_SUB_WAIT_MS = 15_000L
         const val CHANNEL_ID = "vibeplayer_playback"
         /** Benchmark runs: silent channel for the notification Android requires after startForegroundService. */
         const val BENCHMARK_CHANNEL_ID = "vibeplayer_benchmark"
@@ -126,6 +128,7 @@ class PlaybackService : Service() {
     private var isDucked = false
     private var isNoisyReceiverRegistered = false
     private val thermalManager by lazy { ThermalManager(this, playerEngine) }
+    private val subtitleFiles by lazy { com.vibeplayer.data.subs.SubtitleFiles(this) }
 
     private val audioFocusListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
 
@@ -304,6 +307,7 @@ class PlaybackService : Service() {
         // reconfigure (quality toggle, Vulkan/GLES fallback) or a B-08 reload asks for a fresh one
         // from the file's identity, the original content URI. The engine calls this on IO.
         playerEngine.pathReopener = { identity -> reopenContentUri(identity) }
+        playerEngine.subtitleReopener = { uri -> subtitleFiles.openForMpv(Uri.parse(uri)) }
         serviceScope.launch(Dispatchers.IO) {
             appSettingsRepository.migrateRendererDefaultIfNeeded()
         }
@@ -359,6 +363,10 @@ class PlaybackService : Service() {
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.autoSkipChapters }.distinctUntilChanged()
                 .collect { playerEngine.autoSkipChapters = it }
+        }
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.subtitleEncoding }.distinctUntilChanged()
+                .collect { subtitleFiles.encoding = it }
         }
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.nightMode }.distinctUntilChanged()
@@ -1039,12 +1047,12 @@ class PlaybackService : Service() {
             val externalSub: Pair<String, String>? = if (externalSubUri.isNullOrEmpty()) null else withContext(Dispatchers.IO) {
                 try {
                     val subUri = Uri.parse(externalSubUri)
-                    val pfd = contentResolver.openFileDescriptor(subUri, "r")
-                    if (pfd != null) {
-                        val title = queryDisplayName(subUri)
-                        "fdclose://${pfd.detachFd()}" to title
+                    val title = queryDisplayName(subUri)
+                    val subPath = subtitleFiles.openForMpv(subUri, title)
+                    if (subPath != null) {
+                        subPath to title
                     } else {
-                        Log.w("VP", "Reopening external subtitle: null descriptor for $externalSubUri")
+                        Log.w("VP", "Reopening external subtitle: cannot open $externalSubUri")
                         null
                     }
                 } catch (e: Exception) {
@@ -1080,6 +1088,10 @@ class PlaybackService : Service() {
                 val selectExternal = (fileSettings?.subEnabled ?: true) && fileSettings?.subTrackTitle == subTitle
                 playerEngine.addSubtitleTrack(fdPath = subFdPath, title = subTitle, select = selectExternal, sourceUri = externalSubUri)
                 Log.i("VP", "Reopening video: re-added external subtitle $externalSubUri ($subTitle, select=$selectExternal)")
+            }
+            if (appSettings.subtitleFolders.isNotEmpty() && path.startsWith("/")) {
+                val rememberedTitle = if (fileSettings?.subEnabled != false) fileSettings?.subTrackTitle else null
+                autoLoadSubtitles(path, generation, appSettings.subtitleFolders, externalSubUri, rememberedTitle)
             }
             handedToEngine = true
             lastPathHandedToEngine = path
@@ -1194,22 +1206,15 @@ class PlaybackService : Service() {
     }
 
     /**
-     * P4-14: Opens external subtitle [uri] through a file descriptor on IO, hands it to mpv with `sub-add`
-     * using `fdclose://<fd>` (mpv owns and closes the fd), and remembers it per file in Room.
+     * P4-14: Opens external subtitle [uri] on IO, hands it to mpv with `sub-add` (see
+     * [com.vibeplayer.data.subs.SubtitleFiles.openForMpv]), and remembers it per file in Room.
      */
     fun loadSubtitleFile(uri: Uri) {
         serviceScope.launch(Dispatchers.IO) {
             val key = currentKey ?: return@launch
             val displayName = queryDisplayName(uri)
-            val pfd = try {
-                contentResolver.openFileDescriptor(uri, "r")
-            } catch (e: Exception) {
-                Log.w("VP", "Failed to open subtitle descriptor for $uri: ${e.message}")
-                null
-            } ?: return@launch
-
-            val fd = pfd.detachFd()
-            val fdPath = "fdclose://$fd"
+            // A UTF-8 file goes to mpv as fdclose://<fd>; any other encoding as a converted UTF-8 copy.
+            val fdPath = subtitleFiles.openForMpv(uri, displayName) ?: return@launch
 
             playerEngine.addSubtitleTrack(fdPath, displayName, select = true, sourceUri = uri.toString())
 
@@ -1228,6 +1233,24 @@ class PlaybackService : Service() {
             )
             dao.upsert(updated)
             Log.i("VP", "Loaded external subtitle $uri (title=$displayName) for key=$key")
+        }
+    }
+
+    /**
+     * Subtitle files next to [path] in the granted folders, added once the file has loaded (sub-add
+     * then runs at once, one per file). A file whose title was the last chosen subtitle is selected.
+     */
+    private fun autoLoadSubtitles(path: String, generation: Long, folders: List<String>, skipUri: String?, rememberedTitle: String?) {
+        serviceScope.launch(Dispatchers.IO) {
+            val found = subtitleFiles.findNextTo(path, folders).filter { it.uri.toString() != skipUri }
+            if (found.isEmpty()) return@launch
+            withTimeoutOrNull(AUTO_SUB_WAIT_MS) { playerEngine.state.first { it.durationMs > 0L } } ?: return@launch
+            for (sub in found) {
+                if (generation != loadGeneration || currentVideoPath != path) return@launch
+                val subPath = subtitleFiles.openForMpv(sub.uri, sub.name) ?: continue
+                playerEngine.addSubtitleTrack(subPath, sub.name, select = sub.name == rememberedTitle, sourceUri = sub.uri.toString())
+                Log.i("VP", "Auto-loaded subtitle ${sub.name} for $path")
+            }
         }
     }
 

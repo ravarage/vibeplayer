@@ -62,6 +62,23 @@ fun SettingsScreen(
     var showSubLangDialog by remember { mutableStateOf(false) }
     var showSubtitleModeDialog by remember { mutableStateOf(false) }
     var showVolumeBoostDialog by remember { mutableStateOf(false) }
+    var showSubEncodingDialog by remember { mutableStateOf(false) }
+    var showSubFoldersDialog by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Subtitle folders: a persisted read grant per folder (SAF), so files next to videos can be listed.
+    val pickSubtitleFolder = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val folders = (settings.subtitleFolders + uri.toString()).distinct()
+                onUpdateSettings(settings.copy(subtitleFolders = folders))
+            } catch (e: SecurityException) {
+                android.util.Log.w("VP", "Subtitle folder grant failed for $uri: ${e.message}")
+            }
+        }
+    }
 
     val availableGpuApis = remember { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() }
     val vulkanSupported = remember(availableGpuApis) {
@@ -285,6 +302,22 @@ fun SettingsScreen(
                 onCheckedChange = { onUpdateSettings(settings.copy(subtitleAssOverride = it)) }
             )
 
+            SettingsClickableRow(
+                title = "Subtitle folders",
+                subtitle = if (settings.subtitleFolders.isEmpty()) "None" else "${settings.subtitleFolders.size} folder(s)",
+                description = "Subtitle files next to a video in these folders (and their subfolders) load automatically, e.g. Ep01.srt or Ep01.en.ass for Ep01.mkv",
+                onClick = {
+                    if (settings.subtitleFolders.isEmpty()) pickSubtitleFolder.launch(null) else showSubFoldersDialog = true
+                }
+            )
+
+            SettingsClickableRow(
+                title = "Subtitle encoding",
+                subtitle = com.vibeplayer.data.subs.SubtitleCharset.label(settings.subtitleEncoding),
+                description = "For external subtitle files that are not UTF-8 (garbled letters in old SRT files)",
+                onClick = { showSubEncodingDialog = true }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -359,6 +392,67 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    if (showSubEncodingDialog) {
+        SettingsChoiceDialog(
+            title = "Subtitle encoding",
+            options = com.vibeplayer.data.subs.SubtitleCharset.CHOICES.map { it.first },
+            selected = settings.subtitleEncoding,
+            label = { com.vibeplayer.data.subs.SubtitleCharset.label(it) },
+            description = { if (it == com.vibeplayer.data.subs.SubtitleCharset.DEFAULT) "UTF-8 and UTF-16 files are always read as they are" else null },
+            onSelect = { onUpdateSettings(settings.copy(subtitleEncoding = it)) },
+            onDismiss = { showSubEncodingDialog = false }
+        )
+    }
+
+    if (showSubFoldersDialog) {
+        AlertDialog(
+            onDismissRequest = { showSubFoldersDialog = false },
+            title = { Text("Subtitle folders") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    settings.subtitleFolders.forEach { folder ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = subtitleFolderLabel(folder),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = {
+                                try {
+                                    context.contentResolver.releasePersistableUriPermission(
+                                        android.net.Uri.parse(folder), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                } catch (_: SecurityException) {
+                                }
+                                val left = settings.subtitleFolders - folder
+                                onUpdateSettings(settings.copy(subtitleFolders = left))
+                                if (left.isEmpty()) showSubFoldersDialog = false
+                            }) {
+                                Text("Remove")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSubFoldersDialog = false
+                    pickSubtitleFolder.launch(null)
+                }) {
+                    Text("Add folder")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSubFoldersDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 
     if (showVolumeBoostDialog) {
@@ -948,4 +1042,18 @@ fun <T> SettingsChoiceDialog(
             }
         }
     )
+}
+
+/** "Movies/Anime" for a tree URI of primary:Movies/Anime. */
+private fun subtitleFolderLabel(treeUri: String): String = try {
+    val id = android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(treeUri))
+    val volume = id.substringBefore(':')
+    val rel = id.substringAfter(':')
+    when {
+        volume == "primary" && rel.isEmpty() -> "Internal storage"
+        volume == "primary" -> rel
+        else -> "$volume: $rel"
+    }
+} catch (_: Exception) {
+    treeUri
 }

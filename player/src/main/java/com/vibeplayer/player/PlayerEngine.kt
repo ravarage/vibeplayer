@@ -106,6 +106,9 @@ class PlayerEngine(
      * Installed by the owner of the engine (PlaybackService, which holds the ContentResolver).
      */
     @Volatile var pathReopener: ((identity: String) -> String?)? = null
+
+    /** Like [pathReopener] for external subtitles (they may need a UTF-8 conversion); IO only. */
+    @Volatile var subtitleReopener: ((uri: String) -> String?)? = null
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var attachedSurface: Surface? = null
     @Volatile private var shaderDirectory: String = ""
@@ -2147,7 +2150,7 @@ class PlayerEngine(
 
     /** Re-adds the external subtitles of the current file after a reload on a new handle ([subRestore]). */
     private fun restoreExternalSubtitles(restore: SubRestore) {
-        val reopener = pathReopener ?: return
+        val reopener = subtitleReopener ?: pathReopener ?: return
         val identity = currentFileIdentity
         for (src in externalSubSources.filter { it.fileIdentity == identity }) {
             val select = restore.selectByUri[src.uri] ?: continue
