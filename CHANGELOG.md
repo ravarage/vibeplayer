@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - unreleased (versionCode 5)
+## [0.7.0] - 2026-10-20 (versionCode 5)
 
-Built without the phone; every item still needs its device check (PROGRESS.md) before this is released.
+Every automatic device check passes on the phone (2026-10-20). The by-ear and by-eye checks listed in
+PROGRESS.md (volume boost, subtitle folders and encoding, search, sleep timer, ViPER4Android) are still open.
 
 ### Added
 - **Chapters (P4-15)**: ticks on the seek bar, chapter name while scrubbing, a chapter list, the current chapter
