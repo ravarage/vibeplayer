@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +54,27 @@ fun FolderActionsDialog(folder: VideoFolder, onHide: () -> Unit, onDismiss: () -
 
 private enum class VideoActionStep { MENU, RENAME, CONFIRM_DELETE }
 
+/** A rename (newName) or delete (null) waiting for Android's consent. */
+data class PendingFileAction(
+    val uri: String,
+    val path: String,
+    val sizeBytes: Long,
+    val displayName: String,
+    val newName: String?
+) {
+    companion object {
+        /** Kept in the saved state, so it survives the activity being recreated behind the consent dialog. */
+        val Saver = androidx.compose.runtime.saveable.Saver<PendingFileAction?, ArrayList<String>>(
+            save = { p -> p?.let { arrayListOf(it.uri, it.path, it.sizeBytes.toString(), it.displayName) + listOfNotNull(it.newName) }
+                ?.let { ArrayList(it) } ?: arrayListOf() },
+            restore = { v ->
+                if (v.size < 4) null
+                else PendingFileAction(v[0], v[1], v[2].toLongOrNull() ?: 0L, v[3], v.getOrNull(4))
+            }
+        )
+    }
+}
+
 /**
  * Long-press on a video: Rename or Delete (P12-05). Both ask Android for consent (the app may only read
  * media); history, position and bookmarks follow the file. Set [target] to a video to open the menu.
@@ -62,35 +84,37 @@ fun VideoActionsHost(target: VideoItem?, db: AppDatabase, onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var step by remember(target) { mutableStateOf(VideoActionStep.MENU) }
-    var pendingName by remember { mutableStateOf<String?>(null) }
-    var pendingVideo by remember { mutableStateOf<VideoItem?>(null) }
+    // Saveable: the activity can be recreated while Android's consent dialog is up (rotation, low memory).
+    var pending by rememberSaveable(stateSaver = PendingFileAction.Saver) { mutableStateOf<PendingFileAction?>(null) }
 
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-        val video = pendingVideo
-        val newName = pendingName
-        pendingVideo = null
-        pendingName = null
-        if (video == null) return@rememberLauncherForActivityResult
+        val action = pending
+        pending = null
+        if (action == null) return@rememberLauncherForActivityResult
         if (result.resultCode != Activity.RESULT_OK) {
-            Log.i("VP", "File action on ${video.displayName} not allowed by the user")
+            Log.i("VP", "File action on ${action.displayName} not allowed by the user")
             return@rememberLauncherForActivityResult
         }
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
+            val newName = action.newName
+            val finalName = withContext(Dispatchers.IO) {
                 if (newName == null) {
                     // The delete request already deleted the file.
-                    VideoFileActions.deleteHistory(db, video.path, video.sizeBytes)
-                    true
+                    VideoFileActions.deleteHistory(db, action.path, action.sizeBytes)
+                    null
                 } else {
-                    VideoFileActions.rename(context.contentResolver, video.uri, newName).also { renamed ->
-                        if (renamed) VideoFileActions.moveHistory(db, video.path, newName, video.sizeBytes)
-                    }
+                    val uri = android.net.Uri.parse(action.uri)
+                    if (!VideoFileActions.rename(context.contentResolver, uri, newName)) return@withContext null
+                    // MediaStore may adjust the name (a clash adds " (1)"): move the history to the name it kept.
+                    val kept = VideoFileActions.displayName(context.contentResolver, uri) ?: newName
+                    VideoFileActions.moveHistory(db, action.path, kept, action.sizeBytes)
+                    kept
                 }
             }
             val message = when {
-                newName == null -> "Deleted ${video.displayName}"
-                ok -> "Renamed to $newName"
-                else -> "Could not rename ${video.displayName}"
+                newName == null -> "Deleted ${action.displayName}"
+                finalName != null -> "Renamed to $finalName"
+                else -> "Could not rename ${action.displayName}"
             }
             Log.i("VP", "File action: $message")
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -101,8 +125,7 @@ fun VideoActionsHost(target: VideoItem?, db: AppDatabase, onDone: () -> Unit) {
         try {
             val sender = if (newName == null) VideoFileActions.deleteRequest(context.contentResolver, video.uri)
             else VideoFileActions.writeRequest(context.contentResolver, video.uri)
-            pendingVideo = video
-            pendingName = newName
+            pending = PendingFileAction(video.uri.toString(), video.path, video.sizeBytes, video.displayName, newName)
             consent.launch(IntentSenderRequest.Builder(sender).build())
         } catch (e: Exception) {
             Log.w("VP", "File action request for ${video.uri} failed: ${e.message}")

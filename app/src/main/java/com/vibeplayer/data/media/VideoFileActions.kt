@@ -32,6 +32,15 @@ object VideoFileActions {
         false
     }
 
+    /** The name MediaStore holds for [uri] now, or null. */
+    fun displayName(resolver: ContentResolver, uri: Uri): String? = try {
+        resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+
     /**
      * The file name to use for [input], or null when it cannot be a name or does not change anything. The
      * extension is kept when the input leaves it out ("Episode 1" for "ep01.mkv" -> "Episode 1.mkv").

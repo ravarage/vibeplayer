@@ -38,7 +38,9 @@ fi
 say "P12 test clips"
 A="$OUT/assets"
 CLIPS_VERSION=1
-if [ "$(adb shell cat "$P12_DIR/.clips_version" 2>/dev/null | tr -d '\r')" = "$CLIPS_VERSION" ]; then
+ON_PHONE=$(adb shell ls "$P12_DIR" 2>/dev/null | tr -d '\r')
+have_all() { for f in p12_ep01.mkv p12_ep02.mkv p12_portrait.mp4; do grep -qx "$f" <<<"$ON_PHONE" || return 1; done; }
+if [ "$(adb shell cat "$P12_DIR/.clips_version" 2>/dev/null | tr -d '\r')" = "$CLIPS_VERSION" ] && have_all; then
   echo "already on the phone ($P12_DIR)"
   adb pull "$P12_DIR/p12_ep01.mkv" "$A/p12_ep01.mkv" >/dev/null
 else
@@ -68,8 +70,12 @@ PY
   # 20 s clip filmed "upright": stored 1280x720 with a 90 degree display rotation
   ffmpeg -loglevel error -y -f lavfi -i testsrc2=size=1280x720:rate=30 -t 20 \
     -c:v libx264 -preset veryfast -crf 32 -g 30 -pix_fmt yuv420p "$A/landscape.mp4"
-  ffmpeg -loglevel error -y -display_rotation:v:0 90 -i "$A/landscape.mp4" -c copy "$A/p12_portrait.mp4" 2>/dev/null \
+  ffmpeg -loglevel error -y -display_rotation:v:0 90 -i "$A/landscape.mp4" -c copy "$A/p12_portrait.mp4" \
     || ffmpeg -loglevel error -y -i "$A/landscape.mp4" -c copy -metadata:s:v:0 rotate=90 "$A/p12_portrait.mp4"
+  # newer ffmpeg ignores the rotate tag: make sure the clip really carries a rotation
+  if ! ffprobe -v error -show_entries stream_side_data=rotation:stream_tags=rotate -of csv=p=0 "$A/p12_portrait.mp4" | grep -qE '(^|,)-?90'; then
+    echo "WARNING: p12_portrait.mp4 has no 90 degree rotation (ffmpeg too old?); p12_rotated_clip will fail"
+  fi
   adb shell mkdir -p "$P12_DIR"
   for f in p12_ep01.mkv p12_ep02.mkv p12_portrait.mp4; do adb push "$A/$f" "$P12_DIR/$f" >/dev/null; done
   echo "$CLIPS_VERSION" > "$A/.clips_version"

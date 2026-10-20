@@ -579,7 +579,7 @@ class PlayerEngine(
                     rawVideoHeight = (value as? Number)?.toInt() ?: 0
                     publishVideoSize()
                 }
-                "video-params/rotate" -> {
+                "video-out-params/rotate" -> {
                     videoRotate = (value as? Number)?.toInt() ?: 0
                     publishVideoSize()
                 }
@@ -1109,7 +1109,8 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_SPEED, "speed", MpvFormat.DOUBLE)
         MpvNative.observeProperty(handle, REPLY_DWIDTH, "dwidth", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_DHEIGHT, "dheight", MpvFormat.INT64)
-        MpvNative.observeProperty(handle, REPLY_ROTATE, "video-params/rotate", MpvFormat.INT64)
+        // video-out-params, like dwidth/dheight: the rotation the VO still applies (0 when a filter already did).
+        MpvNative.observeProperty(handle, REPLY_ROTATE, "video-out-params/rotate", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_VIDEO_CODEC, "video-codec", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_VIDEO_FORMAT, "video-format", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_AID, "aid", MpvFormat.STRING)
@@ -1585,8 +1586,8 @@ class PlayerEngine(
         }
     }
 
-    // dwidth/dheight are the stored frame size; a phone clip filmed upright is usually stored landscape with
-    // rotate=90, which the VO applies. The state carries the size as shown, so orientation and PiP follow it.
+    // dwidth/dheight (video-out-params) are the frame size before the VO's rotation; a phone clip filmed upright
+    // is usually stored landscape with rotate=90, which the VO applies. The state carries the size as shown, so orientation and PiP follow it.
     @Volatile private var rawVideoWidth = 0
     @Volatile private var rawVideoHeight = 0
     @Volatile private var videoRotate = 0

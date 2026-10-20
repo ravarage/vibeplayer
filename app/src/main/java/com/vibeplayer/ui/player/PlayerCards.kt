@@ -37,7 +37,7 @@ import com.vibeplayer.playback.UpNext
 import kotlinx.coroutines.delay
 
 /** How long the resume chip stays after a file opened at its saved position. */
-private const val RESUME_CHIP_SHOW_MS = 8_000L
+private const val RESUME_CHIP_SHOW_MS = com.vibeplayer.playback.PlaybackService.RESUME_CHIP_MS
 
 private val CardShape = RoundedCornerShape(10.dp)
 private val CardBackground = Color(0xCC000000)

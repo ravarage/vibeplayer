@@ -73,6 +73,8 @@ import java.io.File
 class PlaybackService : Service() {
 
     companion object {
+        /** How long the "Resumed at ... Start over" chip stays (P12-01). */
+        const val RESUME_CHIP_MS = 8_000L
         /** P7-02: deferred start-up work (MediaSession, shader extraction) runs at the latest after this. */
         private const val DEFERRED_WORK_TIMEOUT_MS = 3000L
         /** How long auto-loaded subtitles wait for their file to load. */
@@ -311,13 +313,13 @@ class PlaybackService : Service() {
     fun setFolderAutoSkip(on: Boolean?) = updateFolderShow { it.copy(autoSkipChapters = on) }
 
     private fun updateFolderShow(change: (com.vibeplayer.data.db.FolderSettings) -> com.vibeplayer.data.db.FolderSettings) {
-        val folder = currentFolderPath?.takeIf { it.startsWith("/") } ?: return
+        val folder = currentFolderPath?.takeIf { it.startsWith("/") }?.let { com.vibeplayer.ui.normalizeMediaPath(it) } ?: return
         serviceScope.launch {
             val saved = withContext(Dispatchers.IO) {
                 val base = folderDao.getByPath(folder) ?: com.vibeplayer.data.db.FolderSettings(folderPath = folder)
                 change(base).copy(updatedAt = System.currentTimeMillis()).also { folderDao.upsert(it) }
             }
-            if (currentFolderPath != folder) return@launch
+            if (currentFolderPath?.let { com.vibeplayer.ui.normalizeMediaPath(it) } != folder) return@launch
             _folderShow.value = FolderShow(folder, saved.speed, saved.autoSkipChapters)
             applyAutoSkip()
             Log.i("VP", "Folder settings for $folder: speed=${saved.speed} autoSkip=${saved.autoSkipChapters}")
@@ -562,6 +564,8 @@ class PlaybackService : Service() {
     /** P12-01: set after a file opened at its saved position, for the "Resumed at ... Start over" chip. */
     private val _resumedFrom = MutableStateFlow<ResumeInfo?>(null)
     val resumedFrom: kotlinx.coroutines.flow.StateFlow<ResumeInfo?> = _resumedFrom
+
+    private var resumeChipJob: Job? = null
 
     /** Plays the current file from the start (the resume chip's Start over). */
     fun startOver() {
@@ -913,7 +917,8 @@ class PlaybackService : Service() {
             checkShouldStop()
             return
         }
-        if (!appSettingsRepository.appSettingsFlow.first().autoPlayNext) {
+        val appSettings = appSettingsRepository.appSettingsFlow.first()
+        if (!appSettings.autoPlayNext) {
             checkShouldStop()
             return
         }
@@ -924,7 +929,7 @@ class PlaybackService : Service() {
             return
         }
         if (currentVideoPath != endedPath) return // file changed meanwhile
-        val countdown = appSettingsRepository.appSettingsFlow.first().nextCountdownSeconds
+        val countdown = appSettings.nextCountdownSeconds
         _upNext.value = UpNext(
             endedPath = endedPath,
             path = next,
@@ -1038,6 +1043,10 @@ class PlaybackService : Service() {
         upNextJob = null
         _upNext.value = null
         _resumedFrom.value = null
+        resumeChipJob?.cancel()
+        // Bookmarks belong to the file in the engine: none while the next one loads.
+        currentKey = null
+        _currentKeyFlow.value = null
         currentVideoPath = path
         currentFolderPath = folderKey ?: File(path).parent
         _currentPath.value = path
@@ -1064,6 +1073,8 @@ class PlaybackService : Service() {
         var handedToEngine = false
         loadJob = serviceScope.launch {
             val resolvedFolderKey = folderKey ?: (File(path).parent ?: "")
+            // The same folder may be opened as /sdcard/... or /storage/emulated/0/...: one key for the show settings.
+            val showFolderKey = com.vibeplayer.ui.normalizeMediaPath(resolvedFolderKey)
             // P7-02: key (File.exists/length), per-file row, folder row, app settings, and format detection in parallel,
             // none of it on the main thread; loadfile follows with everything at once.
             val keyDeferred = async(Dispatchers.IO) { computeKey(identityKey ?: path, sizeBytes) }
@@ -1076,6 +1087,9 @@ class PlaybackService : Service() {
             }
             val folderDeferred = async(Dispatchers.IO) {
                 if (resolvedFolderKey.isNotEmpty()) folderDao.getByPath(resolvedFolderKey) else null
+            }
+            val showFolderDeferred = async(Dispatchers.IO) {
+                if (showFolderKey == resolvedFolderKey) null else if (showFolderKey.isNotEmpty()) folderDao.getByPath(showFolderKey) else null
             }
             val settingsDeferred = async(Dispatchers.IO) { appSettingsRepository.appSettingsFlow.first() }
             val clipDeferred = async(Dispatchers.IO) {
@@ -1174,11 +1188,12 @@ class PlaybackService : Service() {
             val subEnabled = fileChoice?.subEnabled ?: true
             // A file's own speed wins; a file left at 1x takes the folder's (show's) speed (P12-04).
             val fileSpeed = fileSettings?.speed?.toDouble()?.takeIf { it != 1.0 }
-            val folderSpeed = folderSettings?.speed?.toDouble()
+            val showSettings = showFolderDeferred.await() ?: folderSettings
+            val folderSpeed = showSettings?.speed?.toDouble()
             val speed = fileSpeed ?: folderSpeed ?: 1.0
             if (fileSpeed == null && folderSpeed != null) Log.i("VP", "Speed $folderSpeed from folder $resolvedFolderKey")
             // Only a real folder (not a content:// open from another app) gets the Whole folder settings.
-            _folderShow.value = FolderShow(resolvedFolderKey.takeIf { it.startsWith("/") }, folderSettings?.speed, folderSettings?.autoSkipChapters)
+            _folderShow.value = FolderShow(showFolderKey.takeIf { it.startsWith("/") }, showSettings?.speed, showSettings?.autoSkipChapters)
             applyAutoSkip()
             val aspect = fileSettings?.aspect
             val subDelayMs = fileSettings?.subDelayMs ?: 0
@@ -1294,7 +1309,14 @@ class PlaybackService : Service() {
             lastPathHandedToEngine = path
             currentKey = key
             _currentKeyFlow.value = key
-            if (resumedAt > 0L) _resumedFrom.value = ResumeInfo(path = path, positionMs = resumedAt, generation = generation)
+            if (resumedAt > 0L) {
+                _resumedFrom.value = ResumeInfo(path = path, positionMs = resumedAt, generation = generation)
+                // Gone for good after its time, so a recreated activity (rotation) does not show it again.
+                resumeChipJob = serviceScope.launch {
+                    delay(RESUME_CHIP_MS)
+                    _resumedFrom.value = null
+                }
+            }
             if (playAfterLoad) playerEngine.play()
         }
         loadJob?.invokeOnCompletion {
@@ -1573,11 +1595,9 @@ class PlaybackService : Service() {
                     val subTrackLang = existing?.subTrackLang ?: subTrack?.lang
                     val subEnabled = existing?.subEnabled ?: (currentSid != null)
 
-                    val speed = if (existing != null && existing.speed != 1.0f) {
-                        existing.speed
-                    } else {
-                        state.speed.toFloat()
-                    }
+                    // Only an explicit choice (persistSpeed) is the file's own speed: the playing speed may come
+                    // from the folder (P12-04), and saving it here would freeze it into the file.
+                    val speed = existing?.speed ?: 1.0f
 
                     val aspect = existing?.aspect ?: state.aspect
 

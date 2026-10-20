@@ -838,6 +838,6 @@ delete requests (the app only reads media); history and bookmarks move with a re
 **P12-06 Hidden folders** — long-press a folder > Hide; hidden folders are left out of the list, search and Continue
 Watching; Settings > Library > Hidden folders shows them again. *Accept*: by hand (MANUAL p12_browser_tools).
 
-**P12-07 Small fixes** — the engine reports the video size after the container rotation (`video-params/rotate`),
+**P12-07 Small fixes** — the engine reports the video size after the container rotation (`video-out-params/rotate`),
 so clips filmed upright open in portrait with a portrait PiP; Previous / Next line in the Subtitles panel (mpv
 `sub-seek`). *Accept*: `p12_rotated_clip`, `p12_sub_line` pass.
