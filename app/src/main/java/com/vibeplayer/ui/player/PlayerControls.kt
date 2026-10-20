@@ -343,7 +343,7 @@ fun PlayerControls(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (playerState.speed != 1.0) Color(0x33BB86FC) else Color(0x22FFFFFF))
+                                    .background(if (playerState.speed != 1.0) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color(0x22FFFFFF))
                                     .clickable {
                                         interactionEvents.value = System.currentTimeMillis()
                                         showSpeedSheet = true
@@ -359,7 +359,7 @@ fun PlayerControls(
                                     text = HoldGesture.label(playerState.speed),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (playerState.speed != 1.0) Color(0xFFBB86FC) else Color.White
+                                    color = if (playerState.speed != 1.0) MaterialTheme.colorScheme.primary else Color.White
                                 )
                             }
                         }
@@ -427,7 +427,7 @@ fun PlayerControls(
                             Text(
                                 text = "💬",
                                 fontSize = 20.sp,
-                                color = if (playerState.selectedSubTrackId != null) Color(0xFFBB86FC) else Color.White
+                                color = if (playerState.selectedSubTrackId != null) MaterialTheme.colorScheme.primary else Color.White
                             )
                         }
 
@@ -497,7 +497,7 @@ fun PlayerControls(
                                 text = "⋮",
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (sleepTimer != null || playerState.abLoopAMs != null || playerState.loopFile) Color(0xFFBB86FC) else Color.White
+                                color = if (sleepTimer != null || playerState.abLoopAMs != null || playerState.loopFile) MaterialTheme.colorScheme.primary else Color.White
                             )
                         }
 

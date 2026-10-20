@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            com.vibeplayer.ui.theme.VibeTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     BrowserPermissionWrapper {
                         BrowserRoot(

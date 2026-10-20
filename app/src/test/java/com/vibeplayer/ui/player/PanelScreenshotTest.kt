@@ -52,7 +52,7 @@ class PanelScreenshotTest {
     )
 
     private fun shot(name: String, content: @Composable () -> Unit) {
-        compose.setContent {
+        compose.setContent { com.vibeplayer.ui.theme.VibeTheme {
             // A stand-in for the video: panels are translucent, so a flat black would hide that.
             Box(
                 Modifier
@@ -61,7 +61,7 @@ class PanelScreenshotTest {
             ) {
                 content()
             }
-        }
+        } }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }

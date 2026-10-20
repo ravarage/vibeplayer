@@ -552,7 +552,7 @@ class PlayerActivity : ComponentActivity() {
                 showDebugOverlay = false
             }
 
-            MaterialTheme {
+            com.vibeplayer.ui.theme.VibeTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = Color.Black

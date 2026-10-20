@@ -3,8 +3,6 @@ package com.vibeplayer.ui.browser
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -37,7 +35,7 @@ class BrowserScreenshotTest {
     @Test
     fun searchResultRows() {
         compose.setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            com.vibeplayer.ui.theme.VibeTheme {
                 Column(Modifier.background(Color(0xFF141218))) {
                     VideoItemRow(
                         video(1, "[grp] Bocchi the Rock! - 01.mkv", "Anime"), onClick = {}, folderName = "Anime",

@@ -50,8 +50,11 @@ import androidx.compose.ui.unit.sp
 /** Colours shared by the player panels. */
 internal object PanelColors {
     val background = Color(0xF2161616)
-    val accent = Color(0xFFBB86FC)
-    val accentSoft = Color(0x26BB86FC)
+    /** The system accent (Material You, so the ROM's theme colour). */
+    val accent: Color @Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.primary
+    val accentSoft: Color @Composable get() = accent.copy(alpha = 0.15f)
+    /** Text on the accent. */
+    val onAccent: Color @Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
     val chip = Color(0x1AFFFFFF)
     val secondaryText = Color(0xFF9E9E9E)
     val scrim = Color(0x55000000)
@@ -220,7 +223,7 @@ fun PanelChip(
             text = text,
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (selected) Color.Black else Color.White,
+            color = if (selected) PanelColors.onAccent else Color.White,
             maxLines = 1
         )
     }
