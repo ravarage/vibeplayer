@@ -99,9 +99,11 @@ def p11_chapters(ctx):
     m = _play_p11(ctx, pause=True)
     need(ctx.log.wait(r"Updated chapters \(4\)", 8, since=m), "no 'Updated chapters (4)' log for the 4-chapter clip")
     _open_panel(ctx, "chapters", "Chapters", "chapters_panel")
+    m2 = ctx.log.mark()  # before the tap: the log line can come before the next poll
     need(_tap_desc(ctx, "chapter_2"), "row chapter_2 (Part A) not found in the Chapters panel")
-    m2 = ctx.log.mark()
-    need(ctx.log.wait(r"seekToChapter 2 res=0", 5, since=m2), "no 'seekToChapter 2 res=0' after tapping Part A")
+    hit = ctx.log.wait(r"seekToChapter 2 res=(-?\d+)", 5, since=m2)
+    need(hit, "no 'seekToChapter 2' log after tapping Part A")
+    need(hit[1].group(1) == "0", f"mpv refused the chapter seek (res={hit[1].group(1)})")
     ctx.sleep(1.0)
     ctx.shot("after_seek")
     # play again: the position is reported while playing
@@ -121,7 +123,10 @@ def p11_skip(ctx):
     m = ctx.log.mark()
     ctx.shot("skip_button")
     need(_tap_desc(ctx, "skip_chapter"), "no skip_chapter button inside the Opening chapter")
-    need(ctx.log.wait(rf"skipChapter 1 -> {PART_A_MS} res=0", 5, since=m), "no 'skipChapter 1 -> 120000 res=0' log")
+    hit = ctx.log.wait(rf"skipChapter 1 -> (\w+) res=(-?\d+)", 5, since=m)
+    need(hit, "no 'skipChapter 1' log after tapping Skip opening")
+    need(hit[1].group(1) == str(PART_A_MS) and hit[1].group(2) == "0",
+         f"skip went to {hit[1].group(1)} with res={hit[1].group(2)}, expected {PART_A_MS} and 0")
     return "Skip opening shown in the Opening chapter, jumped to Part A (screenshot skip_button)"
 
 
