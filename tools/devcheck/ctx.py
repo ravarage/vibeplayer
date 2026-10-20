@@ -69,7 +69,7 @@ class Ctx:
         self.phone = phone
         self.outdir = outdir
         self.sleep = sleep
-        self.log = LogView(phone.logcat_dump, phone.pids)
+        self.log = LogView(phone.logcat_recent, phone.pids)
         self.crashes = []
         self.cur = "init"
         self.evidence = []

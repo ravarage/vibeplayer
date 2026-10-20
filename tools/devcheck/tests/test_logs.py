@@ -51,5 +51,23 @@ class LogTests(unittest.TestCase):
         self.assertIsNone(v.find(r"Loading", since=3))
 
 
+    def test_view_merges_sliding_windows(self):
+        # logcat -t N returns only the newest N lines; the view must keep every line once, in order.
+        full = [f"10-14 12:00:{i // 10:02d}.{(i % 10) * 100:03d}  2222  2222 I VP      : line {i}" for i in range(300)]
+        state = {"end": 40}
+
+        def fetch():
+            end = state["end"]
+            state["end"] = min(end + 37, len(full))
+            return "\n".join(full[max(0, end - 50):end])  # a 50-line window
+
+        v = logs.LogView(fetch, lambda: {2222})
+        for _ in range(12):
+            v.refresh()
+        msgs = [l.msg for l in v.lines]
+        self.assertEqual(msgs, [f"line {i}" for i in range(0, 300)][-len(msgs):])
+        self.assertEqual(msgs[-1], "line 299")
+        self.assertEqual(len(msgs), len(set(msgs)))
+
 if __name__ == "__main__":
     unittest.main()

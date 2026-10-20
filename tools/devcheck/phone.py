@@ -114,6 +114,13 @@ class Phone:
         rc, out, _ = self.run(["logcat", "-d", "-v", "threadtime", "AdrenoVK-0:S"], 40)
         return out
 
+    def logcat_recent(self, lines=4000):
+        """Only the newest lines: the LogView polls every 0.7 s and merges overlapping windows, so it never needs
+        the whole buffer. A full `logcat -d` over Wi-Fi took seconds per poll once the buffer filled, which made
+        every check spend minutes before its first tap (P11 device run, 2026-10-20)."""
+        rc, out, _ = self.run(["logcat", "-v", "threadtime", "-t", str(lines), "AdrenoVK-0:S"], 40)
+        return out
+
     def crash_buffer(self):
         return self.run(["logcat", "-d", "-b", "crash", "-v", "threadtime"], 30)[1]
 
