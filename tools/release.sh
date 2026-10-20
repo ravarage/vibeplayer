@@ -22,7 +22,11 @@ APK="VibePlayer-$VERSION-arm64.apk"
 OUT="dist/$VERSION"
 
 [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "switch to main first (git checkout main && git pull)"; exit 1; }
-[ -z "$(git status --porcelain)" ] || { echo "working tree not clean"; exit 1; }
+if [ -n "$(git status --porcelain)" ]; then
+  echo "working tree not clean (the APK must match the commit). Commit, stash or remove these first:"
+  git status --short
+  exit 1
+fi
 [ -f "$NOTES" ] || { echo "missing $NOTES"; exit 1; }
 [ -f "$HOME/.android/debug.keystore" ] || { echo "missing ~/.android/debug.keystore"; exit 1; }
 git pull --ff-only
