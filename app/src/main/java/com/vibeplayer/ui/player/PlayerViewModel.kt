@@ -48,6 +48,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         .map { it.skipSeconds }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, 10)
 
+    val volumeBoostMax: StateFlow<Int> = appSettingsRepository.appSettingsFlow
+        .map { it.volumeBoostMax }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, com.vibeplayer.player.VolumeBoost.NONE)
+
     val matchDisplayRefreshRate: StateFlow<Boolean> = appSettingsRepository.appSettingsFlow
         .map { it.matchDisplayRefreshRate }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, true)

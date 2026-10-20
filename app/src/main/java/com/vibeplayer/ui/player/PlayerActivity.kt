@@ -50,6 +50,7 @@ import com.vibeplayer.player.PerfLog
 import com.vibeplayer.player.HdrOutputPolicy
 import com.vibeplayer.player.PlayerEngine
 import com.vibeplayer.player.SubtitleCommands
+import com.vibeplayer.player.VolumeBoost
 import com.vibeplayer.data.thumbs.ThumbnailPause
 import com.vibeplayer.data.prefs.AppSettings
 import kotlinx.coroutines.Deferred
@@ -151,7 +152,9 @@ class PlayerActivity : ComponentActivity() {
                 val streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
                 if (streamType == AudioManager.STREAM_MUSIC) {
                     val vol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                    _volumeFlow.value = vol
+                    // Turned down elsewhere (shade, another app): the boost ends with it.
+                    if (vol < maxMusicVolume) playerEngine.setBoostVolume(VolumeBoost.NONE.toDouble())
+                    _volumeFlow.value = currentVolumeLevel()
                     _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
                 }
             }
@@ -163,24 +166,35 @@ class PlayerActivity : ComponentActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
-                val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                val next = (current + 1).coerceAtMost(max)
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-                _volumeFlow.value = next
+                applyVolumeLevel(currentVolumeLevel() + 1)
                 _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
                 return true
             }
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                val next = (current - 1).coerceAtLeast(0)
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-                _volumeFlow.value = next
+                applyVolumeLevel(currentVolumeLevel() - 1)
                 _triggerVolumeIndicatorFlow.value = System.currentTimeMillis()
                 return true
             }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    /** Media volume plus the mpv boost as one level (0..[VolumeBoost.totalLevels]). */
+    private fun currentVolumeLevel(): Int = VolumeBoost.level(
+        audioManager.getStreamVolume(AudioManager.STREAM_MUSIC), playerEngine.boostVolume,
+        maxMusicVolume, viewModel.volumeBoostMax.value
+    )
+
+    /** Sets one level of the combined scale: the media volume, then mpv's volume above 100 %. */
+    private fun applyVolumeLevel(level: Int) {
+        val boostMax = viewModel.volumeBoostMax.value
+        val l = level.coerceIn(0, VolumeBoost.totalLevels(maxMusicVolume, boostMax))
+        val split = VolumeBoost.split(l, maxMusicVolume, boostMax)
+        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) != split.systemVolume) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, split.systemVolume, 0)
+        }
+        playerEngine.setBoostVolume(split.mpvVolume)
+        _volumeFlow.value = l
     }
 
     private fun resolveConfig(
@@ -394,7 +408,7 @@ class PlayerActivity : ComponentActivity() {
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeControlStream = AudioManager.STREAM_MUSIC
-        _volumeFlow.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        _volumeFlow.value = currentVolumeLevel()
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -481,6 +495,12 @@ class PlayerActivity : ComponentActivity() {
             val gesturesEnabled by viewModel.gesturesEnabled.collectAsState()
             val skipSeconds by viewModel.skipSeconds.collectAsState()
             val matchDisplayRefreshRate by viewModel.matchDisplayRefreshRate.collectAsState()
+            val volumeBoostMax by viewModel.volumeBoostMax.collectAsState()
+            // A lower boost setting takes effect at once (the level may now be past the new top).
+            LaunchedEffect(volumeBoostMax) {
+                if (playerEngine.boostVolume > volumeBoostMax) applyVolumeLevel(Int.MAX_VALUE)
+                else _volumeFlow.value = currentVolumeLevel()
+            }
             val zoomState = playerEngine.zoomState
 
             val isInPip by _isInPipFlow.collectAsState()
@@ -543,12 +563,10 @@ class PlayerActivity : ComponentActivity() {
                                     window.attributes = lp
                                 },
                                 volumeFlow = volumeFlow,
-                                maxVolume = maxMusicVolume,
+                                maxVolume = VolumeBoost.totalLevels(maxMusicVolume, volumeBoostMax),
                                 triggerVolumeIndicatorFlow = triggerVolumeIndicatorFlow,
-                                onVolumeChanged = { newVol ->
-                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                                    _volumeFlow.value = newVol
-                                },
+                                onVolumeChanged = { level -> applyVolumeLevel(level) },
+                                volumePercent = { level -> VolumeBoost.percent(level, maxMusicVolume, volumeBoostMax) },
                                 getCurrentPositionMs = { playerEngine.currentPositionMs() },
                                 durationMs = playerState.durationMs,
                                 zoomState = zoomState,

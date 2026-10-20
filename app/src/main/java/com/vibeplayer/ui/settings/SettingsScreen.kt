@@ -61,6 +61,7 @@ fun SettingsScreen(
     var showAudioLangDialog by remember { mutableStateOf(false) }
     var showSubLangDialog by remember { mutableStateOf(false) }
     var showSubtitleModeDialog by remember { mutableStateOf(false) }
+    var showVolumeBoostDialog by remember { mutableStateOf(false) }
 
     val availableGpuApis = remember { com.vibeplayer.player.PlayerEngine.getGpuApiChoices() }
     val vulkanSupported = remember(availableGpuApis) {
@@ -210,6 +211,13 @@ fun SettingsScreen(
             )
 
             SettingsClickableRow(
+                title = "Volume boost",
+                subtitle = volumeBoostLabel(settings.volumeBoostMax),
+                description = "Lets the volume swipe and the volume keys go past 100 % when the media volume is at its maximum",
+                onClick = { showVolumeBoostDialog = true }
+            )
+
+            SettingsClickableRow(
                 title = "Hold Speed",
                 subtitle = com.vibeplayer.ui.player.HoldGesture.label(settings.holdSpeed),
                 description = "Speed while pressing and holding the right half of the video",
@@ -344,6 +352,18 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    if (showVolumeBoostDialog) {
+        SettingsChoiceDialog(
+            title = "Volume boost",
+            options = com.vibeplayer.player.VolumeBoost.CHOICES,
+            selected = settings.volumeBoostMax,
+            label = ::volumeBoostLabel,
+            description = { if (it > 100) "Loud: can distort on the phone speaker" else null },
+            onSelect = { onUpdateSettings(settings.copy(volumeBoostMax = it)) },
+            onDismiss = { showVolumeBoostDialog = false }
+        )
     }
 
     // Playback Mode Dialog
@@ -862,4 +882,63 @@ fun SettingsInfoRow(
             )
         }
     }
+}
+
+private fun volumeBoostLabel(max: Int): String = if (max <= 100) "Off" else "Up to $max %"
+
+/** A radio list that closes on a choice; shared by the newer settings. */
+@Composable
+fun <T> SettingsChoiceDialog(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    description: (T) -> String? = { null },
+    onSelect: (T) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                options.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(option)
+                                onDismiss()
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = option == selected,
+                            onClick = {
+                                onSelect(option)
+                                onDismiss()
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(text = label(option), fontWeight = FontWeight.SemiBold)
+                            description(option)?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }

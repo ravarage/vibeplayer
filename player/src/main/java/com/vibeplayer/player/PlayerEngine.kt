@@ -796,7 +796,7 @@ class PlayerEngine(
                 speedOverride = null
                 if (!initHandle()) return@execute
                 if (isDucked && handle != 0L) {
-                    MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
+                    MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: boostVolume) * 0.3)
                 }
                 Log.w("VP", "$why: new mpv handle (${if (handle != 0L) "ok" else "failed"}) with ${playbackConfig.mode}/${playbackConfig.renderer}; asking the UI for a fresh surface")
                 // The old Surface still belongs to the abandoned handle's video output.
@@ -1109,6 +1109,10 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_HDR_GAMMA, "video-params/gamma", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_CHAPTER, "chapter", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_CHAPTER_COUNT, "chapter-list/count", MpvFormat.INT64)
+
+        // Volume boost: mpv may go above 100 %; a new handle starts at the current boost.
+        MpvNative.setPropertyLong(handle, "volume-max", VolumeBoost.MPV_VOLUME_MAX.toLong())
+        MpvNative.setPropertyDouble(handle, "volume", boostVolume)
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -1645,7 +1649,7 @@ class PlayerEngine(
             }
             // P5-03: the new handle starts at full volume; keep an audio-focus duck in progress.
             if (isDucked && handle != 0L) {
-                MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: 100.0) * 0.3)
+                MpvNative.setPropertyDouble(handle, "volume", (preDuckVolume ?: boostVolume) * 0.3)
             }
 
             if (curPath.isNotEmpty() && reloadCurrentFile) {
@@ -2260,6 +2264,28 @@ class PlayerEngine(
     @Volatile private var isDucked = false
     @Volatile private var preDuckVolume: Double? = null
 
+    /** mpv volume in percent: 100, or more while the volume is boosted above the media maximum. */
+    @Volatile var boostVolume: Double = VolumeBoost.NONE.toDouble()
+        private set
+
+    /** Sets mpv's own volume (100..[VolumeBoost.MPV_VOLUME_MAX]); an audio-focus duck in progress stays ducked. */
+    fun setBoostVolume(percent: Double) {
+        val v = percent.coerceIn(VolumeBoost.NONE.toDouble(), VolumeBoost.MPV_VOLUME_MAX.toDouble())
+        if (v == boostVolume) return
+        boostVolume = v
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            if (isDucked) {
+                preDuckVolume = v
+                MpvNative.setPropertyDouble(handle, "volume", v * 0.3)
+            } else {
+                MpvNative.setPropertyDouble(handle, "volume", v)
+            }
+            Log.i("VP", "setBoostVolume $v (ducked=$isDucked)")
+        }
+    }
+
     /**
      * Lowers mpv volume to 30% of its current value on transient audio focus loss (CAN_DUCK),
      * and restores it when focus is regained.
@@ -2270,7 +2296,7 @@ class PlayerEngine(
             if (handle == 0L) return@executeCommand
             if (duck) {
                 if (isDucked) return@executeCommand
-                val cur = MpvNative.getPropertyDouble(handle, "volume") ?: 100.0
+                val cur = MpvNative.getPropertyDouble(handle, "volume") ?: boostVolume
                 preDuckVolume = cur
                 isDucked = true
                 val ducked = cur * 0.3
@@ -2278,7 +2304,7 @@ class PlayerEngine(
                 Log.i("VP", "PlayerEngine ducking audio: volume $cur -> $ducked")
             } else {
                 if (!isDucked) return@executeCommand
-                val restore = preDuckVolume ?: 100.0
+                val restore = preDuckVolume ?: boostVolume
                 MpvNative.setPropertyDouble(handle, "volume", restore)
                 Log.i("VP", "PlayerEngine unducking audio: volume restored to $restore")
                 preDuckVolume = null

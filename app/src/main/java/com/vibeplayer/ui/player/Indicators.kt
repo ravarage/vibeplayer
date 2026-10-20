@@ -104,7 +104,9 @@ fun VolumeIndicator(
     visible: Boolean,
     volume: Int,
     maxVolume: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Shown instead of volume / maxVolume; above 100 means boosted. */
+    percent: Int? = null
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -135,9 +137,10 @@ fun VolumeIndicator(
                     color = Color.White
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                val percent = (fraction * 100f).roundToInt()
+                val shownPercent = percent ?: (fraction * 100f).roundToInt()
+                val boosted = shownPercent > 100
                 Text(
-                    text = "$percent%",
+                    text = "$shownPercent%",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -156,7 +159,7 @@ fun VolumeIndicator(
                             .fillMaxHeight(fraction = fraction)
                             .width(6.dp)
                             .clip(RoundedCornerShape(3.dp))
-                            .background(Color.White)
+                            .background(if (boosted) Color(0xFFFFB74D) else Color.White)
                     )
                 }
             }
