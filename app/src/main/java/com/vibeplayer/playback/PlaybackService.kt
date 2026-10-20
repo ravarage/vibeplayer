@@ -464,6 +464,32 @@ class PlaybackService : Service() {
     }
 
     private var pausedTimeoutJob: Job? = null
+
+    private val _sleepTimer = MutableStateFlow<SleepTimer?>(null)
+    /** The running sleep timer, or null. */
+    val sleepTimer: kotlinx.coroutines.flow.StateFlow<SleepTimer?> = _sleepTimer
+    private var sleepTimerJob: Job? = null
+
+    /** Starts a sleep timer (replacing a running one), or stops it with null. */
+    fun setSleepTimer(timer: SleepTimer?) {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _sleepTimer.value = timer
+        Log.i("VP", "Sleep timer: $timer")
+        val endsAt = timer?.endsAtElapsedMs ?: return
+        sleepTimerJob = serviceScope.launch {
+            delay((endsAt - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L))
+            onSleepTimerFired()
+        }
+    }
+
+    private fun onSleepTimerFired() {
+        Log.i("VP", "Sleep timer fired: pausing")
+        sleepTimerJob = null
+        _sleepTimer.value = null
+        playerEngine.pause()
+        playerEngine.showOnScreenMessage("Sleep timer: paused")
+    }
     @Volatile private var isForegroundService = false
 
     private fun mapShaderPreset(option: ShaderPresetOption): ShaderPreset = when (option) {
@@ -745,6 +771,12 @@ class PlaybackService : Service() {
 
     private suspend fun onPlaybackEnded() {
         val endedPath = currentVideoPath ?: return
+        if (_sleepTimer.value?.atEndOfFile == true) {
+            // keep-open already holds the last frame paused; nothing more is played.
+            onSleepTimerFired()
+            checkShouldStop()
+            return
+        }
         if (!appSettingsRepository.appSettingsFlow.first().autoPlayNext) {
             checkShouldStop()
             return

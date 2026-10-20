@@ -122,6 +122,8 @@ class PlayerActivity : ComponentActivity() {
 
     private lateinit var audioManager: AudioManager
     private val _volumeFlow = MutableStateFlow(0)
+    /** Rotate button in the More sheet; Auto follows the video. For this player screen only. */
+    private val rotationMode = MutableStateFlow(RotationMode.AUTO)
     private val _triggerVolumeIndicatorFlow = MutableStateFlow(0L)
     private val volumeFlow = _volumeFlow.asStateFlow()
     private val triggerVolumeIndicatorFlow = _triggerVolumeIndicatorFlow.asStateFlow()
@@ -419,21 +421,14 @@ class PlayerActivity : ComponentActivity() {
         }
         hideSystemBars()
 
-        // Auto-orient based on video aspect ratio (P1-09)
+        // Auto-orient based on video aspect ratio (P1-09), unless the Rotate button fixed it.
         lifecycleScope.launch {
-            playerEngine.state.collect { state ->
-                val w = state.videoWidth
-                val h = state.videoHeight
-                if (w > 0 && h > 0) {
-                    val targetOrientation = if (w >= h) {
-                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                    } else {
-                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                    }
-                    if (!isInPictureInPictureMode && !_isInPipFlow.value && requestedOrientation != targetOrientation) {
-                        Log.i("VP", "Auto-orienting: ${w}x${h} -> orientation=$targetOrientation")
-                        requestedOrientation = targetOrientation
-                    }
+            kotlinx.coroutines.flow.combine(playerEngine.state, rotationMode) { state, mode ->
+                mode.orientationFor(state.videoWidth, state.videoHeight)
+            }.collect { targetOrientation ->
+                if (targetOrientation != null && !isInPictureInPictureMode && !_isInPipFlow.value && requestedOrientation != targetOrientation) {
+                    Log.i("VP", "Orienting (${rotationMode.value}): orientation=$targetOrientation")
+                    requestedOrientation = targetOrientation
                 }
             }
         }
@@ -497,6 +492,8 @@ class PlayerActivity : ComponentActivity() {
             val matchDisplayRefreshRate by viewModel.matchDisplayRefreshRate.collectAsState()
             val volumeBoostMax by viewModel.volumeBoostMax.collectAsState()
             val nightMode by viewModel.nightMode.collectAsState()
+            val sleepTimer by viewModel.sleepTimer.collectAsState()
+            val currentRotation by rotationMode.collectAsState()
             // A lower boost setting takes effect at once (the level may now be past the new top).
             LaunchedEffect(volumeBoostMax) {
                 if (playerEngine.boostVolume > volumeBoostMax) applyVolumeLevel(Int.MAX_VALUE)
@@ -620,6 +617,10 @@ class PlayerActivity : ComponentActivity() {
                                 onToggleMode = { viewModel.togglePlaybackMode() },
                                 nightMode = nightMode,
                                 onToggleNightMode = { viewModel.setNightMode(!nightMode) },
+                                sleepTimer = sleepTimer,
+                                onSetSleepTimer = { viewModel.setSleepTimer(it) },
+                                rotationMode = currentRotation,
+                                onCycleRotation = { rotationMode.value = rotationMode.value.next() },
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                                     val current = playerState.aspect ?: "fit"

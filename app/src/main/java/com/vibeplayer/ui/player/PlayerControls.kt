@@ -94,6 +94,10 @@ fun PlayerControls(
     onLoadSubtitle: (() -> Unit)? = null,
     nightMode: Boolean = false,
     onToggleNightMode: (() -> Unit)? = null,
+    sleepTimer: com.vibeplayer.playback.SleepTimer? = null,
+    onSetSleepTimer: (com.vibeplayer.playback.SleepTimer?) -> Unit = {},
+    rotationMode: RotationMode = RotationMode.AUTO,
+    onCycleRotation: () -> Unit = {},
     modifier: Modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout)
 ) {
     TrackRecomposition("PlayerControls")
@@ -116,14 +120,16 @@ fun PlayerControls(
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showSyncSheet by remember { mutableStateOf(false) }
     var showChapterSheet by remember { mutableStateOf(false) }
+    var showMoreSheet by remember { mutableStateOf(false) }
 
-    val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet || showChapterSheet
+    val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet || showChapterSheet || showMoreSheet
     BackHandler(enabled = anySheetOpen) {
         showAudioTrackSheet = false
         showSubTrackSheet = false
         showSpeedSheet = false
         showSyncSheet = false
         showChapterSheet = false
+        showMoreSheet = false
         interactionEvents.value = System.currentTimeMillis()
     }
 
@@ -461,6 +467,28 @@ fun PlayerControls(
                         IconButton(
                             onClick = {
                                 interactionEvents.value = System.currentTimeMillis()
+                                showMoreSheet = true
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics {
+                                    contentDescription = "more"
+                                    testTag = "more"
+                                }
+                        ) {
+                            Text(
+                                text = "⋮",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (sleepTimer != null || playerState.abLoopAMs != null || playerState.loopFile) Color(0xFFBB86FC) else Color.White
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        IconButton(
+                            onClick = {
+                                interactionEvents.value = System.currentTimeMillis()
                                 onToggleLock()
                             },
                             modifier = Modifier
@@ -625,6 +653,24 @@ fun PlayerControls(
                 onSelectChapter = { playerEngine.seekToChapter(it) },
                 onDismiss = {
                     showChapterSheet = false
+                    interactionEvents.value = System.currentTimeMillis()
+                }
+            )
+        }
+
+        if (showMoreSheet) {
+            MoreSheet(
+                sleepTimer = sleepTimer,
+                onSetSleepTimer = onSetSleepTimer,
+                abLoopAMs = playerState.abLoopAMs,
+                abLoopBMs = playerState.abLoopBMs,
+                onCycleAbLoop = { playerEngine.cycleAbLoop() },
+                loopFile = playerState.loopFile,
+                onToggleLoopFile = { playerEngine.setLoopFile(!playerState.loopFile) },
+                rotationMode = rotationMode,
+                onCycleRotation = onCycleRotation,
+                onDismiss = {
+                    showMoreSheet = false
                     interactionEvents.value = System.currentTimeMillis()
                 }
             )

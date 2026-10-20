@@ -1278,7 +1278,10 @@ class PlayerEngine(
         }
         loadInternalCount++
         currentFilePath = path
-        if (identity != currentFileIdentity) autoSkippedChapters.clear()
+        if (identity != currentFileIdentity) {
+            autoSkippedChapters.clear()
+            _state.update { it.copy(abLoopAMs = null, abLoopBMs = null, loopFile = false) }
+        }
         currentFileIdentity = identity
         externalSubSources.removeAll { it.fileIdentity != identity }
         // B-08: one place every load passes through (open, reconfigure, fallbacks, stall reload).
@@ -1337,6 +1340,13 @@ class PlayerEngine(
             // Always written: setSpeed() changes mpv's global speed, so a file without its own
             // speed (1.0) would otherwise inherit the previous file's.
             options.add("speed=" + String.format(java.util.Locale.US, "%.2f", speed))
+
+            // A-B repeat and loop are global mpv options: written on every load so a new file starts
+            // without them and a reload of the same file (reconfigure, fallback) keeps them.
+            val st = _state.value
+            options.add("ab-loop-a=" + (st.abLoopAMs?.let { AbLoop.seconds(it) } ?: "no"))
+            options.add("ab-loop-b=" + (st.abLoopBMs?.let { AbLoop.seconds(it) } ?: "no"))
+            options.add("loop-file=" + if (st.loopFile) "inf" else "no")
 
             // P4-13: the delays are per file; a new file must not inherit the previous file's values,
             // so the defaults are written explicitly. The subtitle style is global.
@@ -1868,6 +1878,42 @@ class PlayerEngine(
                 MpvNative.setPropertyBoolean(handle, "pause", true)
                 Log.i("VP", "pause")
             }
+        }
+    }
+
+    /** A-B repeat: the first call sets A at the current position, the second sets B, the third clears both. */
+    fun cycleAbLoop() {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val posMs = MpvNative.getPropertyDouble(handle, "time-pos")?.takeIf { !it.isNaN() }?.let { (it * 1000.0).toLong() }
+                ?: return@executeCommand
+            val st = _state.value
+            val (a, b) = AbLoop.next(st.abLoopAMs, st.abLoopBMs, posMs)
+            MpvNative.setPropertyString(handle, "ab-loop-a", a?.let { AbLoop.seconds(it) } ?: "no")
+            MpvNative.setPropertyString(handle, "ab-loop-b", b?.let { AbLoop.seconds(it) } ?: "no")
+            _state.update { it.copy(abLoopAMs = a, abLoopBMs = b) }
+            Log.i("VP", "A-B repeat: a=$a b=$b")
+        }
+    }
+
+    fun setLoopFile(on: Boolean) {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            MpvNative.setPropertyString(handle, "loop-file", if (on) "inf" else "no")
+            _state.update { it.copy(loopFile = on) }
+            Log.i("VP", "loop-file $on")
+        }
+    }
+
+    /** One frame forward or back while paused (mpv frame-step / frame-back-step). */
+    fun frameStep(forward: Boolean) {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.command(handle, arrayOf(if (forward) "frame-step" else "frame-back-step"))
+            Log.i("VP", "frame step forward=$forward res=$res")
         }
     }
 

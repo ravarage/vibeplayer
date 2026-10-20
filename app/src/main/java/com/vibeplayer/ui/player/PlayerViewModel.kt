@@ -93,6 +93,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentPath = MutableStateFlow<String?>(null)
     val currentPath: StateFlow<String?> = _currentPath.asStateFlow()
 
+    private val _sleepTimer = MutableStateFlow<com.vibeplayer.playback.SleepTimer?>(null)
+    val sleepTimer: StateFlow<com.vibeplayer.playback.SleepTimer?> = _sleepTimer.asStateFlow()
+
+    fun setSleepTimer(timer: com.vibeplayer.playback.SleepTimer?) {
+        (service ?: PlaybackService.currentInstance)?.setSleepTimer(timer)
+    }
+
     private val _neighbours = MutableStateFlow(Neighbours())
     val neighbours: StateFlow<Neighbours> = _neighbours.asStateFlow()
 
@@ -114,6 +121,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 launch {
                     s.neighbours.collect { _neighbours.value = Neighbours(it.previous, it.next) }
+                }
+                launch {
+                    s.sleepTimer.collect { _sleepTimer.value = it }
                 }
             }
             pendingOpen?.let { req ->
