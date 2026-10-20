@@ -16,13 +16,16 @@ enum class ShaderPreset(val displayName: String) {
      * Returns the ordered list of shader file names for this preset.
      * Empty if [mode] is not [PlaybackMode.QUALITY] or if preset is [NONE].
      *
-     * The same chain on every renderer. [CLAMP_HIGHLIGHTS] used to be left out on OpenGL ES because its
-     * first pass did not compile on the phone's GLES driver (P8-02: "'MAINPRESUB_texOff' : no matching
-     * overloaded function found"); the bundled copy now computes its offsets into a local vec2 first.
-     * Should a GLES driver still reject it, libplacebo disables that one stage and the rest keep running.
+     * On OpenGL ES ([renderer] = [Renderer.GLES]) the Anime4K chains leave out [CLAMP_HIGHLIGHTS]: the
+     * phone's Adreno GLES compiler cannot call libplacebo's texture-offset macro through the HOOKED_ /
+     * MAIN_ alias ("'MAINPRESUB_texOff' : no matching overloaded function found", P8-02; a rewrite with a
+     * plain vec2 argument failed the same way on the device, 2026-10-20). The same source compiles with
+     * glslang and on Vulkan, where the stage stays.
      */
-    @Suppress("UNUSED_PARAMETER")
-    fun getShaderFiles(mode: PlaybackMode, renderer: Renderer = Renderer.VULKAN): List<String> = chain(mode)
+    fun getShaderFiles(mode: PlaybackMode, renderer: Renderer = Renderer.VULKAN): List<String> {
+        val files = chain(mode)
+        return if (renderer == Renderer.GLES) files.filter { it != CLAMP_HIGHLIGHTS } else files
+    }
 
     private fun chain(mode: PlaybackMode): List<String> {
         if (mode != PlaybackMode.QUALITY) return emptyList()
@@ -78,7 +81,7 @@ enum class ShaderPreset(val displayName: String) {
     }
 
     companion object {
-        /** Anime4K de-ring stage (hooks MAIN and PREKERNEL); first in the A, B and C chains. */
+        /** Anime4K de-ring stage (hooks MAIN and PREKERNEL); left out on OpenGL ES, see [getShaderFiles]. */
         const val CLAMP_HIGHLIGHTS = "Anime4K_Clamp_Highlights.glsl"
     }
 }

@@ -102,12 +102,14 @@ class ShaderPresetTest {
     }
 
     @Test
-    fun glesRunsTheFullAnime4kChainIncludingClampHighlights() {
+    fun glesLeavesOutClampHighlightsFromAnime4kChains() {
         for (preset in listOf(ShaderPreset.ANIME4K_A, ShaderPreset.ANIME4K_B, ShaderPreset.ANIME4K_C)) {
             val vulkan = preset.getShaderFiles(PlaybackMode.QUALITY, Renderer.VULKAN)
             val gles = preset.getShaderFiles(PlaybackMode.QUALITY, Renderer.GLES)
             assertEquals(ShaderPreset.CLAMP_HIGHLIGHTS, vulkan.first())
-            assertEquals(vulkan, gles)
+            assertEquals(vulkan.drop(1), gles)
+            assertFalse(ShaderPreset.CLAMP_HIGHLIGHTS in gles)
+            // The default (no renderer given) is the full chain.
             assertEquals(vulkan, preset.getShaderFiles(PlaybackMode.QUALITY))
         }
     }
@@ -122,8 +124,9 @@ class ShaderPresetTest {
     }
 
     @Test
-    fun glesPropertyStartsWithClampHighlights() {
+    fun glesPropertyStartsWithRestoreStage() {
         val prop = ShaderPreset.ANIME4K_A.toGlslShadersProperty(PlaybackMode.QUALITY, "/shaders", Renderer.GLES)
-        assertTrue(prop.startsWith("/shaders/Anime4K_Clamp_Highlights.glsl:"))
+        assertTrue(prop.startsWith("/shaders/Anime4K_Restore_CNN_M.glsl:"))
+        assertFalse(prop.contains("Clamp_Highlights"))
     }
 }

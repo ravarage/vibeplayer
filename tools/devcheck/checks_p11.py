@@ -206,22 +206,28 @@ def p11_audio_session(ctx):
     return f"session {hit[1].group(1)} announced; with ViPER4Android installed, check it lists Vibe Player"
 
 
-@check("p11_anime4k_gles", "Anime4K A on OpenGL ES (quality mode): every pass compiles, picture moves (P8-02)")
+@check("p11_anime4k_gles", "Anime4K A on OpenGL ES (quality mode): which shader passes compile, picture moves (P8-02)")
 def p11_anime4k_gles(ctx):
     m = _play_p11(ctx, extras="--es mode quality --es renderer gles --es shader a", timeout=30)
     # The preset is applied more than once while opening (NONE at start-up, then ANIME4K_A while the config is
     # still Efficient, where the list is empty): wait for the Quality one.
     applied = ctx.log.wait(r"Applied shader preset ANIME4K_A \(mode=QUALITY, renderer=(\w+)\): (\S+)", 12, since=m)
     need(applied, "no 'Applied shader preset ANIME4K_A (mode=QUALITY, ...)' log")
-    need("Clamp_Highlights" in applied[1].group(0), "Clamp_Highlights is not in the applied chain")
     need(applied[1].group(1).upper() == "GLES", f"renderer is {applied[1].group(1)}, expected GLES")
+    chain = [x.rsplit("/", 1)[-1] for x in applied[1].group(2).split(":")]
+    ctx.trace("chain: " + ", ".join(chain))
     ctx.sleep(4.0)
     ctx.log.refresh()
-    errs = ctx.log.find_all(r"(?i)no matching overloaded function|shader compil\w* fail|failed to compile|disabl\w+ hook", m)
+    # Every failing shader: the line after a compile failure in libplacebo's source dump names the offending call.
+    errs = ctx.log.find_all(r"shader compile log \(status=0\): (.*)", m)
+    disabled = ctx.log.find_all(r"Failed executing hook, disabling", m)
+    for l, mm in errs:
+        ctx.trace("compile error: " + mm.group(1))
     ctx.need_moving("picture with Anime4K A on GLES")
     ctx.shot("anime4k_gles")
-    need(not errs, "shader error on GLES: " + errs[0][1].group(0) if errs else "")
-    return "all Anime4K A passes compiled on GLES, picture moves (screenshot anime4k_gles)"
+    need(not errs, f"{len(errs)} shader compile error(s), {len(disabled)} hook(s) disabled on GLES "
+                   f"(chain: {', '.join(chain)}); first: {errs[0][1].group(1) if errs else ''} - see trace.txt")
+    return f"Anime4K A on GLES: {len(chain)} shaders ({', '.join(chain)}), no compile error, picture moves"
 
 
 @check("p11_panels_look", "Screenshots of the compact panels for a human look (P11-08)")

@@ -31,9 +31,10 @@ Built without the phone; every item still needs its device check (PROGRESS.md) b
 - **Browser (P11-13)**: folder name in search results, a ✓ on watched videos, best matches first.
 - **Screenshot tests**: the player panels and browser rows render on the JVM (Robolectric, Roborazzi).
 
-### Fixed
-- **Anime4K on OpenGL ES (P8-02)**: the de-ring pass is rewritten so it can compile on the Adreno driver (device
-  check open).
+### Known issue
+- **Anime4K on OpenGL ES (P8-02)**: the device check (2026-10-20) showed the Adreno GLES compiler rejecting
+  libplacebo's texture-offset macro when called through its alias, in Clamp_Highlights (also after a rewrite)
+  and in a Restore CNN pass. Clamp_Highlights stays left out on GLES; Anime4K on Vulkan and GSR are unaffected.
 
 ## [0.6.0] - 2026-10-16 (versionCode 4)
 

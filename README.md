@@ -94,8 +94,9 @@ what will not.
 
 - **Start stall (B-08)**: MediaCodec sometimes never delivers the first frame of an H.264 file (1 in 10 to 1 in
   20 cold opens on the default row). A watchdog recovers it within 6 to 10 seconds; it never stays black.
-- **Anime4K on OpenGL ES**: presets A, B and C failed to compile one pass on OpenGL ES; a rewritten pass is in the
-  `player-extras` branch and still needs a device check. They work on Vulkan; Snapdragon GSR works on both.
+- **Anime4K on OpenGL ES**: the phone's Adreno GLES compiler rejects some Anime4K passes (libplacebo's
+  texture-offset macro through its alias); the failing stages are skipped and the rest run. Anime4K works fully on
+  Vulkan; Snapdragon GSR works on both.
 - **External subtitles**: `.srt` / `.ass` files next to a video in shared storage are not auto-loaded on
   Android 13 and later, because the app only asks for access to videos; users can load them via the "Load subtitle file…" SAF picker.
 - **Vulkan is experimental**: it depends on the owner's unfinished Vulkan 1.3 driver port.
