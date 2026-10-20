@@ -794,3 +794,20 @@ existing track_memory and speed checks still pass; the portrait bar does not ove
 (`audiotrack-session-id`) and announced with ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION (CLOSE on service end).
 *Accept*: `p11_audio_session` passes; with ViPER4Android installed its effects are audible on Vibe Player.
 
+**P11-10 Picture adjustments** — brightness, contrast, saturation, gamma (-100..100) in the More panel, live while
+dragging, saved on release, applied to every file and a new handle (mpv video equalizer; GPU renderer paths).
+*Accept*: each slider visibly changes the picture on H.264 (Efficient) and AV1 (Quality); Reset restores it;
+values survive the next file and a quality toggle.
+
+**P11-11 Subtitle text style** — Settings: colour, outline (none / thin / normal = mpv 1.65 / thick), background box
+(`sub-border-style=background-box`), bold, for plain-text subtitles; ASS untouched unless Override ASS style.
+*Accept*: an SRT shows the chosen colour, outline, box and bold; Bocchi's ASS looks unchanged.
+
+**P11-12 Equalizer** — 🎚 EQ chip in the audio panel: on/off, presets, 10 bands 31 Hz to 16 kHz, -12..+12 dB
+(FFmpeg equalizer in the af chain before night mode, pre-cut by the largest boost). *Accept*: Bass boost is
+audibly stronger in the bass without clipping; the mpv log shows the af change with no error; survives the next file.
+
+**P11-13 Browser extras** — folder name in search results, ✓ badge for watched files (WatchProgress, the resume
+rule), results ranked prefix / phrase / rest. *Accept*: a finished episode shows ✓ in the folder and search;
+"bocchi the rock" lists names that start with it first.
+

@@ -25,6 +25,11 @@ Built without the phone; every item still needs its device check (PROGRESS.md).
 - **Compact panels (P11-08)**: audio, subtitles, speed, sync, chapters and More open as a side panel in
   landscape, so the video stays visible; smaller popups; the portrait top bar fits.
 - **ViPER4Android and equalizer apps (P11-09)** can attach to the player's audio.
+- **Picture adjustments (P11-10)**: brightness, contrast, saturation and gamma in the More panel.
+- **Subtitle text style (P11-11)**: colour, outline, background box and bold for SRT and other plain subtitles.
+- **Equalizer (P11-12)**: 10 bands with presets (Flat, Bass boost, Voice, Treble, Loudness).
+- **Browser (P11-13)**: folder name in search results, a ✓ on watched videos, best matches first.
+- **Screenshot tests**: the player panels and browser rows render on the JVM (Robolectric, Roborazzi).
 
 ### Fixed
 - **Anime4K on OpenGL ES (P8-02)**: the de-ring pass is rewritten so it can compile on the Adreno driver (device
