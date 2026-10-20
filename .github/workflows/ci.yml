@@ -1,11 +1,12 @@
-# Compiles the app and runs the JVM unit tests on every push and pull request.
+# Compiles the app and runs the JVM unit tests for each release tag (v*, made by tools/release.sh) and when
+# started by hand (Actions > CI > Run workflow), not on every push.
 # The native libraries (native/build.sh) are not built here: compiling Kotlin and the unit tests do not
 # need them. Building the APK and the device checks stay on the owner's machine.
 name: CI
 
 on:
   push:
-  pull_request:
+    tags: ["v*"]
   workflow_dispatch:
 
 concurrency:
