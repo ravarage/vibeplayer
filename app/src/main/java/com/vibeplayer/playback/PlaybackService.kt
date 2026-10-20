@@ -432,7 +432,6 @@ class PlaybackService : Service() {
                     } else {
                         updateNoisyReceiver(true)
                         thermalManager.onPlaybackStarted()
-                        audioEffectSession.open()
                     }
                 }
 
@@ -462,6 +461,15 @@ class PlaybackService : Service() {
         serviceScope.launch {
             playerEngine.position.collect {
                 playerAdapter?.notifyStateChanged()
+            }
+        }
+
+        // Effect apps (ViPER4Android): announce the session once a file is actually playing. Not tied to the
+        // paused -> playing edge above: mpv reports pause=false right at initialisation, so when that happens
+        // before this service collects, no edge is ever seen (device run 2026-10-20).
+        serviceScope.launch {
+            playerEngine.state.map { !it.paused && it.durationMs > 0L }.distinctUntilChanged().collect { playing ->
+                if (playing) audioEffectSession.open()
             }
         }
 

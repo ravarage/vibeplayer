@@ -136,7 +136,17 @@ def p11_more(ctx):
     _open_panel(ctx, "more", "More", "more_panel")
     m = ctx.log.mark()
     need(_tap_desc(ctx, "ab_repeat"), "ab_repeat row not found")
+    need(ctx.log.wait(r"A-B repeat: a=\d+ b=null", 4, since=m), "first A-B tap did not set A")
+    # Paused, B would land on A (ignored by design): close the panel, play ~2 s, pause, reopen.
+    _close_panel(ctx)
+    ns = ctx.nodes()
+    pp = uix.find(ns, desc="play_pause") if ns else None
+    need(pp, "play_pause not found to move on between A and B")
+    ctx.phone.tap(*uix.center(pp))
     ctx.sleep(2.0)
+    ctx.phone.tap(*uix.center(pp))  # same place, within the 3 s before the controls hide
+    ctx.sleep(0.8)
+    _open_panel(ctx, "more", "More", "more_panel_b")
     need(_tap_desc(ctx, "ab_repeat"), "ab_repeat row not found for B")
     hit = ctx.log.wait(r"A-B repeat: a=(\d+) b=(\d+)", 5, since=m)
     need(hit, "no 'A-B repeat: a=.. b=..' after two taps")
@@ -199,8 +209,8 @@ def p11_audio_session(ctx):
 @check("p11_anime4k_gles", "Anime4K A on OpenGL ES (quality mode): every pass compiles, picture moves (P8-02)")
 def p11_anime4k_gles(ctx):
     m = _play_p11(ctx, extras="--es mode quality --es renderer gles --es shader a", timeout=30)
-    applied = ctx.log.wait(r"Applied shader preset .*renderer=(\w+).*", 8, since=m)
-    need(applied, "no 'Applied shader preset' log")
+    applied = ctx.log.wait(r"Applied shader preset ANIME4K_A .*renderer=(\w+).*", 10, since=m)
+    need(applied, "no 'Applied shader preset ANIME4K_A' log (the startup line is preset NONE)")
     need("Clamp_Highlights" in applied[1].group(0), "Clamp_Highlights is not in the applied chain")
     need(applied[1].group(1).upper() == "GLES", f"renderer is {applied[1].group(1)}, expected GLES")
     ctx.sleep(4.0)
