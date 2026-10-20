@@ -974,7 +974,7 @@ class PlaybackService : Service() {
             } else if (fileSettings != null) {
                 val dur = fileSettings.durationMs
                 val pos = fileSettings.positionMs
-                if (dur > 0L && pos >= (dur * 0.95)) {
+                if (com.vibeplayer.data.db.WatchProgress.isWatched(pos, dur)) {
                     Log.i("VP", "Resume: pos $pos ms is in last 5% of duration $dur ms -> restarting from 0")
                     0L
                 } else if (pos > 0L) {

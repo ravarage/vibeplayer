@@ -32,4 +32,12 @@ class VideoSearchTest {
         assertTrue(m("anything.mp4", "  - "))
         assertEquals(emptyList<String>(), VideoSearch.words(" .. "))
     }
+
+    @Test
+    fun phraseAndPrefixMatchesComeFirst() {
+        val names = listOf("Rock the Bocchi.mkv", "[grp] Bocchi the Rock - 01.mkv", "Bocchi the Rock - 02.mkv", "Other.mkv")
+            .map { VideoSearch.normalize(it) }
+        assertEquals(listOf(2, 1, 0), VideoSearch.matchOrder(names, "bocchi the rock"))
+        assertEquals(listOf(0, 1, 2, 3), VideoSearch.matchOrder(names, ""))
+    }
 }

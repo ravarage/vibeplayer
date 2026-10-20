@@ -26,9 +26,28 @@ object VideoSearch {
 
     fun index(videos: List<VideoItem>): Index = Index(videos, videos.map { normalize(it.displayName) })
 
+    /**
+     * Matches in the index's order, best first: names that start with the query, then names that hold it
+     * as one phrase, then the rest (every word somewhere). The order within each group is kept.
+     */
     fun filter(index: Index, query: String): List<VideoItem> {
+        if (words(query).isEmpty()) return index.videos
+        return matchOrder(index.names, query).map { index.videos[it] }
+    }
+
+    /** Positions in [normalizedNames] that match [query], in the ranked order of [filter]. */
+    fun matchOrder(normalizedNames: List<String>, query: String): List<Int> {
         val w = words(query)
-        if (w.isEmpty()) return index.videos
-        return index.videos.filterIndexed { i, _ -> w.all { index.names[i].contains(it) } }
+        val phrase = w.joinToString(" ")
+        return normalizedNames.indices
+            .filter { i -> w.all { normalizedNames[i].contains(it) } }
+            .sortedBy { i ->
+                val n = normalizedNames[i]
+                when {
+                    n.startsWith(phrase) -> 0
+                    n.contains(phrase) -> 1
+                    else -> 2
+                }
+            }
     }
 }

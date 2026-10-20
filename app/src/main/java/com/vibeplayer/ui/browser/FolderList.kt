@@ -144,7 +144,8 @@ fun FolderListScreen(
                                     video = video,
                                     fileSettings = historyMap["${video.path}:${video.sizeBytes}"] ?: historyMap[video.path],
                                     onClick = { onPlayVideo?.invoke(video) },
-                                    thumbnailCache = thumbnailCache
+                                    thumbnailCache = thumbnailCache,
+                                    folderName = video.bucketName
                                 )
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
