@@ -209,8 +209,10 @@ def p11_audio_session(ctx):
 @check("p11_anime4k_gles", "Anime4K A on OpenGL ES (quality mode): every pass compiles, picture moves (P8-02)")
 def p11_anime4k_gles(ctx):
     m = _play_p11(ctx, extras="--es mode quality --es renderer gles --es shader a", timeout=30)
-    applied = ctx.log.wait(r"Applied shader preset ANIME4K_A .*renderer=(\w+).*", 10, since=m)
-    need(applied, "no 'Applied shader preset ANIME4K_A' log (the startup line is preset NONE)")
+    # The preset is applied more than once while opening (NONE at start-up, then ANIME4K_A while the config is
+    # still Efficient, where the list is empty): wait for the Quality one.
+    applied = ctx.log.wait(r"Applied shader preset ANIME4K_A \(mode=QUALITY, renderer=(\w+)\): (\S+)", 12, since=m)
+    need(applied, "no 'Applied shader preset ANIME4K_A (mode=QUALITY, ...)' log")
     need("Clamp_Highlights" in applied[1].group(0), "Clamp_Highlights is not in the applied chain")
     need(applied[1].group(1).upper() == "GLES", f"renderer is {applied[1].group(1)}, expected GLES")
     ctx.sleep(4.0)
