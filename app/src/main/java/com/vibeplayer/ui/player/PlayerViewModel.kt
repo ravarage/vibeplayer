@@ -123,6 +123,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         (service ?: PlaybackService.currentInstance)?.setSleepTimer(timer)
     }
 
+    private val _resumedFrom = MutableStateFlow<com.vibeplayer.playback.ResumeInfo?>(null)
+    val resumedFrom: StateFlow<com.vibeplayer.playback.ResumeInfo?> = _resumedFrom.asStateFlow()
+    private val _upNext = MutableStateFlow<com.vibeplayer.playback.UpNext?>(null)
+    val upNext: StateFlow<com.vibeplayer.playback.UpNext?> = _upNext.asStateFlow()
+
+    fun startOver() { (service ?: PlaybackService.currentInstance)?.startOver() }
+    fun playUpNext() { (service ?: PlaybackService.currentInstance)?.playUpNext() }
+    fun cancelUpNext() { (service ?: PlaybackService.currentInstance)?.cancelUpNext() }
+
     private val _neighbours = MutableStateFlow(Neighbours())
     val neighbours: StateFlow<Neighbours> = _neighbours.asStateFlow()
 
@@ -147,6 +156,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 launch {
                     s.sleepTimer.collect { _sleepTimer.value = it }
+                }
+                launch {
+                    s.resumedFrom.collect { _resumedFrom.value = it }
+                }
+                launch {
+                    s.upNext.collect { _upNext.value = it }
                 }
             }
             pendingOpen?.let { req ->

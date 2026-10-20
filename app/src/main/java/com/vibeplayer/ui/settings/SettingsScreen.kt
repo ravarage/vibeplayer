@@ -62,6 +62,7 @@ fun SettingsScreen(
     var showSubLangDialog by remember { mutableStateOf(false) }
     var showSubtitleModeDialog by remember { mutableStateOf(false) }
     var showVolumeBoostDialog by remember { mutableStateOf(false) }
+    var showNextCountdownDialog by remember { mutableStateOf(false) }
     var showSubEncodingDialog by remember { mutableStateOf(false) }
     var showSubColorDialog by remember { mutableStateOf(false) }
     var showSubOutlineDialog by remember { mutableStateOf(false) }
@@ -158,6 +159,15 @@ fun SettingsScreen(
                     onUpdateSettings(settings.copy(autoPlayNext = checked))
                 }
             )
+
+            if (settings.autoPlayNext) {
+                SettingsClickableRow(
+                    title = "Next video countdown",
+                    subtitle = nextCountdownLabel(settings.nextCountdownSeconds),
+                    description = "Shows an \"Up next\" card with Play now and Cancel before the next file starts",
+                    onClick = { showNextCountdownDialog = true }
+                )
+            }
 
             SettingsSwitchRow(
                 title = "Auto-skip openings and endings",
@@ -504,6 +514,18 @@ fun SettingsScreen(
                     Text("Close")
                 }
             }
+        )
+    }
+
+    if (showNextCountdownDialog) {
+        SettingsChoiceDialog(
+            title = "Next video countdown",
+            options = com.vibeplayer.data.prefs.AppSettingsRepository.NEXT_COUNTDOWN_CHOICES,
+            selected = settings.nextCountdownSeconds,
+            label = ::nextCountdownLabel,
+            description = { null },
+            onSelect = { onUpdateSettings(settings.copy(nextCountdownSeconds = it)) },
+            onDismiss = { showNextCountdownDialog = false }
         )
     }
 
@@ -1038,6 +1060,8 @@ fun SettingsInfoRow(
 }
 
 private fun volumeBoostLabel(max: Int): String = if (max <= 100) "Off" else "Up to $max %"
+
+private fun nextCountdownLabel(seconds: Int): String = if (seconds <= 0) "Off (play at once)" else "$seconds s"
 
 /** A radio list that closes on a choice; shared by the newer settings. */
 @Composable

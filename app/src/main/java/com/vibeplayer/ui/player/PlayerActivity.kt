@@ -507,6 +507,8 @@ class PlayerActivity : ComponentActivity() {
             val volumeBoostMax by viewModel.volumeBoostMax.collectAsState()
             val nightMode by viewModel.nightMode.collectAsState()
             val sleepTimer by viewModel.sleepTimer.collectAsState()
+            val resumedFrom by viewModel.resumedFrom.collectAsState()
+            val upNext by viewModel.upNext.collectAsState()
             val pictureAdjust by viewModel.pictureAdjust.collectAsState()
             val equalizer by viewModel.equalizer.collectAsState()
             val currentRotation by rotationMode.collectAsState()
@@ -665,6 +667,26 @@ class PlayerActivity : ComponentActivity() {
                                     .fillMaxSize()
                                     .windowInsetsPadding(WindowInsets.displayCutout)
                             )
+
+                            if (!isLocked && !isInPip) {
+                                ResumeChip(
+                                    info = resumedFrom,
+                                    onStartOver = { viewModel.startOver() },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
+                                        .padding(start = 24.dp, bottom = 112.dp)
+                                )
+                                UpNextCard(
+                                    upNext = upNext,
+                                    onPlayNow = { viewModel.playUpNext() },
+                                    onCancel = { viewModel.cancelUpNext() },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
+                                        .padding(end = 24.dp, bottom = 112.dp)
+                                )
+                            }
 
                             if (!isLocked) {
                                 ChapterSkipButton(

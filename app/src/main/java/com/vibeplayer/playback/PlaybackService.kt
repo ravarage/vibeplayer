@@ -479,6 +479,9 @@ class PlaybackService : Service() {
             playerEngine.state.collect { state ->
                 if (state.eof && !wasEof && state.durationMs > 0L) {
                     onPlaybackEnded()
+                } else if (!state.eof && wasEof && _upNext.value != null) {
+                    // Seeked back from the end during the countdown: keep watching this file.
+                    cancelUpNext(stopIfIdle = false)
                 }
                 wasEof = state.eof
             }
@@ -486,6 +489,43 @@ class PlaybackService : Service() {
     }
 
     private var pausedTimeoutJob: Job? = null
+
+    /** P12-01: set after a file opened at its saved position, for the "Resumed at ... Start over" chip. */
+    private val _resumedFrom = MutableStateFlow<ResumeInfo?>(null)
+    val resumedFrom: kotlinx.coroutines.flow.StateFlow<ResumeInfo?> = _resumedFrom
+
+    /** Plays the current file from the start (the resume chip's Start over). */
+    fun startOver() {
+        _resumedFrom.value = null
+        Log.i("VP", "Resume: start over")
+        playerEngine.seekTo(0L, exact = true)
+    }
+
+    /** P12-02: the next file while the "Up next" countdown runs, or null. */
+    private val _upNext = MutableStateFlow<UpNext?>(null)
+    val upNext: kotlinx.coroutines.flow.StateFlow<UpNext?> = _upNext
+    private var upNextJob: Job? = null
+
+    /** Plays the counted-down file now (the card's Play now, or the end of the countdown). */
+    fun playUpNext() {
+        val u = _upNext.value ?: return
+        upNextJob?.cancel()
+        upNextJob = null
+        _upNext.value = null
+        if (currentVideoPath != u.endedPath) return // file changed meanwhile
+        Log.i("VP", "Auto-play: ${u.endedPath} ended -> ${u.path}")
+        openVideo(u.path, startFromBeginning = true, playAfterLoad = true)
+    }
+
+    /** Stops the countdown; the ended file stays on its last frame. */
+    fun cancelUpNext(stopIfIdle: Boolean = true) {
+        if (_upNext.value == null) return
+        upNextJob?.cancel()
+        upNextJob = null
+        _upNext.value = null
+        Log.i("VP", "Up next cancelled")
+        if (stopIfIdle) checkShouldStop()
+    }
 
     private val _sleepTimer = MutableStateFlow<SleepTimer?>(null)
     /** The running sleep timer, or null. */
@@ -815,8 +855,23 @@ class PlaybackService : Service() {
             return
         }
         if (currentVideoPath != endedPath) return // file changed meanwhile
-        Log.i("VP", "Auto-play: $endedPath ended -> $next")
-        openVideo(next, startFromBeginning = true, playAfterLoad = true)
+        val countdown = appSettingsRepository.appSettingsFlow.first().nextCountdownSeconds
+        _upNext.value = UpNext(
+            endedPath = endedPath,
+            path = next,
+            title = File(next).name,
+            endsAtElapsedMs = android.os.SystemClock.elapsedRealtime() + countdown * 1000L
+        )
+        if (countdown <= 0) {
+            playUpNext()
+            return
+        }
+        Log.i("VP", "Up next: $next in $countdown s")
+        upNextJob?.cancel()
+        upNextJob = serviceScope.launch {
+            delay(countdown * 1000L)
+            playUpNext()
+        }
     }
 
     fun skipToNeighbour(forward: Boolean) {
@@ -909,6 +964,11 @@ class PlaybackService : Service() {
 
         val generation = ++loadGeneration
         loadJob?.cancel()
+        // Any other open replaces a pending "Up next" and an old resume chip.
+        upNextJob?.cancel()
+        upNextJob = null
+        _upNext.value = null
+        _resumedFrom.value = null
         currentVideoPath = path
         currentFolderPath = folderKey ?: File(path).parent
         _currentPath.value = path
@@ -974,6 +1034,7 @@ class PlaybackService : Service() {
             val isVulkanAvailable = vulkanDeferred.await()
             if (generation != loadGeneration || currentVideoPath != path) return@launch
 
+            var resumedAt = 0L
             val startPositionMs = if (startPositionOverride != null) {
                 Log.i("VP", "Resume: override starting from $startPositionOverride ms")
                 startPositionOverride
@@ -987,6 +1048,7 @@ class PlaybackService : Service() {
                     0L
                 } else if (pos > 0L) {
                     Log.i("VP", "Resume: resuming from $pos ms for key $key")
+                    resumedAt = pos
                     pos
                 } else {
                     0L
@@ -1155,6 +1217,7 @@ class PlaybackService : Service() {
             handedToEngine = true
             lastPathHandedToEngine = path
             currentKey = key
+            if (resumedAt > 0L) _resumedFrom.value = ResumeInfo(path = path, positionMs = resumedAt, generation = generation)
             if (playAfterLoad) playerEngine.play()
         }
         loadJob?.invokeOnCompletion {

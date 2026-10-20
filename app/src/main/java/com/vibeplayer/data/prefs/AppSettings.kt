@@ -49,6 +49,8 @@ data class AppSettings(
     val holdSpeed: Double = 2.0,
     val backgroundAudio: Boolean = false,
     val autoPlayNext: Boolean = true,
+    /** P12-02: seconds the "Up next" card counts down before the next file plays; 0 plays it at once. */
+    val nextCountdownSeconds: Int = 5,
     val shaderPreset: ShaderPresetOption = ShaderPresetOption.NONE,
     val preferredAudioLanguages: List<String> = listOf("en"),
     val preferredSubtitleLanguages: List<String> = listOf("en"),
@@ -156,6 +158,9 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_HOLD_SPEED = doublePreferencesKey("hold_speed")
         private val KEY_BACKGROUND_AUDIO = booleanPreferencesKey("background_audio")
         private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
+        private val KEY_NEXT_COUNTDOWN = intPreferencesKey("next_countdown_seconds")
+        /** Choices for [AppSettings.nextCountdownSeconds]. */
+        val NEXT_COUNTDOWN_CHOICES = listOf(0, 5, 10, 15)
         private val KEY_SHADER_PRESET = stringPreferencesKey("shader_preset")
         private val KEY_PREFERRED_AUDIO_LANGS = stringPreferencesKey("preferred_audio_langs")
         private val KEY_PREFERRED_SUB_LANGS = stringPreferencesKey("preferred_sub_langs")
@@ -259,6 +264,7 @@ class AppSettingsRepository(private val context: Context) {
             holdSpeed = com.vibeplayer.ui.player.HoldGesture.normalize(prefs[KEY_HOLD_SPEED] ?: 2.0),
             backgroundAudio = prefs[KEY_BACKGROUND_AUDIO] ?: false,
             autoPlayNext = prefs[KEY_AUTO_PLAY_NEXT] ?: true,
+            nextCountdownSeconds = (prefs[KEY_NEXT_COUNTDOWN] ?: 5).coerceIn(0, 60),
             shaderPreset = shaderPreset,
             preferredAudioLanguages = preferredAudioLanguages,
             preferredSubtitleLanguages = preferredSubtitleLanguages,
@@ -372,6 +378,7 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_HOLD_SPEED] = settings.holdSpeed
             prefs[KEY_BACKGROUND_AUDIO] = settings.backgroundAudio
             prefs[KEY_AUTO_PLAY_NEXT] = settings.autoPlayNext
+            prefs[KEY_NEXT_COUNTDOWN] = settings.nextCountdownSeconds
             prefs[KEY_SHADER_PRESET] = settings.shaderPreset.name
             prefs[KEY_PREFERRED_AUDIO_LANGS] = settings.preferredAudioLanguages.joinToString(",")
             prefs[KEY_PREFERRED_SUB_LANGS] = settings.preferredSubtitleLanguages.joinToString(",")
