@@ -19,8 +19,9 @@ def _need_p11(ctx, name=CH):
         raise Skip(f"{name} not in {P11_DIR}: run tools/phone_check.sh, it creates and pushes the P11 clips")
 
 
-def _play_p11(ctx, name=CH, extras="", timeout=25):
+def _play_p11(ctx, name=CH, extras="", timeout=25, pause=False):
     _need_p11(ctx, name)
+    ctx.ctrl_pinned = False  # a fresh player is playing (as Ctx.launch_clip resets it)
     ctx.phone.wake()
     ctx.stop_app()
     ctx.clear_log()
@@ -28,7 +29,19 @@ def _play_p11(ctx, name=CH, extras="", timeout=25):
     ctx.phone.start_activity(PLAYER, data=file_uri(f"{P11_DIR}/{name}"), extras=extras)
     need(ctx.wait_restart(mark, timeout), f"no playback-restart within {timeout} s of launching {name}")
     ctx.sleep(2.0)
+    if pause:
+        _pause_for_ui(ctx)
     return mark
+
+
+def _pause_for_ui(ctx):
+    """Pauses with the centre button. While playing, the controls hide 3 s after a tap and the picture keeps
+    changing, so a ~2 s uiautomator dump often misses them; paused, they stay up and the screen is still."""
+    m = ctx.log.mark()
+    ctx.tap_center_button("pause", None)
+    need(ctx.log.wait(r"togglePause", 4, since=m, tag="VP"), "could not pause with the centre button (no togglePause)")
+    ctx.ctrl_pinned = True
+    ctx.sleep(0.8)
 
 
 def _tap_desc(ctx, desc, tries=3):
@@ -69,22 +82,25 @@ def _pos_ms(ctx, since):
 
 @check("p11_chapters", "Chapters: list read from the file, panel lists them, tapping one seeks there (P4-15)")
 def p11_chapters(ctx):
-    m = _play_p11(ctx)
+    m = _play_p11(ctx, pause=True)
     need(ctx.log.wait(r"Updated chapters \(4\)", 8, since=m), "no 'Updated chapters (4)' log for the 4-chapter clip")
     _open_panel(ctx, "chapters", "Chapters", "chapters_panel")
     need(_tap_desc(ctx, "chapter_2"), "row chapter_2 (Part A) not found in the Chapters panel")
     m2 = ctx.log.mark()
     need(ctx.log.wait(r"seekToChapter 2 res=0", 5, since=m2), "no 'seekToChapter 2 res=0' after tapping Part A")
+    ctx.sleep(1.0)
+    ctx.shot("after_seek")
+    # play again: the position is reported while playing
+    _tap_desc(ctx, "play_pause")
     ctx.sleep(2.5)
     pos = _pos_ms(ctx, m2)
-    need(pos is not None and PART_A_MS - 1_000 <= pos <= PART_A_MS + 4_000, f"position after the seek is {pos} ms, expected about {PART_A_MS}")
-    ctx.shot("after_seek")
+    need(pos is not None and PART_A_MS - 1_000 <= pos <= PART_A_MS + 5_000, f"position after the seek is {pos} ms, expected about {PART_A_MS}")
     return f"4 chapters read; Part A tap seeked to {pos} ms (screenshots: chapters_panel, after_seek: ticks on the seek bar, chapter name in the top bar)"
 
 
 @check("p11_skip", "Skip opening: button appears in the Opening chapter and jumps to Part A (P11-01)")
 def p11_skip(ctx):
-    _play_p11(ctx)
+    _play_p11(ctx, pause=True)
     _open_panel(ctx, "chapters", "Chapters", "chapters_panel")
     need(_tap_desc(ctx, "chapter_1"), "row chapter_1 (Opening) not found")
     ctx.sleep(2.0)
@@ -97,7 +113,7 @@ def p11_skip(ctx):
 
 @check("p11_more", "More panel: A-B repeat sets and clears, loop toggles (P11-05)")
 def p11_more(ctx):
-    _play_p11(ctx)
+    _play_p11(ctx, pause=True)
     _open_panel(ctx, "more", "More", "more_panel")
     m = ctx.log.mark()
     need(_tap_desc(ctx, "ab_repeat"), "ab_repeat row not found")
@@ -122,23 +138,20 @@ def p11_more(ctx):
 
 @check("p11_frame_step", "Frame step buttons while paused (P11-06)")
 def p11_frame_step(ctx):
-    _play_p11(ctx)
-    ns = ctx.controls_nodes()
-    ctx.tap_center_button("pause", ns)
-    ctx.sleep(1.0)
+    _play_p11(ctx, pause=True)
     m = ctx.log.mark()
     need(_tap_desc(ctx, "frame_forward"), "frame_forward button not shown while paused")
     need(ctx.log.wait(r"frame step forward=true res=0", 4, since=m), "no 'frame step forward=true res=0'")
     m = ctx.log.mark()
     need(_tap_desc(ctx, "frame_back"), "frame_back button not shown while paused")
     need(ctx.log.wait(r"frame step forward=false res=0", 6, since=m), "no 'frame step forward=false res=0'")
-    ctx.tap_center_button("pause", ctx.nodes())
+    _tap_desc(ctx, "play_pause")
     return "one frame forward and back while paused"
 
 
 @check("p11_night_mode", "Night mode chip in the audio panel switches the dynaudnorm filter on and off (P11-03)")
 def p11_night_mode(ctx):
-    _play_p11(ctx)
+    _play_p11(ctx, pause=True)
     _open_panel(ctx, "audio", "Audio Tracks", "audio_panel")
     m = ctx.log.mark()
     need(_tap_desc(ctx, "night_mode"), "night_mode chip not found")
@@ -182,7 +195,7 @@ def p11_anime4k_gles(ctx):
 
 @check("p11_panels_look", "Screenshots of the compact panels for a human look (P11-08)")
 def p11_panels_look(ctx):
-    _play_p11(ctx)
+    _play_p11(ctx, pause=True)
     _open_panel(ctx, "sub", "Subtitles", "subtitle_panel")
     _close_panel(ctx)
     _open_panel(ctx, "speed", "Playback Speed", "speed_panel")
