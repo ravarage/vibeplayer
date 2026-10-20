@@ -54,7 +54,9 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
 
 ## Ideas
 
-- Lower minSdk for wider device support (needs code changes and testing on other phones).
+minSdk stays 37 (Android 17): the app is built for one phone and one OS version and uses Android 17 APIs.
+
+
 - An LGPL build option without GPL-only FFmpeg components.
 - Testing on more devices, and hardware AV1 decode where available.
 

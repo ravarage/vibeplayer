@@ -154,6 +154,9 @@ fun PlayerControls(
     }
 
     val durationMs = playerState.durationMs
+    // Portrait (narrow): mode, speed, chapters, aspect and mini player move to the More panel so the
+    // bar keeps back, title, audio, subtitles, More and lock.
+    val compactBar = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
     val chapters = playerState.chapters
     val currentChapterTitle = remember(chapters, playerState.currentChapter) {
         chapters.firstOrNull { it.index == playerState.currentChapter }?.let { Chapters.displayTitle(it) }
@@ -298,84 +301,90 @@ fun PlayerControls(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        if (!compactBar) {
+                            Spacer(modifier = Modifier.width(8.dp))
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) Color(0x3300E676) else Color(0x22FFFFFF))
-                                .clickable {
-                                    interactionEvents.value = System.currentTimeMillis()
-                                    onToggleMode?.invoke()
-                                }
-                                .semantics {
-                                    contentDescription = "quality_mode"
-                                    testTag = "quality_mode"
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) "QUALITY" else "EFFICIENT",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) Color(0xFF00E676) else Color.White
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (playerState.speed != 1.0) Color(0x33BB86FC) else Color(0x22FFFFFF))
-                                .clickable {
-                                    interactionEvents.value = System.currentTimeMillis()
-                                    showSpeedSheet = true
-                                }
-                                .semantics {
-                                    contentDescription = "speed"
-                                    testTag = "speed"
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val speedText = if (playerState.speed % 1.0 == 0.0) {
-                                "${playerState.speed.toInt()}x"
-                            } else {
-                                "${playerState.speed}x"
-                            }
-                            Text(
-                                text = speedText,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (playerState.speed != 1.0) Color(0xFFBB86FC) else Color.White
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        if (chapters.size >= 2) {
-                            IconButton(
-                                onClick = {
-                                    interactionEvents.value = System.currentTimeMillis()
-                                    showChapterSheet = true
-                                },
+                            Box(
                                 modifier = Modifier
-                                    .size(48.dp)
-                                    .semantics {
-                                        contentDescription = "chapters"
-                                        testTag = "chapters"
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) Color(0x3300E676) else Color(0x22FFFFFF))
+                                    .clickable {
+                                        interactionEvents.value = System.currentTimeMillis()
+                                        onToggleMode?.invoke()
                                     }
+                                    .semantics {
+                                        contentDescription = "quality_mode"
+                                        testTag = "quality_mode"
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "📑",
-                                    fontSize = 20.sp,
-                                    color = Color.White
+                                    text = if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) "QUALITY" else "EFFICIENT",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY) Color(0xFF00E676) else Color.White
                                 )
                             }
+                        }
 
-                            Spacer(modifier = Modifier.width(4.dp))
+                        if (!compactBar) {
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (playerState.speed != 1.0) Color(0x33BB86FC) else Color(0x22FFFFFF))
+                                    .clickable {
+                                        interactionEvents.value = System.currentTimeMillis()
+                                        showSpeedSheet = true
+                                    }
+                                    .semantics {
+                                        contentDescription = "speed"
+                                        testTag = "speed"
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val speedText = if (playerState.speed % 1.0 == 0.0) {
+                                    "${playerState.speed.toInt()}x"
+                                } else {
+                                    "${playerState.speed}x"
+                                }
+                                Text(
+                                    text = speedText,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (playerState.speed != 1.0) Color(0xFFBB86FC) else Color.White
+                                )
+                            }
+                        }
+
+                        if (!compactBar) {
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            if (chapters.size >= 2) {
+                                IconButton(
+                                    onClick = {
+                                        interactionEvents.value = System.currentTimeMillis()
+                                        showChapterSheet = true
+                                    },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .semantics {
+                                            contentDescription = "chapters"
+                                            testTag = "chapters"
+                                        }
+                                ) {
+                                    Text(
+                                        text = "📑",
+                                        fontSize = 20.sp,
+                                        color = Color.White
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
                         }
 
                         IconButton(
@@ -418,48 +427,52 @@ fun PlayerControls(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(4.dp))
+                        if (!compactBar) {
+                            Spacer(modifier = Modifier.width(4.dp))
 
-                        IconButton(
-                            onClick = {
-                                interactionEvents.value = System.currentTimeMillis()
-                                onCycleAspect?.invoke()
-                            },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .semantics {
-                                    contentDescription = "aspect"
-                                    testTag = "aspect"
-                                }
-                        ) {
-                            androidx.compose.material3.Icon(
-                                painter = androidx.compose.ui.res.painterResource(id = com.vibeplayer.R.drawable.ic_aspect_ratio),
-                                contentDescription = "aspect",
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            IconButton(
+                                onClick = {
+                                    interactionEvents.value = System.currentTimeMillis()
+                                    onCycleAspect?.invoke()
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .semantics {
+                                        contentDescription = "aspect"
+                                        testTag = "aspect"
+                                    }
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    painter = androidx.compose.ui.res.painterResource(id = com.vibeplayer.R.drawable.ic_aspect_ratio),
+                                    contentDescription = "aspect",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
 
-                        Spacer(modifier = Modifier.width(4.dp))
+                        if (!compactBar) {
+                            Spacer(modifier = Modifier.width(4.dp))
 
-                        IconButton(
-                            onClick = {
-                                interactionEvents.value = System.currentTimeMillis()
-                                onEnterPip()
-                            },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .semantics {
-                                    contentDescription = "pip"
-                                    testTag = "pip"
-                                }
-                        ) {
-                            androidx.compose.material3.Icon(
-                                painter = androidx.compose.ui.res.painterResource(id = com.vibeplayer.R.drawable.ic_pip),
-                                contentDescription = "pip",
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            IconButton(
+                                onClick = {
+                                    interactionEvents.value = System.currentTimeMillis()
+                                    onEnterPip()
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .semantics {
+                                        contentDescription = "pip"
+                                        testTag = "pip"
+                                    }
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    painter = androidx.compose.ui.res.painterResource(id = com.vibeplayer.R.drawable.ic_pip),
+                                    contentDescription = "pip",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(4.dp))
@@ -677,6 +690,24 @@ fun PlayerControls(
                 onDismiss = {
                     showMoreSheet = false
                     interactionEvents.value = System.currentTimeMillis()
+                },
+                quickActions = if (!compactBar) emptyList() else buildList {
+                    val quality = playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY
+                    val speedLabel = if (playerState.speed % 1.0 == 0.0) "${playerState.speed.toInt()}x" else "${playerState.speed}x"
+                    add(QuickAction("Speed $speedLabel", "speed", selected = playerState.speed != 1.0) {
+                        showMoreSheet = false
+                        showSpeedSheet = true
+                    })
+                    if (chapters.size >= 2) add(QuickAction("📑 Chapters", "chapters") {
+                        showMoreSheet = false
+                        showChapterSheet = true
+                    })
+                    add(QuickAction("Aspect: ${playerState.aspect ?: "fit"}", "aspect") { onCycleAspect?.invoke() })
+                    add(QuickAction("Mini player", "pip") {
+                        showMoreSheet = false
+                        onEnterPip()
+                    })
+                    add(QuickAction(if (quality) "Quality" else "Efficient", "quality_mode", selected = quality) { onToggleMode?.invoke() })
                 }
             )
         }

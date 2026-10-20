@@ -1,19 +1,22 @@
 package com.vibeplayer.ui.player
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vibeplayer.player.SyncDelay
 
 /** P4-13: subtitle and audio delay in 50 ms steps. Values apply live; the caller persists them per file. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SyncSheet(
     subDelayMs: Int,
@@ -23,48 +26,32 @@ fun SyncSheet(
     onDismiss: () -> Unit
 ) {
     TrackRecomposition("SyncSheet")
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        // Open fully: in landscape the half-expanded sheet shows only the first row.
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFF1E1E1E),
-        contentColor = Color.White,
-        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            Text("Sync", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            DelayRow("Subtitle delay", subDelayMs, onSubDelay)
-            DelayRow("Audio delay", audioDelayMs, onAudioDelay)
-            Spacer(Modifier.height(16.dp))
-        }
+    PlayerPanel(title = "Sync", onDismiss = onDismiss) {
+        item { DelayRow("Subtitle delay", subDelayMs, onSubDelay) }
+        item { DelayRow("Audio delay", audioDelayMs, onAudioDelay) }
     }
 }
 
 @Composable
 private fun DelayRow(label: String, valueMs: Int, onChange: (Int) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, fontSize = 15.sp, color = Color(0xFFB0B0B0))
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
+        PanelSectionLabel(label, modifier = Modifier.padding(start = 0.dp))
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            FilledTonalButton(onClick = { onChange(SyncDelay.step(valueMs, -1)) }) { Text("-50") }
+            PanelChip(text = "−50", onClick = { onChange(SyncDelay.step(valueMs, -1)) })
             Text(
                 text = SyncDelay.format(valueMs),
-                fontSize = 18.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (valueMs != 0) Color(0xFFBB86FC) else Color.White,
-                modifier = Modifier.weight(1f),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                color = if (valueMs != 0) PanelColors.accent else Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
             )
-            FilledTonalButton(onClick = { onChange(SyncDelay.step(valueMs, 1)) }) { Text("+50") }
-            TextButton(onClick = { onChange(0) }, enabled = valueMs != 0) { Text("Reset") }
+            PanelChip(text = "+50", onClick = { onChange(SyncDelay.step(valueMs, 1)) })
+            if (valueMs != 0) PanelChip(text = "Reset", onClick = { onChange(0) })
         }
     }
 }

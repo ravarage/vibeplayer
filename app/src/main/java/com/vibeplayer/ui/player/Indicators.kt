@@ -42,11 +42,15 @@ import androidx.compose.foundation.layout.Row
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+/** Slim vertical level pill shared by the brightness and volume swipes. */
 @Composable
-fun BrightnessIndicator(
+private fun LevelIndicator(
     visible: Boolean,
-    brightness: Float,
-    modifier: Modifier = Modifier
+    icon: String,
+    percent: Int,
+    fraction: Float,
+    modifier: Modifier = Modifier,
+    barColor: Color = Color.White
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -54,49 +58,56 @@ fun BrightnessIndicator(
         exit = fadeOut(),
         modifier = modifier
     ) {
-        Box(
+        Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xCC1E1E1E))
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            contentAlignment = Alignment.Center
+                .width(48.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color(0xB3000000))
+                .padding(vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+            Text(text = icon, fontSize = 16.sp, color = Color.White)
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(96.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0x40FFFFFF)),
+                contentAlignment = Alignment.BottomCenter
             ) {
-                Text(
-                    text = "☀",
-                    fontSize = 28.sp,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                val percent = (brightness * 100f).roundToInt().coerceIn(0, 100)
-                Text(
-                    text = "$percent%",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
-                        .width(6.dp)
-                        .height(90.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0x44FFFFFF)),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight(fraction = brightness.coerceIn(0f, 1f))
-                            .width(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Color.White)
-                    )
-                }
+                        .fillMaxHeight(fraction = fraction.coerceIn(0f, 1f))
+                        .width(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(barColor)
+                )
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "$percent",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = barColor
+            )
         }
     }
+}
+
+@Composable
+fun BrightnessIndicator(
+    visible: Boolean,
+    brightness: Float,
+    modifier: Modifier = Modifier
+) {
+    LevelIndicator(
+        visible = visible,
+        icon = "☀",
+        percent = (brightness * 100f).roundToInt().coerceIn(0, 100),
+        fraction = brightness,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -108,63 +119,21 @@ fun VolumeIndicator(
     /** Shown instead of volume / maxVolume; above 100 means boosted. */
     percent: Int? = null
 ) {
-    AnimatedVisibility(
+    val fraction = if (maxVolume > 0) (volume.toFloat() / maxVolume.toFloat()).coerceIn(0f, 1f) else 0f
+    val shownPercent = percent ?: (fraction * 100f).roundToInt()
+    LevelIndicator(
         visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = modifier
-    ) {
-        val fraction = if (maxVolume > 0) (volume.toFloat() / maxVolume.toFloat()).coerceIn(0f, 1f) else 0f
-        val icon = when {
+        icon = when {
             volume <= 0 -> "🔇"
             fraction < 0.5f -> "🔉"
             else -> "🔊"
-        }
-
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xCC1E1E1E))
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = icon,
-                    fontSize = 28.sp,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                val shownPercent = percent ?: (fraction * 100f).roundToInt()
-                val boosted = shownPercent > 100
-                Text(
-                    text = "$shownPercent%",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Box(
-                    modifier = Modifier
-                        .width(6.dp)
-                        .height(90.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0x44FFFFFF)),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight(fraction = fraction)
-                            .width(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(if (boosted) Color(0xFFFFB74D) else Color.White)
-                    )
-                }
-            }
-        }
-    }
+        },
+        percent = shownPercent,
+        fraction = fraction,
+        modifier = modifier,
+        // Orange above 100 % (volume boost).
+        barColor = if (shownPercent > 100) Color(0xFFFFB74D) else Color.White
+    )
 }
 
 @Composable
@@ -188,14 +157,14 @@ fun SwipeSeekIndicator(
 
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xCC1E1E1E))
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xB3000000))
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = "$deltaFormatted / $targetFormatted",
-                fontSize = 22.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
@@ -266,7 +235,7 @@ fun DoubleTapSkipIndicator(
             ) {
                 Text(
                     text = if (isLeft) "◀◀" else "▶▶",
-                    fontSize = 28.sp,
+                    fontSize = 22.sp,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
@@ -274,7 +243,7 @@ fun DoubleTapSkipIndicator(
                 val sign = if (isLeft) "-" else "+"
                 Text(
                     text = "$sign$seconds s",
-                    fontSize = 20.sp,
+                    fontSize = 15.sp,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
@@ -300,10 +269,10 @@ fun ResetZoomButton(
         val percent = (2.0.pow(zoom) * 100).roundToInt()
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xCC1E1E1E))
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xB3000000))
                 .clickable { onReset() }
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center
         ) {
             Row(
@@ -312,12 +281,12 @@ fun ResetZoomButton(
             ) {
                 Text(
                     text = "🔍",
-                    fontSize = 14.sp
+                    fontSize = 12.sp
                 )
                 Text(
                     text = "Reset Zoom ($percent%)",
                     color = Color.White,
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -347,15 +316,15 @@ fun AspectIndicator(
         }
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xCC1E1E1E))
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xB3000000))
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = label,
                 color = Color.White,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             )
         }

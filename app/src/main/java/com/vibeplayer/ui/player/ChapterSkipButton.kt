@@ -62,18 +62,18 @@ fun ChapterSkipButton(
         Text(
             text = "$label  ⏭",
             color = Color.White,
-            fontSize = 15.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xCC1E1E1E))
-                .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp))
+                .background(Color(0xB3000000))
+                .border(1.dp, Color(0x4DFFFFFF), RoundedCornerShape(8.dp))
                 .clickable { chapter?.let { onSkip(it.index) } }
                 .semantics {
                     contentDescription = "skip_chapter"
                     testTag = "skip_chapter"
                 }
-                .padding(horizontal = 18.dp, vertical = 10.dp)
+                .padding(horizontal = 14.dp, vertical = 8.dp)
         )
     }
 }
