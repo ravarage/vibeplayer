@@ -7,15 +7,26 @@ USB=2fbe93cc
 # Wi-Fi address lives in tools/bin/phone_wifi so it can change without touching this script.
 WIFI=$(cat "$(dirname "$0")/phone_wifi" 2>/dev/null || echo 192.168.1.3:5555)
 case "$1" in devices|connect|disconnect|start-server|version|pair) exec "$REAL" "$@";; esac
+# The choice is cached for 60 s: without it every command re-tried the Wi-Fi addresses, and while the phone
+# was only on USB (or its Wi-Fi address had changed) each `adb connect` waited ~10 s, so every command took
+# 20-40 s and devcheck taps arrived far too late (P11 device run, 2026-10-20).
+CACHE="${TMPDIR:-/tmp}/vp_adb_serial"
 list=$("$REAL" devices 2>/dev/null)
+if [ -f "$CACHE" ] && [ $(( $(date +%s) - $(stat -c %Y "$CACHE" 2>/dev/null || echo 0) )) -lt 60 ]; then
+  cached=$(cat "$CACHE")
+  if echo "$list" | grep -qE "^$cached[[:space:]]+device"; then
+    export ANDROID_SERIAL=$cached
+    exec "$REAL" "$@"
+  fi
+fi
 if ! echo "$list" | grep -qE "^$WIFI[[:space:]]+device"; then
-  "$REAL" connect "$WIFI" >/dev/null 2>&1
+  timeout 3 "$REAL" connect "$WIFI" >/dev/null 2>&1
   list=$("$REAL" devices 2>/dev/null)
 fi
 if ! echo "$list" | grep -qE "^$WIFI[[:space:]]+device"; then
   for alt in 192.168.1.3:5555 192.168.1.6:5555; do
     if [ "$alt" != "$WIFI" ]; then
-      "$REAL" connect "$alt" >/dev/null 2>&1
+      timeout 3 "$REAL" connect "$alt" >/dev/null 2>&1
       list=$("$REAL" devices 2>/dev/null)
       if echo "$list" | grep -qE "^$alt[[:space:]]+device"; then
         WIFI=$alt
@@ -30,6 +41,9 @@ if echo "$list" | grep -qE "^$WIFI[[:space:]]+device"; then
 elif echo "$list" | grep -qE "^$USB[[:space:]]+device"; then
   export ANDROID_SERIAL=$USB
 else
-  export ANDROID_SERIAL=$WIFI
+  # Any other attached phone (another USB serial, a Wi-Fi address from `adb pair`).
+  other=$(echo "$list" | awk 'NR > 1 && $2 == "device" { print $1; exit }')
+  export ANDROID_SERIAL=${other:-$WIFI}
 fi
+[ -n "$ANDROID_SERIAL" ] && echo "$ANDROID_SERIAL" > "$CACHE" 2>/dev/null
 exec "$REAL" "$@"
