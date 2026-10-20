@@ -1118,6 +1118,7 @@ class PlayerEngine(
         MpvNative.setPropertyDouble(handle, "volume", boostVolume)
         if (nightMode) MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode))
         if (audioSessionId > 0) MpvNative.setPropertyString(handle, "audiotrack-session-id", audioSessionId.toString())
+        if (!pictureAdjust.isDefault) pictureAdjust.mpvProperties().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -2344,6 +2345,22 @@ class PlayerEngine(
             // A file already playing keeps its AudioTrack until the audio output is rebuilt.
             if (fileLoaded) MpvNative.command(handle, arrayOf("ao-reload"))
             Log.i("VP", "audiotrack-session-id $id")
+        }
+    }
+
+    /** Picture adjustments (video equalizer), kept for every file and new handle. */
+    @Volatile var pictureAdjust: PictureAdjust = PictureAdjust()
+        private set
+
+    fun setPictureAdjust(adjust: PictureAdjust) {
+        val a = adjust.normalized()
+        if (a == pictureAdjust) return
+        pictureAdjust = a
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            a.mpvProperties().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
+            Log.i("VP", "setPictureAdjust $a")
         }
     }
 

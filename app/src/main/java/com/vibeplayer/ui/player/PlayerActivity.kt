@@ -507,6 +507,7 @@ class PlayerActivity : ComponentActivity() {
             val volumeBoostMax by viewModel.volumeBoostMax.collectAsState()
             val nightMode by viewModel.nightMode.collectAsState()
             val sleepTimer by viewModel.sleepTimer.collectAsState()
+            val pictureAdjust by viewModel.pictureAdjust.collectAsState()
             val currentRotation by rotationMode.collectAsState()
             // A lower boost setting takes effect at once (the level may now be past the new top).
             // Only mpv's volume is lowered: the media volume is never raised here (the first value can be
@@ -637,6 +638,9 @@ class PlayerActivity : ComponentActivity() {
                                 onSetSleepTimer = { viewModel.setSleepTimer(it) },
                                 rotationMode = currentRotation,
                                 onCycleRotation = { rotationMode.value = rotationMode.value.next() },
+                                pictureAdjust = pictureAdjust,
+                                onPreviewPicture = { viewModel.previewPictureAdjust(it) },
+                                onSavePicture = { viewModel.savePictureAdjust(it) },
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                                     val current = playerState.aspect ?: "fit"

@@ -56,6 +56,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         .map { it.nightMode }.distinctUntilChanged()
         .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, false)
 
+    val pictureAdjust: StateFlow<com.vibeplayer.player.PictureAdjust> = appSettingsRepository.appSettingsFlow
+        .map { it.pictureAdjust() }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, com.vibeplayer.player.PictureAdjust())
+
+    /** Live while a slider moves (engine only); [savePictureAdjust] persists it when the slider is let go. */
+    fun previewPictureAdjust(a: com.vibeplayer.player.PictureAdjust) = playerEngine.setPictureAdjust(a)
+
+    fun savePictureAdjust(a: com.vibeplayer.player.PictureAdjust) {
+        playerEngine.setPictureAdjust(a)
+        viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setPictureAdjust(a) }
+    }
+
     fun setNightMode(on: Boolean) {
         viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setNightMode(on) }
     }

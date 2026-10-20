@@ -101,7 +101,8 @@ class PanelScreenshotTest {
     fun moreLandscape() = shot("more_land") {
         MoreSheet(
             sleepTimer = null, onSetSleepTimer = {}, abLoopAMs = 61_000L, abLoopBMs = null, onCycleAbLoop = {},
-            loopFile = false, onToggleLoopFile = {}, rotationMode = RotationMode.AUTO, onCycleRotation = {}, onDismiss = {}
+            loopFile = false, onToggleLoopFile = {}, rotationMode = RotationMode.AUTO, onCycleRotation = {}, onDismiss = {},
+            pictureAdjust = com.vibeplayer.player.PictureAdjust(brightness = 10, saturation = -25)
         )
     }
 

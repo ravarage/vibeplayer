@@ -72,8 +72,18 @@ data class AppSettings(
     /** Folders (SAF tree URIs) searched for subtitle files next to a video, loaded automatically. */
     val subtitleFolders: List<String> = emptyList(),
     /** Code page for external subtitle files that are not UTF-8 (converted before mpv reads them). */
-    val subtitleEncoding: String = com.vibeplayer.data.subs.SubtitleCharset.DEFAULT
+    val subtitleEncoding: String = com.vibeplayer.data.subs.SubtitleCharset.DEFAULT,
+    /** Picture brightness, -100..100 (0 = unchanged). */
+    val pictureBrightness: Int = 0,
+    /** Picture contrast, -100..100 (0 = unchanged). */
+    val pictureContrast: Int = 0,
+    /** Picture saturation, -100..100 (0 = unchanged). */
+    val pictureSaturation: Int = 0,
+    /** Picture gamma, -100..100 (0 = unchanged). */
+    val pictureGamma: Int = 0
 ) {
+
+    fun pictureAdjust() = com.vibeplayer.player.PictureAdjust(pictureBrightness, pictureContrast, pictureSaturation, pictureGamma)
 
     fun subtitleStyle() = com.vibeplayer.player.SubtitleStyle(subtitleScale, subtitlePos, subtitleAssOverride).normalized()
 }
@@ -136,6 +146,10 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_PERFORMANCE_HINTS = booleanPreferencesKey("performance_hints")
         private val KEY_HDR_OUTPUT = booleanPreferencesKey("hdr_output")
         private val KEY_COLLECT_SYSTEM_PROFILES = booleanPreferencesKey("collect_system_profiles")
+        private val KEY_PICTURE_GAMMA = intPreferencesKey("picture_gamma")
+        private val KEY_PICTURE_SATURATION = intPreferencesKey("picture_saturation")
+        private val KEY_PICTURE_CONTRAST = intPreferencesKey("picture_contrast")
+        private val KEY_PICTURE_BRIGHTNESS = intPreferencesKey("picture_brightness")
         private val KEY_SUBTITLE_ENCODING = stringPreferencesKey("subtitle_encoding")
         private val KEY_SUBTITLE_FOLDERS = stringPreferencesKey("subtitle_folders")
         private val KEY_NIGHT_MODE = booleanPreferencesKey("night_mode")
@@ -232,6 +246,10 @@ class AppSettingsRepository(private val context: Context) {
             nightMode = prefs[KEY_NIGHT_MODE] ?: false,
             subtitleFolders = (prefs[KEY_SUBTITLE_FOLDERS] ?: "").split("\n").filter { it.isNotBlank() },
             subtitleEncoding = com.vibeplayer.data.subs.SubtitleCharset.normalize(prefs[KEY_SUBTITLE_ENCODING]),
+            pictureBrightness = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_BRIGHTNESS] ?: 0),
+            pictureContrast = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_CONTRAST] ?: 0),
+            pictureSaturation = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_SATURATION] ?: 0),
+            pictureGamma = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_GAMMA] ?: 0),
             hdrOutput = prefs[KEY_HDR_OUTPUT] ?: false
         )
     }
@@ -284,6 +302,16 @@ class AppSettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { it[KEY_SUB_POS] = com.vibeplayer.player.SubtitleStyle.normalizePos(v) }
     }
 
+    suspend fun setPictureAdjust(a: com.vibeplayer.player.PictureAdjust) {
+        val n = a.normalized()
+        context.settingsDataStore.edit {
+            it[KEY_PICTURE_BRIGHTNESS] = n.brightness
+            it[KEY_PICTURE_CONTRAST] = n.contrast
+            it[KEY_PICTURE_SATURATION] = n.saturation
+            it[KEY_PICTURE_GAMMA] = n.gamma
+        }
+    }
+
     suspend fun setNightMode(on: Boolean) {
         context.settingsDataStore.edit { it[KEY_NIGHT_MODE] = on }
     }
@@ -313,6 +341,10 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_PERFORMANCE_HINTS] = settings.performanceHints
             prefs[KEY_HDR_OUTPUT] = settings.hdrOutput
             prefs[KEY_COLLECT_SYSTEM_PROFILES] = settings.collectSystemProfiles
+            prefs[KEY_PICTURE_GAMMA] = settings.pictureGamma
+            prefs[KEY_PICTURE_SATURATION] = settings.pictureSaturation
+            prefs[KEY_PICTURE_CONTRAST] = settings.pictureContrast
+            prefs[KEY_PICTURE_BRIGHTNESS] = settings.pictureBrightness
             prefs[KEY_SUBTITLE_ENCODING] = settings.subtitleEncoding
             prefs[KEY_SUBTITLE_FOLDERS] = settings.subtitleFolders.joinToString("\n")
             prefs[KEY_NIGHT_MODE] = settings.nightMode

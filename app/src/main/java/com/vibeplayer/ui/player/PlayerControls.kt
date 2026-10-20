@@ -98,6 +98,9 @@ fun PlayerControls(
     onSetSleepTimer: (com.vibeplayer.playback.SleepTimer?) -> Unit = {},
     rotationMode: RotationMode = RotationMode.AUTO,
     onCycleRotation: () -> Unit = {},
+    pictureAdjust: com.vibeplayer.player.PictureAdjust = com.vibeplayer.player.PictureAdjust(),
+    onPreviewPicture: (com.vibeplayer.player.PictureAdjust) -> Unit = {},
+    onSavePicture: (com.vibeplayer.player.PictureAdjust) -> Unit = {},
     modifier: Modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout)
 ) {
     TrackRecomposition("PlayerControls")
@@ -686,6 +689,9 @@ fun PlayerControls(
                     showMoreSheet = false
                     interactionEvents.value = System.currentTimeMillis()
                 },
+                pictureAdjust = pictureAdjust,
+                onPreviewPicture = onPreviewPicture,
+                onSavePicture = onSavePicture,
                 quickActions = if (!compactBar) emptyList() else buildList {
                     val quality = playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY
                     add(QuickAction("Speed ${HoldGesture.label(playerState.speed)}", "speed", selected = playerState.speed != 1.0) {

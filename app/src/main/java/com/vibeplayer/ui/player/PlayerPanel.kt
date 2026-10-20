@@ -237,3 +237,46 @@ fun PanelSectionLabel(text: String, modifier: Modifier = Modifier) {
         modifier = modifier.padding(start = 12.dp, top = 8.dp, bottom = 2.dp)
     )
 }
+
+/** A slim slider for panels: 4 dp track, small thumb, 32 dp tall. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun PanelSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    onValueChangeFinished: (() -> Unit)? = null
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val colors = androidx.compose.material3.SliderDefaults.colors(
+        thumbColor = PanelColors.accent,
+        activeTrackColor = PanelColors.accent,
+        inactiveTrackColor = Color(0x33FFFFFF)
+    )
+    androidx.compose.material3.Slider(
+        value = value,
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        valueRange = valueRange,
+        interactionSource = interaction,
+        colors = colors,
+        thumb = {
+            androidx.compose.material3.SliderDefaults.Thumb(
+                interactionSource = interaction,
+                colors = colors,
+                thumbSize = androidx.compose.ui.unit.DpSize(4.dp, 18.dp)
+            )
+        },
+        track = { state ->
+            androidx.compose.material3.SliderDefaults.Track(
+                sliderState = state,
+                colors = colors,
+                modifier = Modifier.heightIn(max = 4.dp),
+                drawStopIndicator = null,
+                thumbTrackGapSize = 2.dp
+            )
+        },
+        modifier = modifier.heightIn(max = 32.dp)
+    )
+}

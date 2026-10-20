@@ -374,6 +374,10 @@ class PlaybackService : Service() {
                 .collect { subtitleFiles.encoding = it }
         }
         serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.pictureAdjust() }.distinctUntilChanged()
+                .collect { playerEngine.setPictureAdjust(it) }
+        }
+        serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.nightMode }.distinctUntilChanged()
                 .collect { playerEngine.setNightMode(it) }
         }

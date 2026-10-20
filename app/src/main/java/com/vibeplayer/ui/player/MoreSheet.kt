@@ -18,6 +18,19 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.vibeplayer.player.PictureAdjust
 import com.vibeplayer.playback.SleepTimer
 import kotlinx.coroutines.delay
 
@@ -38,7 +51,10 @@ fun MoreSheet(
     rotationMode: RotationMode,
     onCycleRotation: () -> Unit,
     onDismiss: () -> Unit,
-    quickActions: List<QuickAction> = emptyList()
+    quickActions: List<QuickAction> = emptyList(),
+    pictureAdjust: PictureAdjust = PictureAdjust(),
+    onPreviewPicture: (PictureAdjust) -> Unit = {},
+    onSavePicture: (PictureAdjust) -> Unit = {}
 ) {
     TrackRecomposition("MoreSheet")
     // The countdown in the sleep row ticks once a second while the panel is open.
@@ -122,6 +138,9 @@ fun MoreSheet(
             )
         }
         item {
+            PictureSection(pictureAdjust, onPreviewPicture, onSavePicture)
+        }
+        item {
             TrackRow(
                 title = "Rotate",
                 subtitle = rotationMode.label + if (rotationMode == RotationMode.AUTO) " (follows the video)" else "",
@@ -133,5 +152,70 @@ fun MoreSheet(
                 }
             )
         }
+    }
+}
+
+/** Brightness, contrast, saturation and gamma: live while dragging, saved when a slider is let go. */
+@Composable
+private fun PictureSection(
+    value: PictureAdjust,
+    onPreview: (PictureAdjust) -> Unit,
+    onSave: (PictureAdjust) -> Unit
+) {
+    var current by remember(value) { mutableStateOf(value) }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            PanelSectionLabel("Picture", modifier = Modifier.weight(1f))
+            if (!current.isDefault) {
+                Text(
+                    text = "Reset",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = PanelColors.accent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            current = PictureAdjust()
+                            onSave(current)
+                        }
+                        .semantics {
+                            contentDescription = "picture_reset"
+                            testTag = "picture_reset"
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+        PictureSlider("Brightness", current.brightness, { current = current.copy(brightness = it); onPreview(current) }) { onSave(current) }
+        PictureSlider("Contrast", current.contrast, { current = current.copy(contrast = it); onPreview(current) }) { onSave(current) }
+        PictureSlider("Saturation", current.saturation, { current = current.copy(saturation = it); onPreview(current) }) { onSave(current) }
+        PictureSlider("Gamma", current.gamma, { current = current.copy(gamma = it); onPreview(current) }) { onSave(current) }
+    }
+}
+
+@Composable
+private fun PictureSlider(label: String, value: Int, onChange: (Int) -> Unit, onDone: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 8.dp)
+            .semantics { contentDescription = "picture_${label.lowercase()}" },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 12.sp, color = Color.White, modifier = Modifier.width(76.dp))
+        PanelSlider(
+            value = value.toFloat(),
+            onValueChange = { onChange((it / 5f).toInt() * 5) },
+            onValueChangeFinished = onDone,
+            valueRange = -100f..100f,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = if (value > 0) "+$value" else "$value",
+            fontSize = 12.sp,
+            color = if (value != 0) PanelColors.accent else PanelColors.secondaryText,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(36.dp)
+        )
     }
 }

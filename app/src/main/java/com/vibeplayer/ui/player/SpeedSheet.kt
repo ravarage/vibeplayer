@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -66,7 +64,7 @@ fun SpeedSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RoundStepButton("−") { step(-0.1) }
-                Slider(
+                PanelSlider(
                     value = sliderSpeed,
                     onValueChange = { newFloat ->
                         val speed = ((newFloat * 20).roundToInt() / 20.0).coerceIn(0.25, 4.0) // 0.05 steps
@@ -75,11 +73,6 @@ fun SpeedSheet(
                     },
                     onValueChangeFinished = { onSpeedChangeFinished(sliderSpeed.toDouble()) },
                     valueRange = 0.25f..4.0f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = PanelColors.accent,
-                        activeTrackColor = PanelColors.accent,
-                        inactiveTrackColor = Color(0x33FFFFFF)
-                    ),
                     modifier = Modifier.weight(1f).padding(horizontal = 6.dp)
                 )
                 RoundStepButton("+") { step(0.1) }
