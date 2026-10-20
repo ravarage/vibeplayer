@@ -1117,6 +1117,7 @@ class PlayerEngine(
         MpvNative.setPropertyLong(handle, "volume-max", VolumeBoost.MPV_VOLUME_MAX.toLong())
         MpvNative.setPropertyDouble(handle, "volume", boostVolume)
         if (nightMode) MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode))
+        if (audioSessionId > 0) MpvNative.setPropertyString(handle, "audiotrack-session-id", audioSessionId.toString())
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -2313,6 +2314,26 @@ class PlayerEngine(
 
     @Volatile private var isDucked = false
     @Volatile private var preDuckVolume: Double? = null
+
+    /**
+     * The audio session mpv's AudioTrack uses (`audiotrack-session-id`), announced to effect apps by
+     * the service; 0 lets Android pick a new one for every AudioTrack, which no effect app can find.
+     */
+    @Volatile var audioSessionId: Int = 0
+        private set
+
+    fun setAudioSessionId(id: Int) {
+        if (id == audioSessionId) return
+        audioSessionId = id
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L || id <= 0) return@executeCommand
+            MpvNative.setPropertyString(handle, "audiotrack-session-id", id.toString())
+            // A file already playing keeps its AudioTrack until the audio output is rebuilt.
+            if (fileLoaded) MpvNative.command(handle, arrayOf("ao-reload"))
+            Log.i("VP", "audiotrack-session-id $id")
+        }
+    }
 
     /** Night mode (dynaudnorm), kept for every file and new handle. */
     @Volatile var nightMode: Boolean = false

@@ -122,6 +122,7 @@ class PlaybackService : Service() {
     private var mediaSession: androidx.media3.session.MediaSession? = null
 
     private lateinit var audioManager: AudioManager
+    private lateinit var audioEffectSession: AudioEffectSession
     private var audioFocusRequest: android.media.AudioFocusRequest? = null
     private var resumeOnFocusGain = false
     private var hasAudioFocus = false
@@ -288,6 +289,10 @@ class PlaybackService : Service() {
         db = AppDatabase.getInstance(this)
         appSettingsRepository = AppSettingsRepository(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // One audio session for the service's lifetime, so effect apps (ViPER4Android, equalizers) can
+        // attach to mpv's AudioTrack; announced when playback starts.
+        audioEffectSession = AudioEffectSession(this, audioManager.generateAudioSessionId())
+        playerEngine.setAudioSessionId(audioEffectSession.sessionId)
 
         createNotificationChannel()
         FormatTableLoader.loadAsync(this) // P6-06: per-format table for this Vulkan driver (background)
@@ -419,6 +424,7 @@ class PlaybackService : Service() {
                     } else {
                         updateNoisyReceiver(true)
                         thermalManager.onPlaybackStarted()
+                        audioEffectSession.open()
                     }
                 }
 
@@ -1570,6 +1576,7 @@ class PlaybackService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i("VP", "PlaybackService onDestroy")
+        audioEffectSession.close()
         periodicSaveJob?.cancel()
         stopCheckJob?.cancel()
         pausedTimeoutJob?.cancel()
