@@ -653,6 +653,7 @@ class PlayerActivity : ComponentActivity() {
                                 equalizer = equalizer,
                                 onPreviewEqualizer = { viewModel.previewEqualizer(it) },
                                 onSaveEqualizer = { viewModel.saveEqualizer(it) },
+                                onSelectShader = { viewModel.selectShaderPreset(it) },
                                 bookmarks = bookmarks,
                                 onAddBookmark = { viewModel.addBookmark() },
                                 onDeleteBookmark = { viewModel.deleteBookmark(it.id) },

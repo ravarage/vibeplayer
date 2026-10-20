@@ -94,7 +94,7 @@ done
 echo "fresh copy: $FRESH"
 
 say "Device checks (P12)"
-ONLY=p12_rotated_clip,p12_resume_chip,p12_up_next,p12_sub_line,p12_bookmarks,p12_folder_speed,p12_folder_lang,no_fatal
+ONLY=p12_rotated_clip,p12_resume_chip,p12_up_next,p12_sub_line,p12_bookmarks,p12_shader_switch,p12_folder_speed,p12_folder_lang,no_fatal
 set +e
 python3 tools/devcheck/run.py --only "$ONLY" --out "$OUT/p12"
 RC=$?

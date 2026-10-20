@@ -196,6 +196,38 @@ def p12_folder_speed(ctx):
             ctx.trace(f"cleanup failed: {e}")
 
 
+@check("p12_shader_switch", "More > Shaders: pick GSR while playing, Compare bypasses it, the setting is put back (P12-08)")
+def p12_shader_switch(ctx):
+    m = _play(ctx, EP1, pause=True)
+    first = ctx.log.find(r"Applied shader preset (\w+) \(", m)
+    before = first[1].group(1) if first else "NONE"
+    try:
+        _open_more(ctx)
+        m2 = ctx.log.mark()
+        need(_tap_desc(ctx, "shader_snapdragon_gsr"), "no GSR chip in More > Shaders")
+        need(ctx.log.wait(r"Applied shader preset SNAPDRAGON_GSR \(", 6, since=m2), "picking GSR applied nothing")
+        ctx.sleep(1.0)
+        m3 = ctx.log.mark()
+        if _find_desc(ctx, "shader_compare", tries=2, gap=0.4):
+            _tap_desc(ctx, "shader_compare")
+            need(ctx.log.wait(r"Shader compare: original=true", 5, since=m3), "Compare logged nothing")
+            hit = ctx.log.wait(r"Applied shader preset SNAPDRAGON_GSR \([^)]*\): ?(\S*)", 5, since=m3)
+            need(hit and hit[1].group(1) == "", "Compare did not clear the shader chain")
+            compared = "Compare bypassed it"
+        else:
+            compared = "no Compare (Efficient mode)"
+        _close_panel(ctx)
+        return f"GSR applied from the player; {compared}; setting put back to {before}"
+    finally:
+        try:
+            _open_more(ctx)
+            _tap_desc(ctx, f"shader_{before.lower()}")
+            ctx.sleep(1.0)
+            _close_panel(ctx)
+        except Exception as e:
+            ctx.trace(f"cleanup failed: {e}")
+
+
 @check("p12_folder_lang", "Audio language chosen in one file of a folder is used for a new file there (was the skipped folder_track_memory)")
 def p12_folder_lang(ctx):
     fresh = _fresh(ctx)
@@ -238,6 +270,11 @@ MANUAL.extend([
      "Long-press the vibeplayer-p12 folder > Hide: it leaves the list and search; Settings > Library > Hidden folders > Show "
      "brings it back. Long-press p12_fresh_*.mkv > Rename to 'renamed': Android asks, the list shows renamed.mkv. "
      "Long-press it > Delete: Android asks, it is gone."),
+    ("p12_backup", "Backup and restore (P12-10)",
+     "Settings > Library > Back up: save the zip. Change a setting and watch a minute of a video. Restore from backup > "
+     "pick the zip > Restore: the app restarts with the old setting and position."),
+    ("p12_stats", "Stats overlay rows (P12-09)",
+     "Open the debug overlay on an H.264 and an HEVC 10-bit clip: VIDEO, PIXFMT, COLOR, SHADERS, A/V SYNC and CACHE read sensibly."),
     ("p12_portrait_look", "Upright phone clip (auto-rotate)",
      "Open a video you filmed upright with the phone camera: the player turns to portrait and the picture is upright."),
 ])

@@ -1,5 +1,6 @@
 package com.vibeplayer.ui.settings
 
+import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -55,6 +56,46 @@ fun SettingsScreen(
 ) {
     BackHandler(onBack = onBack)
     var showHiddenFoldersDialog by remember { mutableStateOf(false) }
+    // P12-10 backup and restore
+    val backupScope = androidx.compose.runtime.rememberCoroutineScope()
+    var restoreCandidate by remember { mutableStateOf<com.vibeplayer.data.backup.Backup.Checked?>(null) }
+    var backupMessage by remember { mutableStateOf<String?>(null) }
+    val backupContext = androidx.compose.ui.platform.LocalContext.current
+    val exportBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) backupScope.launch {
+            backupMessage = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    backupContext.contentResolver.openOutputStream(uri)?.use { out ->
+                        val n = com.vibeplayer.data.backup.Backup.export(backupContext, out, com.vibeplayer.BuildConfig.VERSION_NAME)
+                        "Backup saved ($n files)"
+                    } ?: "Could not write the backup"
+                } catch (e: Exception) {
+                    "Backup failed: ${e.message}"
+                }
+            }
+        }
+    }
+    val importBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) backupScope.launch {
+            val (checked, reason) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    backupContext.contentResolver.openInputStream(uri)?.use { input ->
+                        com.vibeplayer.data.backup.Backup.unpack(
+                            input, java.io.File(backupContext.cacheDir, "restore"),
+                            maxDbVersion = com.vibeplayer.data.db.AppDatabase.VERSION
+                        )
+                    } ?: (null to "cannot read the file")
+                } catch (e: Exception) {
+                    null to (e.message ?: "cannot read the file")
+                }
+            }
+            if (checked != null) restoreCandidate = checked else backupMessage = "Cannot restore: $reason"
+        }
+    }
 
     var showPlaybackModeDialog by remember { mutableStateOf(false) }
     var showRendererDialog by remember { mutableStateOf(false) }
@@ -390,6 +431,20 @@ fun SettingsScreen(
                 onClick = { if (hiddenFolders.isNotEmpty()) showHiddenFoldersDialog = true }
             )
 
+            SettingsClickableRow(
+                title = "Back up history and settings",
+                subtitle = "Positions, tracks, bookmarks, folder settings and every setting, in one file",
+                description = "Keep it somewhere safe; Restore brings it back after a reinstall",
+                onClick = { exportBackup.launch(com.vibeplayer.data.backup.Backup.fileName(System.currentTimeMillis())) }
+            )
+
+            SettingsClickableRow(
+                title = "Restore from backup",
+                subtitle = "Replaces the current history and settings; the app restarts",
+                description = "Pick a vibeplayer-backup-*.zip made by Back up",
+                onClick = { importBackup.launch(arrayOf("application/zip", "application/octet-stream")) }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -532,6 +587,31 @@ fun SettingsScreen(
                     Text("Close")
                 }
             }
+        )
+    }
+
+    restoreCandidate?.let { checked ->
+        AlertDialog(
+            onDismissRequest = { restoreCandidate = null },
+            title = { Text("Restore this backup?") },
+            text = { Text("Your current history, bookmarks and settings are replaced by the ones in the backup. Vibe Player restarts.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    restoreCandidate = null
+                    backupScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        com.vibeplayer.data.backup.Backup.restoreAndRestart(backupContext, checked)
+                    }
+                }) { Text("Restore") }
+            },
+            dismissButton = { TextButton(onClick = { restoreCandidate = null }) { Text("Cancel") } }
+        )
+    }
+
+    backupMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { backupMessage = null },
+            text = { Text(msg) },
+            confirmButton = { TextButton(onClick = { backupMessage = null }) { Text("OK") } }
         )
     }
 

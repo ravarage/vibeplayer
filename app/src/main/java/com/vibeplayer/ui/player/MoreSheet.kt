@@ -42,6 +42,16 @@ data class FolderShowControls(
     val onSetAutoSkip: (Boolean?) -> Unit = {}
 )
 
+/** P12-08: switch the shader preset while watching and compare with the original picture. */
+data class ShaderControls(
+    val ui: com.vibeplayer.player.ShaderUi = com.vibeplayer.player.ShaderUi(),
+    val qualityMode: Boolean = false,
+    val vulkan: Boolean = false,
+    val onSelect: (com.vibeplayer.player.ShaderPreset) -> Unit = {},
+    val onCompare: (Boolean) -> Unit = {},
+    val onSwitchToQuality: (() -> Unit)? = null
+)
+
 /** A button that moves into the More panel when the top bar is narrow (portrait). */
 data class QuickAction(val label: String, val tag: String, val selected: Boolean = false, val onClick: () -> Unit)
 
@@ -65,7 +75,8 @@ fun MoreSheet(
     onSavePicture: (PictureAdjust) -> Unit = {},
     bookmarkCount: Int = 0,
     onOpenBookmarks: (() -> Unit)? = null,
-    folderShow: FolderShowControls? = null
+    folderShow: FolderShowControls? = null,
+    shaders: ShaderControls? = null
 ) {
     TrackRecomposition("MoreSheet")
     // The countdown in the sleep row ticks once a second while the panel is open.
@@ -164,6 +175,9 @@ fun MoreSheet(
         }
         if (folderShow != null && folderShow.show.folderPath != null) {
             item { FolderShowSection(folderShow) }
+        }
+        if (shaders != null) {
+            item { ShaderSection(shaders) }
         }
         item {
             PictureSection(pictureAdjust, onPreviewPicture, onSavePicture)
@@ -292,6 +306,57 @@ private fun FolderShowSection(c: FolderShowControls) {
                 onClick = { c.onSetAutoSkip(true) })
             PanelChip(text = "Off", selected = c.show.autoSkipChapters == false, tag = "folder_skip_off",
                 onClick = { c.onSetAutoSkip(false) })
+        }
+    }
+}
+
+/** Shader presets and an original/processed compare (P12-08). Shaders run in Quality mode; Anime4K on Vulkan only. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ShaderSection(c: ShaderControls) {
+    val preset = c.ui.preset
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        PanelSectionLabel("Shaders")
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            com.vibeplayer.player.ShaderPreset.entries.forEach { p ->
+                val label = when (p) {
+                    com.vibeplayer.player.ShaderPreset.NONE -> "Off"
+                    com.vibeplayer.player.ShaderPreset.ANIME4K_A -> "Anime4K A"
+                    com.vibeplayer.player.ShaderPreset.ANIME4K_B -> "Anime4K B"
+                    com.vibeplayer.player.ShaderPreset.ANIME4K_C -> "Anime4K C"
+                    com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR -> "GSR"
+                }
+                PanelChip(text = label, selected = p == preset, tag = "shader_${p.name.lowercase()}", onClick = { c.onSelect(p) })
+            }
+            if (preset != com.vibeplayer.player.ShaderPreset.NONE && c.qualityMode) {
+                PanelChip(
+                    text = if (c.ui.showingOriginal) "◐ Showing original" else "◐ Compare",
+                    selected = c.ui.showingOriginal,
+                    tag = "shader_compare",
+                    onClick = { c.onCompare(!c.ui.showingOriginal) }
+                )
+            }
+        }
+        val note = when {
+            preset == com.vibeplayer.player.ShaderPreset.NONE -> null
+            !c.qualityMode -> "Shaders run in Quality mode only"
+            preset.isAnime4K && !c.vulkan -> "Anime4K needs the Vulkan renderer"
+            else -> null
+        }
+        if (note != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = note, fontSize = 11.sp, color = PanelColors.secondaryText, modifier = Modifier.weight(1f))
+                if (!c.qualityMode && c.onSwitchToQuality != null) {
+                    PanelChip(text = "Switch to Quality", tag = "shader_quality", onClick = c.onSwitchToQuality)
+                }
+            }
         }
     }
 }

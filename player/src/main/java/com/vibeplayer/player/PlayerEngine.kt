@@ -980,6 +980,15 @@ class PlayerEngine(
                     ?: (playbackConfig.getOptionTable()["gpu-context"] ?: "none")
                 val modeStr = "${playbackConfig.mode} (${if (playbackConfig.mode == PlaybackMode.EFFICIENT) playbackConfig.efficientPath else playbackConfig.renderer})"
                 val rendererInUse = playbackConfig.renderer.name
+                // P12-09: what is decoded and how it is shown, for the overlay.
+                val pixfmt = MpvNative.getPropertyString(handle, "video-params/hw-pixelformat")
+                    ?: MpvNative.getPropertyString(handle, "video-params/pixelformat")
+                val sw = MpvNative.getPropertyString(handle, "video-params/pixelformat")
+                val primaries = MpvNative.getPropertyString(handle, "video-params/primaries")
+                val gamma = MpvNative.getPropertyString(handle, "video-params/gamma")
+                val avsync = MpvNative.getPropertyDouble(handle, "avsync")
+                val cache = MpvNative.getPropertyDouble(handle, "demuxer-cache-duration")
+                val shaderFiles = if (shaderCompare) 0 else currentShaderPreset.getShaderFiles(playbackConfig.mode, playbackConfig.renderer).size
                 _stats.value = PlayerStats(
                     vo = vo,
                     hwdecCurrent = hwdec,
@@ -999,7 +1008,13 @@ class PlayerEngine(
                     containerFps = _state.value.containerFps,
                     thermalStatus = _thermalStatus.value,
                     adpfStatus = adpfStatus,
-                    hdrStatus = _hdrDecision.value.overlayText
+                    hdrStatus = _hdrDecision.value.overlayText,
+                    videoCodec = _state.value.videoCodec,
+                    pixelFormat = listOfNotNull(pixfmt, sw?.takeIf { it != pixfmt }).joinToString(" / ").ifEmpty { null },
+                    colors = listOfNotNull(primaries, gamma).joinToString(" / ").ifEmpty { null },
+                    shaders = StatsText.shaders(currentShaderPreset, shaderFiles, shaderCompare),
+                    avsyncSec = avsync,
+                    cacheSec = cache
                 )
 
 
@@ -1289,6 +1304,11 @@ class PlayerEngine(
         currentFilePath = path
         if (identity != currentFileIdentity) {
             autoSkippedChapters.clear()
+            if (shaderCompare) {
+                // A new file starts with its shaders on (the compare is for the file it was turned on in).
+                shaderCompare = false
+                _shaderUi.value = ShaderUi(currentShaderPreset, false)
+            }
             _state.update { it.copy(abLoopAMs = null, abLoopBMs = null, loopFile = false) }
         }
         currentFileIdentity = identity
@@ -1575,11 +1595,29 @@ class PlayerEngine(
         shaderDirectory = dir
     }
 
+    /** P12-08: the preset in use and whether the shaders are bypassed to compare with the original. */
+    private val _shaderUi = MutableStateFlow(ShaderUi())
+    val shaderUi: StateFlow<ShaderUi> = _shaderUi.asStateFlow()
+    @Volatile private var shaderCompare = false
+
+    /** Shows the picture without the shaders (true) or with them again; reset by a new file or preset. */
+    fun setShaderCompare(original: Boolean) {
+        shaderCompare = original
+        _shaderUi.value = ShaderUi(currentShaderPreset, original)
+        executeCommand {
+            assertCommandThread()
+            applyShaderPresetInternal()
+            Log.i("VP", "Shader compare: original=$original")
+        }
+    }
+
     fun setShaderPreset(preset: ShaderPreset, dir: String? = null) {
         if (dir != null) {
             shaderDirectory = dir
         }
         currentShaderPreset = preset
+        shaderCompare = false
+        _shaderUi.value = ShaderUi(preset, false)
         executeCommand {
             assertCommandThread()
             applyShaderPresetInternal()
@@ -1587,7 +1625,8 @@ class PlayerEngine(
     }
 
     // dwidth/dheight (video-out-params) are the frame size before the VO's rotation; a phone clip filmed upright
-    // is usually stored landscape with rotate=90, which the VO applies. The state carries the size as shown, so orientation and PiP follow it.
+    // is usually stored landscape with rotate=90, which the VO applies. The state carries the size as shown,
+    // so orientation and PiP follow it.
     @Volatile private var rawVideoWidth = 0
     @Volatile private var rawVideoHeight = 0
     @Volatile private var videoRotate = 0
@@ -1606,7 +1645,7 @@ class PlayerEngine(
         // The renderer of the current handle: a Vulkan -> GLES fallback creates a new handle and applies
         // the preset again, so the GLES chain (without Clamp_Highlights, P8-02) is picked up there.
         val renderer = playbackConfig.renderer
-        val glslShadersValue = currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory, renderer)
+        val glslShadersValue = if (shaderCompare) "" else currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory, renderer)
         // Anime4K is Vulkan-only (P8-02): say so once per file and renderer instead of silently showing nothing.
         if (currentShaderPreset.unavailableOn(playbackConfig.mode, renderer)) {
             val key = "$currentFileIdentity|$renderer|$currentShaderPreset"

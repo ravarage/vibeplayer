@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [FileSettings::class, FolderSettings::class, Bookmark::class],
-    version = 6,
+    version = AppDatabase.VERSION,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -19,6 +19,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
 
     companion object {
+        /** Schema version (also the newest a backup may have, P12-10). */
+        const val VERSION = 6
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -72,6 +75,14 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookmarks_fileKey` ON `bookmarks` (`fileKey`)")
                 db.execSQL("ALTER TABLE folder_settings ADD COLUMN speed REAL")
                 db.execSQL("ALTER TABLE folder_settings ADD COLUMN autoSkipChapters INTEGER")
+            }
+        }
+
+        /** P12-10: closes the database before a backup replaces its file (the app restarts right after). */
+        fun closeForRestore() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
             }
         }
 

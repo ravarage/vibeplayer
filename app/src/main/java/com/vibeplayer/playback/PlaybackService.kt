@@ -410,7 +410,12 @@ class PlaybackService : Service() {
             appSettingsRepository.appSettingsFlow
                 .map { it.shaderPreset }
                 .distinctUntilChanged()
-                .collect { playerEngine.setShaderPreset(mapShaderPreset(it)) }
+                .collect {
+                    val preset = mapShaderPreset(it)
+                    // A preset picked in the player (P12-08) may come before the files are unpacked.
+                    if (preset != ShaderPreset.NONE) shaderExtraction.await()
+                    playerEngine.setShaderPreset(preset)
+                }
         }
 
         // P7-02: the Media3 adapter and MediaSession are built after the first frame (see

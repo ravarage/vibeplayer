@@ -50,6 +50,8 @@ Features marked **beta** are merged but their device check is not finished (see 
 - More panel: sleep timer, A-B repeat, loop, rotate, frame step, picture adjustments (brightness, contrast, saturation, gamma)
 - Subtitles: automatic loading from chosen folders, legacy encodings (Arabic, Cyrillic, CJK and others), text colour, outline and background box, previous / next line
 - Browser: search across all videos, watched marks, hide folders, rename and delete (with Android's consent)
+- Shader presets switchable while watching, with a compare against the original picture; a stats overlay with codec, pixel format, colours, shaders, A/V sync and cache
+- Backup and restore of history, bookmarks and settings in one file
 - Picture-in-picture mini player with aspect-ratio clamping, auto-enter on home, and auto-advance inside the mini player
 - Background playback in a foreground service with a media notification (**beta**)
 - Folder browser with thumbnails (software thumbnails for AV1 and 10-bit video with dark-frame detection) and a Continue Watching row with progress bars

@@ -74,6 +74,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun previewEqualizer(eq: com.vibeplayer.player.Equalizer) = playerEngine.setEqualizer(eq)
 
+    /** P12-08: saves the shader preset; the service applies it to the playing file and the next ones. */
+    fun selectShaderPreset(preset: com.vibeplayer.player.ShaderPreset) {
+        val option = com.vibeplayer.data.prefs.ShaderPresetOption.valueOf(preset.name)
+        viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setShaderPreset(option) }
+    }
+
     fun saveEqualizer(eq: com.vibeplayer.player.Equalizer) {
         playerEngine.setEqualizer(eq)
         viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setEqualizer(eq) }

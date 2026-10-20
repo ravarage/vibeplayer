@@ -841,3 +841,23 @@ Watching; Settings > Library > Hidden folders shows them again. *Accept*: by han
 **P12-07 Small fixes** — the engine reports the video size after the container rotation (`video-out-params/rotate`),
 so clips filmed upright open in portrait with a portrait PiP; Previous / Next line in the Subtitles panel (mpv
 `sub-seek`). *Accept*: `p12_rotated_clip`, `p12_sub_line` pass.
+
+**P12-08 Shaders in the player** — More > Shaders: Off / Anime4K A / B / C / GSR chips (saved as the setting, applied
+live by the service after the shader files are unpacked); Compare bypasses the chain (`glsl-shaders` empty) until
+tapped again or the next file; notes when Quality mode or Vulkan is needed, with Switch to Quality. *Accept*:
+`p12_shader_switch` passes; Compare visibly shows the unprocessed picture.
+
+**P12-09 Stats overlay** — adds VIDEO (size, codec), PIXFMT (hardware / software), COLOR (primaries / transfer),
+SHADERS (preset and passes, or bypassed / not active), A/V SYNC and CACHE. *Accept*: the rows read right on an
+H.264 file and on HEVC 10-bit (yuv420p10, bt.2020 / pq).
+
+**P12-10 Backup and restore** — Settings > Library: one zip (Room database after a WAL checkpoint, the two
+DataStore files); restore checks the zip (allowed names only, SQLite header, database version not newer than the
+app), replaces the files and restarts the process. *Accept*: by hand: back up, change a setting and a position,
+restore: both come back; a zip from elsewhere is refused with a reason.
+
+Considered and left out (2026-10-20 review of an outside feature list): network streaming and playlists (SPEC
+non-goals), AI upscaling, frame interpolation, plugins, cloud sync. Deferred: showing a shader's compile error on
+screen (needs the mpv log hook in mpv_jni.c, built on the owner's PC), custom shader import, a scaler choice for
+Quality mode.
+

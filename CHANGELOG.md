@@ -20,6 +20,12 @@ Built in a cloud session without the phone; `tools/shower_check.sh` runs the dev
   tracks and bookmarks follow a renamed file.
 - **Hidden folders (P12-06)**: long-press a folder to hide it; Settings > Library > Hidden folders shows it again.
 - **Previous / next subtitle line**: two buttons in the Subtitles panel to hear a line again or skip ahead.
+- **Shaders in the player (P12-08)**: More > Shaders switches between Off, Anime4K A/B/C and GSR while watching (kept
+  as the setting), with Compare to see the original picture; it says when Quality mode or Vulkan is needed.
+- **Fuller stats overlay (P12-09)**: resolution and codec, pixel format (hardware and software), colour primaries
+  and transfer, active shaders and passes, A/V sync and the demuxer cache.
+- **Backup and restore (P12-10)**: Settings > Library saves positions, tracks, bookmarks, folder settings and all
+  settings to one zip and restores them (the app restarts), for example after a reinstall.
 - **Device scripts**: `tools/shower_check.sh` (the P12 checks, about 10 minutes) and `tools/overnight.sh` (30-minute
   stability runs, the shader benchmark and the full regression).
 

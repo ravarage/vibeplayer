@@ -33,8 +33,30 @@ data class PlayerStats(
     /** P10-06 ADPF hint session status for the overlay ("off", "on (n threads)", ...). */
     val adpfStatus: String? = null,
     /** P10-09 HDR output decision for the overlay ("off (setting off)", "on (PQ)"). */
-    val hdrStatus: String? = null
+    val hdrStatus: String? = null,
+    /** P12-09: codec, pixel format (hardware / software), colour primaries and transfer, shaders, A/V sync, cache. */
+    val videoCodec: String? = null,
+    val pixelFormat: String? = null,
+    val colors: String? = null,
+    val shaders: String? = null,
+    val avsyncSec: Double? = null,
+    val cacheSec: Double? = null
 )
+
+/** P12-08: the shader preset in use and whether the picture is shown without it (compare). */
+data class ShaderUi(val preset: ShaderPreset = ShaderPreset.NONE, val showingOriginal: Boolean = false)
+
+/** Overlay texts (P12-09). */
+object StatsText {
+    fun shaders(preset: ShaderPreset, passes: Int, original: Boolean): String = when {
+        preset == ShaderPreset.NONE -> "off"
+        original -> "${preset.displayName}: bypassed (compare)"
+        passes == 0 -> "${preset.displayName}: not active (Efficient mode or OpenGL ES)"
+        else -> "${preset.displayName} ($passes ${if (passes == 1) "pass" else "passes"})"
+    }
+
+    fun seconds(value: Double?): String = if (value == null) "n/a" else String.format(java.util.Locale.US, "%.3f s", value)
+}
 
 data class PlayerState(
     val paused: Boolean = true,

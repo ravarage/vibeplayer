@@ -108,6 +108,7 @@ fun PlayerControls(
     onAddBookmark: (() -> Unit)? = null,
     onDeleteBookmark: (com.vibeplayer.data.db.Bookmark) -> Unit = {},
     folderShow: FolderShowControls? = null,
+    onSelectShader: ((com.vibeplayer.player.ShaderPreset) -> Unit)? = null,
     modifier: Modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout)
 ) {
     TrackRecomposition("PlayerControls")
@@ -133,6 +134,7 @@ fun PlayerControls(
     var showMoreSheet by remember { mutableStateOf(false) }
     var showEqSheet by remember { mutableStateOf(false) }
     var showBookmarkSheet by remember { mutableStateOf(false) }
+    val shaderUi by playerEngine.shaderUi.collectAsState()
 
     val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet || showChapterSheet ||
         showMoreSheet || showEqSheet || showBookmarkSheet
@@ -746,6 +748,16 @@ fun PlayerControls(
                     }
                 } else null,
                 folderShow = folderShow,
+                shaders = onSelectShader?.let { select ->
+                    ShaderControls(
+                        ui = shaderUi,
+                        qualityMode = playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY,
+                        vulkan = playerEngine.playbackConfig.renderer == com.vibeplayer.player.Renderer.VULKAN,
+                        onSelect = select,
+                        onCompare = { playerEngine.setShaderCompare(it) },
+                        onSwitchToQuality = onToggleMode
+                    )
+                },
                 quickActions = if (!compactBar) emptyList() else buildList {
                     val quality = playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY
                     add(QuickAction("Speed ${HoldGesture.label(playerState.speed)}", "speed", selected = playerState.speed != 1.0) {
