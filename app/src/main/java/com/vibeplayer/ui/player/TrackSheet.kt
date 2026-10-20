@@ -16,7 +16,9 @@ fun AudioTrackSheet(
     onSelectTrack: (Int?) -> Unit,
     onDismiss: () -> Unit,
     nightMode: Boolean = false,
-    onToggleNightMode: (() -> Unit)? = null
+    onToggleNightMode: (() -> Unit)? = null,
+    equalizerOn: Boolean = false,
+    onOpenEqualizer: (() -> Unit)? = null
 ) {
     TrackRecomposition("AudioTrackSheet")
     val audioTracks = remember(tracks) { tracks.filter { it.type == "audio" } }
@@ -24,8 +26,11 @@ fun AudioTrackSheet(
     PlayerPanel(
         title = "Audio Tracks",
         onDismiss = onDismiss,
-        headerActions = if (onToggleNightMode != null) {
-            {
+        headerActions = {
+            if (onOpenEqualizer != null) {
+                PanelChip(text = "🎚 EQ", onClick = onOpenEqualizer, selected = equalizerOn, tag = "equalizer")
+            }
+            if (onToggleNightMode != null) {
                 PanelChip(
                     text = if (nightMode) "🌙 Night on" else "🌙 Night",
                     onClick = onToggleNightMode,
@@ -33,7 +38,7 @@ fun AudioTrackSheet(
                     tag = "night_mode"
                 )
             }
-        } else null
+        }
     ) {
         items(audioTracks, key = { it.id }) { track ->
             val isSelected = (track.id == selectedTrackId) || track.selected

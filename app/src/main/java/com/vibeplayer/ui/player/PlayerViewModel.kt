@@ -68,6 +68,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setPictureAdjust(a) }
     }
 
+    val equalizer: StateFlow<com.vibeplayer.player.Equalizer> = appSettingsRepository.appSettingsFlow
+        .map { it.equalizer() }.distinctUntilChanged()
+        .stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, com.vibeplayer.player.Equalizer())
+
+    fun previewEqualizer(eq: com.vibeplayer.player.Equalizer) = playerEngine.setEqualizer(eq)
+
+    fun saveEqualizer(eq: com.vibeplayer.player.Equalizer) {
+        playerEngine.setEqualizer(eq)
+        viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setEqualizer(eq) }
+    }
+
     fun setNightMode(on: Boolean) {
         viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setNightMode(on) }
     }

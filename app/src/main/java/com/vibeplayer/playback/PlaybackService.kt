@@ -374,6 +374,10 @@ class PlaybackService : Service() {
                 .collect { subtitleFiles.encoding = it }
         }
         serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.equalizer() }.distinctUntilChanged()
+                .collect { playerEngine.setEqualizer(it) }
+        }
+        serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.pictureAdjust() }.distinctUntilChanged()
                 .collect { playerEngine.setPictureAdjust(it) }
         }

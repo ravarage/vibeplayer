@@ -79,7 +79,13 @@ class PanelScreenshotTest {
 
     @Test
     fun audioLandscape() = shot("audio_land") {
-        AudioTrackSheet(tracks, selectedTrackId = 1, onSelectTrack = {}, onDismiss = {}, nightMode = true, onToggleNightMode = {})
+        AudioTrackSheet(tracks, selectedTrackId = 1, onSelectTrack = {}, onDismiss = {}, nightMode = true, onToggleNightMode = {},
+            equalizerOn = true, onOpenEqualizer = {})
+    }
+
+    @Test
+    fun equalizerLandscape() = shot("equalizer_land") {
+        EqualizerSheet(com.vibeplayer.player.Equalizer(true, listOf(6, 5, 4, 2, 0, 0, 0, 0, 0, 0)), onPreview = {}, onSave = {}, onDismiss = {})
     }
 
     @Test

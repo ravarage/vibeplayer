@@ -101,6 +101,9 @@ fun PlayerControls(
     pictureAdjust: com.vibeplayer.player.PictureAdjust = com.vibeplayer.player.PictureAdjust(),
     onPreviewPicture: (com.vibeplayer.player.PictureAdjust) -> Unit = {},
     onSavePicture: (com.vibeplayer.player.PictureAdjust) -> Unit = {},
+    equalizer: com.vibeplayer.player.Equalizer = com.vibeplayer.player.Equalizer(),
+    onPreviewEqualizer: (com.vibeplayer.player.Equalizer) -> Unit = {},
+    onSaveEqualizer: (com.vibeplayer.player.Equalizer) -> Unit = {},
     modifier: Modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout)
 ) {
     TrackRecomposition("PlayerControls")
@@ -124,8 +127,10 @@ fun PlayerControls(
     var showSyncSheet by remember { mutableStateOf(false) }
     var showChapterSheet by remember { mutableStateOf(false) }
     var showMoreSheet by remember { mutableStateOf(false) }
+    var showEqSheet by remember { mutableStateOf(false) }
 
-    val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet || showChapterSheet || showMoreSheet
+    val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet || showChapterSheet ||
+        showMoreSheet || showEqSheet
     BackHandler(enabled = anySheetOpen) {
         showAudioTrackSheet = false
         showSubTrackSheet = false
@@ -133,6 +138,7 @@ fun PlayerControls(
         showSyncSheet = false
         showChapterSheet = false
         showMoreSheet = false
+        showEqSheet = false
         interactionEvents.value = System.currentTimeMillis()
     }
 
@@ -616,7 +622,12 @@ fun PlayerControls(
                     interactionEvents.value = System.currentTimeMillis()
                 },
                 nightMode = nightMode,
-                onToggleNightMode = onToggleNightMode
+                onToggleNightMode = onToggleNightMode,
+                equalizerOn = equalizer.isActive,
+                onOpenEqualizer = {
+                    showAudioTrackSheet = false
+                    showEqSheet = true
+                }
             )
         }
 
@@ -669,6 +680,18 @@ fun PlayerControls(
                 onSelectChapter = { playerEngine.seekToChapter(it) },
                 onDismiss = {
                     showChapterSheet = false
+                    interactionEvents.value = System.currentTimeMillis()
+                }
+            )
+        }
+
+        if (showEqSheet) {
+            EqualizerSheet(
+                value = equalizer,
+                onPreview = onPreviewEqualizer,
+                onSave = onSaveEqualizer,
+                onDismiss = {
+                    showEqSheet = false
                     interactionEvents.value = System.currentTimeMillis()
                 }
             )

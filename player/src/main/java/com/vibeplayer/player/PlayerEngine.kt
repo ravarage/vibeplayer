@@ -1116,7 +1116,7 @@ class PlayerEngine(
         // Volume boost: mpv may go above 100 %; a new handle starts at the current boost.
         MpvNative.setPropertyLong(handle, "volume-max", VolumeBoost.MPV_VOLUME_MAX.toLong())
         MpvNative.setPropertyDouble(handle, "volume", boostVolume)
-        if (nightMode) MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode))
+        if (nightMode || equalizer.isActive) MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode, equalizer))
         if (audioSessionId > 0) MpvNative.setPropertyString(handle, "audiotrack-session-id", audioSessionId.toString())
         if (!pictureAdjust.isDefault) pictureAdjust.mpvProperties().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
 
@@ -2374,8 +2374,24 @@ class PlayerEngine(
         executeCommand {
             assertCommandThread()
             if (handle == 0L) return@executeCommand
-            val res = MpvNative.setPropertyString(handle, "af", AudioFilters.chain(on))
+            val res = MpvNative.setPropertyString(handle, "af", AudioFilters.chain(on, equalizer))
             Log.i("VP", "setNightMode $on res=$res")
+        }
+    }
+
+    /** The 10-band equalizer, kept for every file and new handle (in the same af chain as night mode). */
+    @Volatile var equalizer: Equalizer = Equalizer()
+        private set
+
+    fun setEqualizer(eq: Equalizer) {
+        val e = eq.normalized()
+        if (e == equalizer) return
+        equalizer = e
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode, e))
+            Log.i("VP", "setEqualizer enabled=${e.enabled} gains=${e.gains} res=$res")
         }
     }
 

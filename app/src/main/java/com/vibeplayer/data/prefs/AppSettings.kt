@@ -88,8 +88,14 @@ data class AppSettings(
     /** Dark box behind plain-text subtitles. */
     val subtitleBox: Boolean = false,
     /** Bold plain-text subtitles. */
-    val subtitleBold: Boolean = false
+    val subtitleBold: Boolean = false,
+    /** Built-in 10-band equalizer on. */
+    val eqEnabled: Boolean = false,
+    /** Equalizer gains in dB, comma separated (Equalizer.BANDS order). */
+    val eqGains: String = ""
 ) {
+
+    fun equalizer() = com.vibeplayer.player.Equalizer(eqEnabled, com.vibeplayer.player.Equalizer.parseGains(eqGains))
 
     fun pictureAdjust() = com.vibeplayer.player.PictureAdjust(pictureBrightness, pictureContrast, pictureSaturation, pictureGamma)
 
@@ -162,6 +168,8 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_PERFORMANCE_HINTS = booleanPreferencesKey("performance_hints")
         private val KEY_HDR_OUTPUT = booleanPreferencesKey("hdr_output")
         private val KEY_COLLECT_SYSTEM_PROFILES = booleanPreferencesKey("collect_system_profiles")
+        private val KEY_EQ_GAINS = stringPreferencesKey("eq_gains")
+        private val KEY_EQ_ENABLED = booleanPreferencesKey("eq_enabled")
         private val KEY_SUB_BOLD = booleanPreferencesKey("sub_bold")
         private val KEY_SUB_BOX = booleanPreferencesKey("sub_box")
         private val KEY_SUB_OUTLINE = stringPreferencesKey("sub_outline")
@@ -274,6 +282,8 @@ class AppSettingsRepository(private val context: Context) {
             subtitleOutline = prefs[KEY_SUB_OUTLINE] ?: "NORMAL",
             subtitleBox = prefs[KEY_SUB_BOX] ?: false,
             subtitleBold = prefs[KEY_SUB_BOLD] ?: false,
+            eqEnabled = prefs[KEY_EQ_ENABLED] ?: false,
+            eqGains = prefs[KEY_EQ_GAINS] ?: "",
             hdrOutput = prefs[KEY_HDR_OUTPUT] ?: false
         )
     }
@@ -336,6 +346,14 @@ class AppSettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun setEqualizer(eq: com.vibeplayer.player.Equalizer) {
+        val n = eq.normalized()
+        context.settingsDataStore.edit {
+            it[KEY_EQ_ENABLED] = n.enabled
+            it[KEY_EQ_GAINS] = com.vibeplayer.player.Equalizer.encodeGains(n.gains)
+        }
+    }
+
     suspend fun setNightMode(on: Boolean) {
         context.settingsDataStore.edit { it[KEY_NIGHT_MODE] = on }
     }
@@ -365,6 +383,8 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_PERFORMANCE_HINTS] = settings.performanceHints
             prefs[KEY_HDR_OUTPUT] = settings.hdrOutput
             prefs[KEY_COLLECT_SYSTEM_PROFILES] = settings.collectSystemProfiles
+            prefs[KEY_EQ_GAINS] = settings.eqGains
+            prefs[KEY_EQ_ENABLED] = settings.eqEnabled
             prefs[KEY_SUB_BOLD] = settings.subtitleBold
             prefs[KEY_SUB_BOX] = settings.subtitleBox
             prefs[KEY_SUB_OUTLINE] = settings.subtitleOutline
