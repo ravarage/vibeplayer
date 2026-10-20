@@ -60,7 +60,11 @@ data class PlayerState(
     val formatProfileReason: String? = null,
     val detectedFormat: VideoFormat? = null,
     val containerFps: Double? = null,
-    val thermalStatus: String? = null
+    val thermalStatus: String? = null,
+    /** P4-15: chapters of the current file in mpv order; empty when it has none. */
+    val chapters: List<Chapter> = emptyList(),
+    /** P4-15: mpv `chapter` (index into mpv's chapter-list), -1 before the first chapter or without chapters. */
+    val currentChapter: Int = -1
 )
 
 
