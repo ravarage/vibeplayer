@@ -214,6 +214,7 @@ def _anime4k(ctx, renderer):
     applied = ctx.log.wait(r"Applied shader preset ANIME4K_A \(mode=QUALITY, renderer=(\w+)\): ?(\S*)", 12, since=m)
     need(applied, "no 'Applied shader preset ANIME4K_A (mode=QUALITY, ...)' log")
     need(applied[1].group(1).upper() == renderer.upper(), f"renderer is {applied[1].group(1)}, expected {renderer}")
+    ctx.trace("applied: " + applied[0].msg)
     value = applied[1].group(2)
     chain = [x.rsplit("/", 1)[-1] for x in value.split(":")] if value else []
     ctx.trace("chain: " + (", ".join(chain) or "(none)"))

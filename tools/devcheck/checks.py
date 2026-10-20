@@ -169,7 +169,9 @@ def play_pause(ctx):
 @check("double_tap", "Double tap right/left seeks +-10 s")
 def double_tap(ctx):
     _need_clip(ctx, MULTI)
-    ctx.play_clip(MULTI)
+    # fixed start: from a resume point near the end of the 46 s clip, +10 s reaches the end and the
+    # picture stops (end of file), which looked like a frozen player
+    ctx.play_clip(MULTI, extras="--el start_ms 5000")
     ctx.sleep(3)
     w, h = ctx.size()
     out = []
@@ -370,7 +372,10 @@ def pip_autoadvance(ctx):
     mark = ctx.play_clip(MULTI)
     ctx.seek_near_end(remaining_s=14.0)
     ctx.phone.key("KEYCODE_HOME")
-    need(ctx.log.wait(r"isInPictureInPictureMode=true", 8, since=mark), "Home did not enter PiP")
+    # 15 s: right after a swipe seek the first Home can be slow to hand over to PiP over Wi-Fi adb
+    if not ctx.log.wait(r"isInPictureInPictureMode=true", 15, since=mark):
+        ctx.trace("no PiP after Home; resumed: " + ctx.phone.sh("dumpsys activity activities | grep -m2 -E 'topResumedActivity|mResumedActivity'").strip())
+        need(False, "Home did not enter PiP")
     hit = ctx.log.wait(r"Auto-play: .* ended -> (.*)$", 40, since=mark)
     need(hit, "no auto-play while in PiP within 40 s")
     need(hit[1].group(1).endswith(nxt), f"auto-play went to {hit[1].group(1)}, expected {nxt}")
