@@ -85,11 +85,11 @@ class Ctx:
         self._shot_n = 0
         self._t0 = time.time()
         self.trace_lines = []
+        os.makedirs(os.path.join(self.outdir, name), exist_ok=True)
 
     def trace(self, msg):
         """A timestamped step, written to <out>/<check>/trace.txt when the check fails."""
         self.trace_lines.append(f"{time.time() - getattr(self, '_t0', time.time()):7.1f}s  {msg}")
-        os.makedirs(os.path.join(self.outdir, name), exist_ok=True)
 
     @property
     def dp(self):
