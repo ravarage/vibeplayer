@@ -146,7 +146,8 @@ def get_predefined_matrix(name: str) -> list[MatrixRow]:
             )
 
     elif name in ("shaders", "p8-04"):
-        # (d) P8-04 shaders: 5 min per preset on a 1080p clip
+        # (d) P8-04 shaders: 5 min per preset on a 1080p clip. Vulkan: Anime4K is Vulkan-only since 0.7.0
+        # (on OpenGL ES the presets load nothing, so a GLES row would measure no shader at all).
         clip = "/sdcard/Movies/vibeplayer-test/ichiban.mp4"
         presets = ["none", "anime4k_a", "anime4k_b", "anime4k_c", "snapdragon_gsr"]
         for preset in presets:
@@ -155,7 +156,7 @@ def get_predefined_matrix(name: str) -> list[MatrixRow]:
                     file=clip,
                     mode="quality",
                     vo="gpu-next",
-                    renderer="gles",
+                    renderer="vulkan",
                     shader=preset,
                     seconds=300,
                     cache="warm",

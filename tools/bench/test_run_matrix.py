@@ -79,6 +79,7 @@ class TestMatrixDefinitions(unittest.TestCase):
         )
         for r in rows:
             self.assertEqual(r.seconds, 300)
+            self.assertEqual(r.renderer, "vulkan")  # Anime4K is Vulkan-only
 
 
 class TestResumeSkipLogic(unittest.TestCase):
