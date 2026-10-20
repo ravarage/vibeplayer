@@ -30,7 +30,7 @@ def _fresh(ctx):
     return files[-1]
 
 
-def _play(ctx, name, extras="", timeout=25, pause=False):
+def _play(ctx, name, extras="", timeout=25, pause=False, settle=2.0):
     _need(ctx, name)
     ctx.ctrl_pinned = False
     ctx.phone.wake()
@@ -40,7 +40,7 @@ def _play(ctx, name, extras="", timeout=25, pause=False):
     ctx.trace(f"start {name} {extras}".strip())
     ctx.phone.start_activity(PLAYER, data=file_uri(f"{P12_DIR}/{name}"), extras=extras)
     need(ctx.wait_restart(mark, timeout), f"no playback-restart within {timeout} s of launching {name}")
-    ctx.sleep(2.0)
+    ctx.sleep(settle)
     if pause:
         _pause_for_ui(ctx)
     return mark
@@ -87,9 +87,9 @@ def p12_resume_chip(ctx):
             break
     need(hit and int(hit[1].group(1)) >= 20_000, "no periodic 'Saved position' past 20 s after seeking to 30 s")
     ctx.stop_app()
-    m2 = _play(ctx, EP1)
+    m2 = _play(ctx, EP1, settle=0)  # the chip shows for 8 s from the open; a dump takes ~2 s
     need(ctx.log.find(r"Resume: resuming from (\d+) ms", m2), "no 'Resume: resuming from' after reopening")
-    chip = _find_desc(ctx, "start_over", tries=3, gap=0.5)
+    chip = _find_desc(ctx, "start_over", tries=2, gap=0.3)
     ctx.shot("resume_chip")
     need(chip, "no Start over chip after the resumed open (it shows for 8 s)")
     m3 = ctx.log.mark()

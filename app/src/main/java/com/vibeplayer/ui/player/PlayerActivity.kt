@@ -86,6 +86,7 @@ import android.view.KeyEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
@@ -437,9 +438,12 @@ class PlayerActivity : ComponentActivity() {
 
         // Auto-orient based on video aspect ratio (P1-09), unless the Rotate button fixed it.
         lifecycleScope.launch {
+            // The frame size and the rotation flag arrive as separate property changes: settle briefly so a
+            // clip filmed upright does not turn to landscape and straight back.
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
             kotlinx.coroutines.flow.combine(playerEngine.state, rotationMode) { state, mode ->
                 mode.orientationFor(state.videoWidth, state.videoHeight)
-            }.collect { targetOrientation ->
+            }.distinctUntilChanged().debounce(150L).collect { targetOrientation ->
                 if (targetOrientation != null && !isInPictureInPictureMode && !_isInPipFlow.value && requestedOrientation != targetOrientation) {
                     Log.i("VP", "Orienting (${rotationMode.value}): orientation=$targetOrientation")
                     requestedOrientation = targetOrientation

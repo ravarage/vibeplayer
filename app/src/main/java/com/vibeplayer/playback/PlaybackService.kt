@@ -311,7 +311,7 @@ class PlaybackService : Service() {
     fun setFolderAutoSkip(on: Boolean?) = updateFolderShow { it.copy(autoSkipChapters = on) }
 
     private fun updateFolderShow(change: (com.vibeplayer.data.db.FolderSettings) -> com.vibeplayer.data.db.FolderSettings) {
-        val folder = currentFolderPath ?: return
+        val folder = currentFolderPath?.takeIf { it.startsWith("/") } ?: return
         serviceScope.launch {
             val saved = withContext(Dispatchers.IO) {
                 val base = folderDao.getByPath(folder) ?: com.vibeplayer.data.db.FolderSettings(folderPath = folder)
@@ -1177,7 +1177,8 @@ class PlaybackService : Service() {
             val folderSpeed = folderSettings?.speed?.toDouble()
             val speed = fileSpeed ?: folderSpeed ?: 1.0
             if (fileSpeed == null && folderSpeed != null) Log.i("VP", "Speed $folderSpeed from folder $resolvedFolderKey")
-            _folderShow.value = FolderShow(resolvedFolderKey, folderSettings?.speed, folderSettings?.autoSkipChapters)
+            // Only a real folder (not a content:// open from another app) gets the Whole folder settings.
+            _folderShow.value = FolderShow(resolvedFolderKey.takeIf { it.startsWith("/") }, folderSettings?.speed, folderSettings?.autoSkipChapters)
             applyAutoSkip()
             val aspect = fileSettings?.aspect
             val subDelayMs = fileSettings?.subDelayMs ?: 0
