@@ -128,6 +128,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _upNext = MutableStateFlow<com.vibeplayer.playback.UpNext?>(null)
     val upNext: StateFlow<com.vibeplayer.playback.UpNext?> = _upNext.asStateFlow()
 
+    private val _bookmarks = MutableStateFlow<List<com.vibeplayer.data.db.Bookmark>>(emptyList())
+    val bookmarks: StateFlow<List<com.vibeplayer.data.db.Bookmark>> = _bookmarks.asStateFlow()
+    private val _folderShow = MutableStateFlow(com.vibeplayer.playback.FolderShow())
+    val folderShow: StateFlow<com.vibeplayer.playback.FolderShow> = _folderShow.asStateFlow()
+
+    fun addBookmark() { (service ?: PlaybackService.currentInstance)?.addBookmark() }
+    fun deleteBookmark(id: Long) { (service ?: PlaybackService.currentInstance)?.deleteBookmark(id) }
+    fun setFolderSpeed(speed: Float?) { (service ?: PlaybackService.currentInstance)?.setFolderSpeed(speed) }
+    fun setFolderAutoSkip(on: Boolean?) { (service ?: PlaybackService.currentInstance)?.setFolderAutoSkip(on) }
+
     fun startOver() { (service ?: PlaybackService.currentInstance)?.startOver() }
     fun playUpNext() { (service ?: PlaybackService.currentInstance)?.playUpNext() }
     fun cancelUpNext() { (service ?: PlaybackService.currentInstance)?.cancelUpNext() }
@@ -162,6 +172,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 launch {
                     s.upNext.collect { _upNext.value = it }
+                }
+                launch {
+                    s.bookmarks.collect { _bookmarks.value = it }
+                }
+                launch {
+                    s.folderShow.collect { _folderShow.value = it }
                 }
             }
             pendingOpen?.let { req ->

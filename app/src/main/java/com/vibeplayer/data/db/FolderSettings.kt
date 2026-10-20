@@ -13,5 +13,9 @@ data class FolderSettings(
     val subTitle: String? = null,
     val subKind: String? = null,
     val subEnabled: Boolean = true,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    /** P12-04: speed for the files of this folder (a show) that have no speed of their own; null = 1x. */
+    val speed: Float? = null,
+    /** P12-04: auto-skip openings and endings here; null follows the app setting. */
+    val autoSkipChapters: Boolean? = null
 )

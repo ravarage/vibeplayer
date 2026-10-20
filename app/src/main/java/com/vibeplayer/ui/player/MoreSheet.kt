@@ -34,6 +34,14 @@ import com.vibeplayer.player.PictureAdjust
 import com.vibeplayer.playback.SleepTimer
 import kotlinx.coroutines.delay
 
+/** P12-04: speed and auto-skip saved for the folder (a show), and the setters. */
+data class FolderShowControls(
+    val show: com.vibeplayer.playback.FolderShow = com.vibeplayer.playback.FolderShow(),
+    val currentSpeed: Double = 1.0,
+    val onSetSpeed: (Float?) -> Unit = {},
+    val onSetAutoSkip: (Boolean?) -> Unit = {}
+)
+
 /** A button that moves into the More panel when the top bar is narrow (portrait). */
 data class QuickAction(val label: String, val tag: String, val selected: Boolean = false, val onClick: () -> Unit)
 
@@ -54,7 +62,10 @@ fun MoreSheet(
     quickActions: List<QuickAction> = emptyList(),
     pictureAdjust: PictureAdjust = PictureAdjust(),
     onPreviewPicture: (PictureAdjust) -> Unit = {},
-    onSavePicture: (PictureAdjust) -> Unit = {}
+    onSavePicture: (PictureAdjust) -> Unit = {},
+    bookmarkCount: Int = 0,
+    onOpenBookmarks: (() -> Unit)? = null,
+    folderShow: FolderShowControls? = null
 ) {
     TrackRecomposition("MoreSheet")
     // The countdown in the sleep row ticks once a second while the panel is open.
@@ -137,6 +148,23 @@ fun MoreSheet(
                 }
             )
         }
+        if (onOpenBookmarks != null) {
+            item {
+                TrackRow(
+                    title = "Bookmarks",
+                    subtitle = if (bookmarkCount == 0) "Save spots in this video" else "$bookmarkCount saved",
+                    isSelected = false,
+                    onClick = onOpenBookmarks,
+                    modifier = Modifier.semantics {
+                        contentDescription = "bookmarks"
+                        testTag = "bookmarks"
+                    }
+                )
+            }
+        }
+        if (folderShow != null && folderShow.show.folderPath != null) {
+            item { FolderShowSection(folderShow) }
+        }
         item {
             PictureSection(pictureAdjust, onPreviewPicture, onSavePicture)
         }
@@ -217,5 +245,53 @@ private fun PictureSlider(label: String, value: Int, onChange: (Int) -> Unit, on
             textAlign = TextAlign.End,
             modifier = Modifier.width(36.dp)
         )
+    }
+}
+
+/** "This folder": a speed and auto-skip for every file of a show (P12-04). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FolderShowSection(c: FolderShowControls) {
+    val folderName = c.show.folderPath?.substringAfterLast('/')?.ifEmpty { null } ?: "this folder"
+    val speed = c.currentSpeed.toFloat()
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        PanelSectionLabel("Whole folder: $folderName")
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            val folderSpeed = c.show.speed
+            when {
+                folderSpeed != null && folderSpeed == speed ->
+                    PanelChip(text = "Speed ${HoldGesture.label(speed.toDouble())} for all ✓", selected = true, tag = "folder_speed_clear",
+                        onClick = { c.onSetSpeed(null) })
+                speed != 1f ->
+                    PanelChip(text = "Use ${HoldGesture.label(speed.toDouble())} for all", tag = "folder_speed_set",
+                        onClick = { c.onSetSpeed(speed) })
+                folderSpeed != null ->
+                    PanelChip(text = "Folder speed ${HoldGesture.label(folderSpeed.toDouble())}: clear", tag = "folder_speed_clear",
+                        onClick = { c.onSetSpeed(null) })
+                else -> Text(
+                    text = "Change the speed, then use it for every file here",
+                    fontSize = 11.sp,
+                    color = PanelColors.secondaryText,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(text = "Auto-skip intro", fontSize = 12.sp, color = Color.White, modifier = Modifier.weight(1f))
+            PanelChip(text = "App", selected = c.show.autoSkipChapters == null, tag = "folder_skip_default",
+                onClick = { c.onSetAutoSkip(null) })
+            PanelChip(text = "On", selected = c.show.autoSkipChapters == true, tag = "folder_skip_on",
+                onClick = { c.onSetAutoSkip(true) })
+            PanelChip(text = "Off", selected = c.show.autoSkipChapters == false, tag = "folder_skip_off",
+                onClick = { c.onSetAutoSkip(false) })
+        }
     }
 }

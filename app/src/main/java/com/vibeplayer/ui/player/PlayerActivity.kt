@@ -509,6 +509,8 @@ class PlayerActivity : ComponentActivity() {
             val sleepTimer by viewModel.sleepTimer.collectAsState()
             val resumedFrom by viewModel.resumedFrom.collectAsState()
             val upNext by viewModel.upNext.collectAsState()
+            val bookmarks by viewModel.bookmarks.collectAsState()
+            val folderShow by viewModel.folderShow.collectAsState()
             val pictureAdjust by viewModel.pictureAdjust.collectAsState()
             val equalizer by viewModel.equalizer.collectAsState()
             val currentRotation by rotationMode.collectAsState()
@@ -647,6 +649,15 @@ class PlayerActivity : ComponentActivity() {
                                 equalizer = equalizer,
                                 onPreviewEqualizer = { viewModel.previewEqualizer(it) },
                                 onSaveEqualizer = { viewModel.saveEqualizer(it) },
+                                bookmarks = bookmarks,
+                                onAddBookmark = { viewModel.addBookmark() },
+                                onDeleteBookmark = { viewModel.deleteBookmark(it.id) },
+                                folderShow = FolderShowControls(
+                                    show = folderShow,
+                                    currentSpeed = playerState.speed,
+                                    onSetSpeed = { viewModel.setFolderSpeed(it) },
+                                    onSetAutoSkip = { viewModel.setFolderAutoSkip(it) }
+                                ),
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                                     val current = playerState.aspect ?: "fit"

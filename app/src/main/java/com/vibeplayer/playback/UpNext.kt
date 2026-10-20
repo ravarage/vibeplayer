@@ -16,3 +16,6 @@ data class UpNext(
 
 /** A file that opened at its saved position (P12-01), for the "Start over" chip. */
 data class ResumeInfo(val path: String, val positionMs: Long, val generation: Long)
+
+/** Speed and auto-skip saved for the current file's folder (P12-04); nulls follow the app. */
+data class FolderShow(val folderPath: String? = null, val speed: Float? = null, val autoSkipChapters: Boolean? = null)

@@ -61,6 +61,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -257,6 +259,70 @@ class PlaybackService : Service() {
     private lateinit var db: AppDatabase
     private val dao by lazy { db.fileSettingsDao() }
     private val folderDao by lazy { db.folderSettingsDao() }
+    private val bookmarkDao by lazy { db.bookmarkDao() }
+
+    /** History key of the file in the engine (path + size), for the bookmarks of the current file. */
+    private val _currentKeyFlow = MutableStateFlow<String?>(null)
+
+    /** P12-03: bookmarks of the current file, by position. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val bookmarks: StateFlow<List<com.vibeplayer.data.db.Bookmark>> by lazy {
+        _currentKeyFlow.flatMapLatest { k ->
+            if (k == null) kotlinx.coroutines.flow.flowOf(emptyList()) else bookmarkDao.observe(k)
+        }.stateIn(serviceScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
+    }
+
+    /** Saves the current position as a bookmark, labelled with the chapter when there is one. */
+    fun addBookmark() {
+        val key = currentKey ?: return
+        serviceScope.launch {
+            val pos = playerEngine.currentPositionMs()
+            val state = playerEngine.state.value
+            val chapter = com.vibeplayer.player.Chapters.chapterAt(state.chapters, pos)
+            val label = chapter?.let { com.vibeplayer.player.Chapters.displayTitle(it) }
+            val id = withContext(Dispatchers.IO) {
+                bookmarkDao.insert(com.vibeplayer.data.db.Bookmark(fileKey = key, positionMs = pos, label = label))
+            }
+            Log.i("VP", "Bookmark $id added at $pos ms for key=$key")
+            playerEngine.showOnScreenMessage("Bookmark added at ${com.vibeplayer.ui.player.formatTime(pos)}")
+        }
+    }
+
+    fun deleteBookmark(id: Long) {
+        serviceScope.launch(Dispatchers.IO) {
+            bookmarkDao.delete(id)
+            Log.i("VP", "Bookmark $id deleted")
+        }
+    }
+
+    /** P12-04: speed and auto-skip of the current file's folder (a show). */
+    private val _folderShow = MutableStateFlow(FolderShow())
+    val folderShow: StateFlow<FolderShow> = _folderShow.asStateFlow()
+    @Volatile private var globalAutoSkip = false
+
+    private fun applyAutoSkip() {
+        playerEngine.autoSkipChapters = _folderShow.value.autoSkipChapters ?: globalAutoSkip
+    }
+
+    /** Uses [speed] for the folder's files that have no speed of their own; null back to 1x. */
+    fun setFolderSpeed(speed: Float?) = updateFolderShow { it.copy(speed = speed) }
+
+    /** Auto-skip openings and endings in this folder: true, false, or null to follow the app setting. */
+    fun setFolderAutoSkip(on: Boolean?) = updateFolderShow { it.copy(autoSkipChapters = on) }
+
+    private fun updateFolderShow(change: (com.vibeplayer.data.db.FolderSettings) -> com.vibeplayer.data.db.FolderSettings) {
+        val folder = currentFolderPath ?: return
+        serviceScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                val base = folderDao.getByPath(folder) ?: com.vibeplayer.data.db.FolderSettings(folderPath = folder)
+                change(base).copy(updatedAt = System.currentTimeMillis()).also { folderDao.upsert(it) }
+            }
+            if (currentFolderPath != folder) return@launch
+            _folderShow.value = FolderShow(folder, saved.speed, saved.autoSkipChapters)
+            applyAutoSkip()
+            Log.i("VP", "Folder settings for $folder: speed=${saved.speed} autoSkip=${saved.autoSkipChapters}")
+        }
+    }
     private lateinit var appSettingsRepository: AppSettingsRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -367,7 +433,10 @@ class PlaybackService : Service() {
 
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.autoSkipChapters }.distinctUntilChanged()
-                .collect { playerEngine.autoSkipChapters = it }
+                .collect {
+                    globalAutoSkip = it
+                    applyAutoSkip()
+                }
         }
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.subtitleEncoding }.distinctUntilChanged()
@@ -1103,7 +1172,13 @@ class PlaybackService : Service() {
             val audioEnabled = fileChoice?.audioEnabled ?: true
             val subTrackId = fileChoice?.subTrackId
             val subEnabled = fileChoice?.subEnabled ?: true
-            val speed = fileSettings?.speed?.toDouble() ?: 1.0
+            // A file's own speed wins; a file left at 1x takes the folder's (show's) speed (P12-04).
+            val fileSpeed = fileSettings?.speed?.toDouble()?.takeIf { it != 1.0 }
+            val folderSpeed = folderSettings?.speed?.toDouble()
+            val speed = fileSpeed ?: folderSpeed ?: 1.0
+            if (fileSpeed == null && folderSpeed != null) Log.i("VP", "Speed $folderSpeed from folder $resolvedFolderKey")
+            _folderShow.value = FolderShow(resolvedFolderKey, folderSettings?.speed, folderSettings?.autoSkipChapters)
+            applyAutoSkip()
             val aspect = fileSettings?.aspect
             val subDelayMs = fileSettings?.subDelayMs ?: 0
             val audioDelayMs = fileSettings?.audioDelayMs ?: 0
@@ -1217,6 +1292,7 @@ class PlaybackService : Service() {
             handedToEngine = true
             lastPathHandedToEngine = path
             currentKey = key
+            _currentKeyFlow.value = key
             if (resumedAt > 0L) _resumedFrom.value = ResumeInfo(path = path, positionMs = resumedAt, generation = generation)
             if (playAfterLoad) playerEngine.play()
         }

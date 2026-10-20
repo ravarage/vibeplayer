@@ -8,14 +8,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [FileSettings::class, FolderSettings::class],
-    version = 5,
+    entities = [FileSettings::class, FolderSettings::class, Bookmark::class],
+    version = 6,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun fileSettingsDao(): FileSettingsDao
     abstract fun folderSettingsDao(): FolderSettingsDao
+    abstract fun bookmarkDao(): BookmarkDao
 
     companion object {
         @Volatile
@@ -64,6 +65,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** P12-03 bookmarks, P12-04 per-folder (show) speed and auto-skip. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `bookmarks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `fileKey` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `label` TEXT, `createdAt` INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookmarks_fileKey` ON `bookmarks` (`fileKey`)")
+                db.execSQL("ALTER TABLE folder_settings ADD COLUMN speed REAL")
+                db.execSQL("ALTER TABLE folder_settings ADD COLUMN autoSkipChapters INTEGER")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -71,7 +82,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vibeplayer.db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build().also { INSTANCE = it }
             }
         }
