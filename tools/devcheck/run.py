@@ -66,7 +66,24 @@ def run_check(ctx, name, fn, timeout):
         ctx.scan_crash()
     except Exception:
         pass
+    if status == "FAIL":
+        _save_failure_evidence(ctx, name, reason)
     return status, " ".join(str(reason).split()), time.time() - t0
+
+
+def _save_failure_evidence(ctx, name, reason):
+    """trace.txt (timed steps) and logcat.txt (the app's log since the check's launch) next to the screenshots."""
+    d = os.path.join(ctx.outdir, name)
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "trace.txt"), "w") as f:
+            f.write(f"FAIL: {reason}\n\n" + "\n".join(getattr(ctx, "trace_lines", [])) + "\n")
+        ctx.log.refresh()
+        with open(os.path.join(d, "logcat.txt"), "w") as f:
+            f.write(f"{ctx.log.raw_count} lines in the buffer; the app's last 800:\n")
+            f.write("\n".join(l.raw for l in ctx.log.lines[-800:]) + "\n")
+    except Exception as e:
+        print(f"    (could not save failure evidence: {e})")
 
 
 def main(argv=None):

@@ -22,12 +22,17 @@ def _need_p11(ctx, name=CH):
 def _play_p11(ctx, name=CH, extras="", timeout=25, pause=False):
     _need_p11(ctx, name)
     ctx.ctrl_pinned = False  # a fresh player is playing (as Ctx.launch_clip resets it)
+    ctx.trace("wake")
     ctx.phone.wake()
+    ctx.trace("stop app")
     ctx.stop_app()
+    ctx.trace("clear log")
     ctx.clear_log()
     mark = ctx.log.mark()
+    ctx.trace(f"start {name} {extras}".strip())
     ctx.phone.start_activity(PLAYER, data=file_uri(f"{P11_DIR}/{name}"), extras=extras)
     need(ctx.wait_restart(mark, timeout), f"no playback-restart within {timeout} s of launching {name}")
+    ctx.trace(f"playing (log buffer {ctx.log.raw_count} lines)")
     ctx.sleep(2.0)
     if pause:
         _pause_for_ui(ctx)
@@ -38,15 +43,24 @@ def _pause_for_ui(ctx):
     """Pauses with the centre button. While playing, the controls hide 3 s after a tap and the picture keeps
     changing, so a ~2 s uiautomator dump often misses them; paused, they stay up and the screen is still."""
     m = ctx.log.mark()
+    w, h = ctx.size()
+    ctx.trace(f"tap centre {w // 2},{h // 2} to pause (screen {w}x{h})")
     ctx.tap_center_button("pause", None)
-    need(ctx.log.wait(r"togglePause", 4, since=m, tag="VP"), "could not pause with the centre button (no togglePause)")
+    ctx.trace("tapped; waiting for togglePause")
+    hit = ctx.log.wait(r"togglePause", 6, since=m, tag="VP")
+    ctx.trace(f"togglePause {'seen' if hit else 'NOT seen'}; gesture lines: "
+              + "; ".join(l.msg for l, _ in ctx.log.find_all(r"Gesture detected", m))[:300])
+    ctx.shot("pause_attempt")
+    need(hit, "could not pause with the centre button (no togglePause)")
     ctx.ctrl_pinned = True
     ctx.sleep(0.8)
 
 
 def _tap_desc(ctx, desc, tries=3):
     for _ in range(tries):
+        ctx.trace(f"dump for '{desc}'")
         ns = ctx.nodes()
+        ctx.trace(f"dump done ({len(ns)} nodes)")
         n = uix.find(ns, desc=desc) if ns else None
         if n:
             ctx.phone.tap(*uix.center(n))
