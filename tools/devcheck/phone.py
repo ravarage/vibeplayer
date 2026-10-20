@@ -109,7 +109,9 @@ class Phone:
         self.run(["logcat", "-c"], 15)
 
     def logcat_dump(self):
-        rc, out, _ = self.run(["logcat", "-d", "-v", "threadtime"], 40)
+        # The Adreno Vulkan driver logs two lines per frame (vkBindImageMemory2 / Gralloc query, harmless) under
+        # gpu-next: ~50 lines/s that made every poll re-scan a fast-growing buffer (checks took minutes). Silenced.
+        rc, out, _ = self.run(["logcat", "-d", "-v", "threadtime", "AdrenoVK-0:S"], 40)
         return out
 
     def crash_buffer(self):
