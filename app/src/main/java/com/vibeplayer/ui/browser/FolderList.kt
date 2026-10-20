@@ -1,6 +1,7 @@
 package com.vibeplayer.ui.browser
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,8 +67,18 @@ fun FolderListScreen(
     thumbnailCache: ThumbnailCache? = null,
     /** Every video, for the search across folders. */
     allVideos: List<VideoItem> = emptyList(),
-    historyMap: Map<String, com.vibeplayer.data.db.FileSettings> = emptyMap()
+    historyMap: Map<String, com.vibeplayer.data.db.FileSettings> = emptyMap(),
+    /** Long-press on a folder hides it (P12-06). */
+    onHideFolder: ((VideoFolder) -> Unit)? = null,
+    /** For rename and delete in search results (P12-05). */
+    db: com.vibeplayer.data.db.AppDatabase? = null
 ) {
+    var actionTarget by remember { mutableStateOf<VideoItem?>(null) }
+    if (db != null) VideoActionsHost(target = actionTarget, db = db, onDone = { actionTarget = null })
+    var folderTarget by remember { mutableStateOf<VideoFolder?>(null) }
+    folderTarget?.let { target ->
+        FolderActionsDialog(folder = target, onHide = { onHideFolder?.invoke(target) }, onDismiss = { folderTarget = null })
+    }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     BackHandler(enabled = searching) {
@@ -145,7 +156,8 @@ fun FolderListScreen(
                                     fileSettings = historyMap["${video.path}:${video.sizeBytes}"] ?: historyMap[video.path],
                                     onClick = { onPlayVideo?.invoke(video) },
                                     thumbnailCache = thumbnailCache,
-                                    folderName = video.bucketName
+                                    folderName = video.bucketName,
+                                    onLongClick = if (db != null) ({ actionTarget = video }) else null
                                 )
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
@@ -229,7 +241,8 @@ fun FolderListScreen(
                             FolderItemRow(
                                 folder = folder,
                                 onClick = { onFolderClick(folder) },
-                                thumbnailCache = thumbnailCache
+                                thumbnailCache = thumbnailCache,
+                                onLongClick = if (onHideFolder != null) ({ folderTarget = folder }) else null
                             )
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
@@ -249,12 +262,13 @@ fun FolderItemRow(
     folder: VideoFolder,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    thumbnailCache: ThumbnailCache? = null
+    thumbnailCache: ThumbnailCache? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics {
                 contentDescription = "folder_${folder.name}"
                 testTag = "folder_${folder.name}"

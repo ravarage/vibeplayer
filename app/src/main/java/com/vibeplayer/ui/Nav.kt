@@ -66,7 +66,13 @@ fun BrowserNavGraph(
     val historyFlow = remember(db) { db.fileSettingsDao().observeHistory() }
     val allVideosFlow = remember(repository) { repository.observeAllVideos() }
     val historyList by historyFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    val allVideos by allVideosFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val allVideosRaw by allVideosFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    // P12-06: hidden folders are left out of the folder list, search and Continue Watching.
+    val hiddenFolders by preferences.hiddenFoldersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val hiddenIds = remember(hiddenFolders) { hiddenFolders.map { it.bucketId }.toSet() }
+    val allVideos = remember(allVideosRaw, hiddenIds) {
+        if (hiddenIds.isEmpty()) allVideosRaw else allVideosRaw.filterNot { it.bucketId in hiddenIds }
+    }
     val continueWatchingFlow = remember(historyFlow, allVideosFlow) {
         combine(historyFlow, allVideosFlow) { history, videos -> history to videos }
             .map { (history, videos) ->
@@ -98,7 +104,10 @@ fun BrowserNavGraph(
             }
             .flowOn(Dispatchers.IO)
     }
-    val continueWatchingList by continueWatchingFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val continueWatchingAll by continueWatchingFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val continueWatchingList = remember(continueWatchingAll, hiddenIds) {
+        if (hiddenIds.isEmpty()) continueWatchingAll else continueWatchingAll.filterNot { it.video.bucketId in hiddenIds }
+    }
 
     val historyMap = androidx.compose.runtime.remember(historyList) {
         val map = mutableMapOf<String, com.vibeplayer.data.db.FileSettings>()
@@ -123,10 +132,18 @@ fun BrowserNavGraph(
     ) {
         composable(NavRoutes.FOLDERS) {
             val foldersFlow = remember(repository) { repository.observeFolders() }
-            val folders by foldersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+            val allFolders by foldersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+            val folders = remember(allFolders, hiddenIds) { allFolders.filterNot { it.bucketId in hiddenIds } }
 
             FolderListScreen(
                 folders = folders,
+                db = db,
+                onHideFolder = { folder ->
+                    coroutineScope.launch {
+                        Log.i("VP", "Hiding folder ${folder.name} (${folder.bucketId})")
+                        preferences.setFolderHidden(com.vibeplayer.data.prefs.HiddenFolder(folder.bucketId, folder.name), hidden = true)
+                    }
+                },
                 isLoading = false,
                 continueWatchingItems = continueWatchingList,
                 thumbnailCache = thumbnailCache,
@@ -151,6 +168,13 @@ fun BrowserNavGraph(
 
             com.vibeplayer.ui.settings.SettingsScreen(
                 settings = currentSettings,
+                hiddenFolders = hiddenFolders,
+                onUnhideFolder = { folder ->
+                    coroutineScope.launch {
+                        Log.i("VP", "Showing folder ${folder.name} again")
+                        preferences.setFolderHidden(folder, hidden = false)
+                    }
+                },
                 onUpdateSettings = { newSettings ->
                     coroutineScope.launch {
                         Log.d("VP", "Updating app settings: $newSettings")
@@ -206,7 +230,8 @@ fun BrowserNavGraph(
                     onPlayVideo(video)
                 },
                 thumbnailCache = thumbnailCache,
-                thumbnailContent = thumbnailContent
+                thumbnailContent = thumbnailContent,
+                db = db
             )
         }
     }

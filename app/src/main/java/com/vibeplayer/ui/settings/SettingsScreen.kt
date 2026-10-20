@@ -49,9 +49,12 @@ fun SettingsScreen(
     settings: AppSettings,
     onUpdateSettings: (AppSettings) -> Unit,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hiddenFolders: List<com.vibeplayer.data.prefs.HiddenFolder> = emptyList(),
+    onUnhideFolder: (com.vibeplayer.data.prefs.HiddenFolder) -> Unit = {}
 ) {
     BackHandler(onBack = onBack)
+    var showHiddenFoldersDialog by remember { mutableStateOf(false) }
 
     var showPlaybackModeDialog by remember { mutableStateOf(false) }
     var showRendererDialog by remember { mutableStateOf(false) }
@@ -377,6 +380,21 @@ fun SettingsScreen(
                 modifier = Modifier.padding(vertical = 8.dp)
             )
 
+            // Category: Library
+            SettingsSectionHeader(title = "Library")
+
+            SettingsClickableRow(
+                title = "Hidden folders",
+                subtitle = if (hiddenFolders.isEmpty()) "None" else hiddenFolders.joinToString(", ") { it.name },
+                description = "Long-press a folder in the list to hide it; show it again here",
+                onClick = { if (hiddenFolders.isNotEmpty()) showHiddenFoldersDialog = true }
+            )
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+
             // Category: About
             SettingsSectionHeader(title = "About")
 
@@ -514,6 +532,32 @@ fun SettingsScreen(
                     Text("Close")
                 }
             }
+        )
+    }
+
+    if (showHiddenFoldersDialog) {
+        AlertDialog(
+            onDismissRequest = { showHiddenFoldersDialog = false },
+            title = { Text("Hidden folders") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    hiddenFolders.forEach { folder ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = folder.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                onUnhideFolder(folder)
+                                if (hiddenFolders.size <= 1) showHiddenFoldersDialog = false
+                            }) {
+                                Text("Show")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showHiddenFoldersDialog = false }) { Text("Done") } }
         )
     }
 

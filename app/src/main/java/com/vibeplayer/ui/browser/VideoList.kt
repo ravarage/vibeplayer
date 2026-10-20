@@ -3,6 +3,7 @@ package com.vibeplayer.ui.browser
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,9 +64,13 @@ fun VideoListScreen(
     onPlayVideo: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
     thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache? = null,
-    thumbnailContent: (@Composable (VideoItem) -> Unit)? = null
+    thumbnailContent: (@Composable (VideoItem) -> Unit)? = null,
+    /** For rename and delete (P12-05); null leaves the long-press out. */
+    db: com.vibeplayer.data.db.AppDatabase? = null
 ) {
     BackHandler(onBack = onBack)
+    var actionTarget by remember { mutableStateOf<VideoItem?>(null) }
+    if (db != null) VideoActionsHost(target = actionTarget, db = db, onDone = { actionTarget = null })
 
     val sortedVideos = remember(videos, sortOrder) {
         when (sortOrder) {
@@ -221,7 +226,8 @@ fun VideoListScreen(
                                 fileSettings = setting,
                                 onClick = { onPlayVideo(video) },
                                 thumbnailCache = thumbnailCache,
-                                thumbnailContent = thumbnailContent
+                                thumbnailContent = thumbnailContent,
+                                onLongClick = if (db != null) ({ actionTarget = video }) else null
                             )
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
@@ -245,7 +251,9 @@ fun VideoItemRow(
     thumbnailCache: com.vibeplayer.data.thumbs.ThumbnailCache? = null,
     thumbnailContent: (@Composable (VideoItem) -> Unit)? = null,
     /** Shown in the detail line (search results across folders). */
-    folderName: String? = null
+    folderName: String? = null,
+    /** Long-press: rename or delete (P12-05). */
+    onLongClick: (() -> Unit)? = null
 ) {
     val watched = com.vibeplayer.data.db.WatchProgress.isWatched(fileSettings)
     val progress = if (watched) 0f else if (fileSettings != null && fileSettings.durationMs > 0 && fileSettings.positionMs > 0) {
@@ -255,7 +263,7 @@ fun VideoItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics {
                 contentDescription = "video_${video.displayName}"
                 testTag = "video_${video.displayName}"

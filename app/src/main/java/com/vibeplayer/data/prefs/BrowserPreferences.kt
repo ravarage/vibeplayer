@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -43,9 +44,39 @@ class BrowserPreferences(private val context: Context) {
         }
     }
 
+    private val hiddenFoldersKey = stringSetPreferencesKey("hidden_folders")
+
+    /** P12-06: folders left out of the folder list, search and Continue Watching. */
+    val hiddenFoldersFlow: Flow<List<HiddenFolder>> = context.browserDataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { preferences ->
+            (preferences[hiddenFoldersKey] ?: emptySet()).mapNotNull(HiddenFolder::decode).sortedBy { it.name.lowercase() }
+        }
+
+    suspend fun setFolderHidden(folder: HiddenFolder, hidden: Boolean) {
+        context.browserDataStore.edit { preferences ->
+            val current = (preferences[hiddenFoldersKey] ?: emptySet()).filterNot { HiddenFolder.decode(it)?.bucketId == folder.bucketId }.toSet()
+            preferences[hiddenFoldersKey] = if (hidden) current + folder.encode() else current
+        }
+    }
+
     suspend fun setSortOrder(order: VideoSortOrder) {
         context.browserDataStore.edit { preferences ->
             preferences[sortOrderKey] = order.name
+        }
+    }
+}
+
+/** A hidden folder: the MediaStore bucket and its name for the Settings list. */
+data class HiddenFolder(val bucketId: String, val name: String) {
+    fun encode(): String = "$bucketId\t$name"
+
+    companion object {
+        fun decode(value: String): HiddenFolder? {
+            val i = value.indexOf('\t')
+            return if (i <= 0) null else HiddenFolder(value.substring(0, i), value.substring(i + 1))
         }
     }
 }
