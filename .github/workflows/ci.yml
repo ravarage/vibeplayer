@@ -37,6 +37,7 @@ jobs:
 
       - name: Tool tests (devcheck, bench)
         run: |
+          python3 -m pip install --quiet pillow
           python3 -m unittest discover tools/devcheck/tests
           python3 -m unittest discover -s tools/bench -p 'test_*.py'
 
