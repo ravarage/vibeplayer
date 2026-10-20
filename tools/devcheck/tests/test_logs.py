@@ -69,5 +69,17 @@ class LogTests(unittest.TestCase):
         self.assertEqual(msgs[-1], "line 299")
         self.assertEqual(len(msgs), len(set(msgs)))
 
+    def test_view_ignores_reordered_window(self):
+        # A later read with the same lines in another order must not add any of them again, so an old
+        # line never shows up after a mark.
+        a = [f"10-14 12:00:00.{i:03d}  2222  2222 I VP      : setAspect: m{i}" for i in range(20)]
+        reads = ["\n".join(a), "\n".join(a[:5] + a[6:] + [a[5]])]
+        v = logs.LogView(lambda: reads.pop(0) if len(reads) > 1 else reads[0], lambda: {2222})
+        m = v.mark()
+        v.refresh()
+        self.assertIsNone(v.find(r"setAspect", since=m))
+        self.assertEqual(len(v.lines), 20)
+
+
 if __name__ == "__main__":
     unittest.main()
