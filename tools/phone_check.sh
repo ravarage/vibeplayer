@@ -39,7 +39,9 @@ if [ "$BUILD" = 1 ]; then
 fi
 
 say "P11 test clips"
-if adb shell ls "$P11_DIR/p11_chapters.mkv" >/dev/null 2>&1; then
+# Bump when the clips change, so phones with older clips get the new ones.
+CLIPS_VERSION=2
+if [ "$(adb shell cat "$P11_DIR/.clips_version" 2>/dev/null | tr -d '\r')" = "$CLIPS_VERSION" ]; then
   echo "already on the phone ($P11_DIR)"
 else
   A="$OUT/assets"
@@ -66,13 +68,14 @@ START=210000
 END=240000
 title=Ending
 META
-  # 4 min (about 12 MB), 480p moving test pattern, a tone; chapters from chapters.txt
+  # 4 min (about 12 MB), 480p moving test pattern, a tone; chapters from chapters.txt. A keyframe every
+  # second and no B-frames, so opening at a saved position and chapter jumps decode almost nothing first.
   ffmpeg -loglevel error -y -f lavfi -i testsrc2=size=854x480:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 \
     -i "$A/chapters.txt" -map 0:v -map 1:a -map_metadata 2 -map_chapters 2 -t 240 \
-    -c:v libx264 -preset veryfast -crf 34 -pix_fmt yuv420p -c:a aac -b:a 64k "$A/p11_chapters.mkv"
+    -c:v libx264 -preset veryfast -crf 34 -g 24 -bf 0 -pix_fmt yuv420p -c:a aac -b:a 64k "$A/p11_chapters.mkv"
   # 30 s clip for the encoding check
   ffmpeg -loglevel error -y -f lavfi -i testsrc2=size=854x480:rate=24 -f lavfi -i sine=frequency=660:sample_rate=48000 \
-    -map 0:v -map 1:a -t 30 -c:v libx264 -preset veryfast -crf 34 -pix_fmt yuv420p -c:a aac -b:a 64k "$A/p11_arabic.mkv"
+    -map 0:v -map 1:a -t 30 -c:v libx264 -preset veryfast -crf 34 -g 24 -bf 0 -pix_fmt yuv420p -c:a aac -b:a 64k "$A/p11_arabic.mkv"
   # subtitles next to them: UTF-8 English, Windows-1256 Arabic (for Settings > Subtitle encoding)
   python3 - "$A" <<'PY'
 import sys
@@ -92,6 +95,8 @@ PY
   for f in p11_chapters.mkv p11_arabic.mkv; do
     adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file://$P11_DIR/$f" >/dev/null 2>&1 || true
   done
+  echo "$CLIPS_VERSION" > "$A/.clips_version"
+  adb push "$A/.clips_version" "$P11_DIR/.clips_version" >/dev/null
   echo "pushed to $P11_DIR"
 fi
 
