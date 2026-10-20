@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - unreleased (versionCode 5)
 
-Built without the phone; every item still needs its device check (PROGRESS.md).
+Built without the phone; every item still needs its device check (PROGRESS.md) before this is released.
 
 ### Added
 - **Chapters (P4-15)**: ticks on the seek bar, chapter name while scrubbing, a chapter list, the current chapter
@@ -34,6 +34,25 @@ Built without the phone; every item still needs its device check (PROGRESS.md).
 ### Fixed
 - **Anime4K on OpenGL ES (P8-02)**: the de-ring pass is rewritten so it can compile on the Adreno driver (device
   check open).
+
+## [0.6.0] - 2026-10-16 (versionCode 4)
+
+Entry added afterwards from the GitHub release notes.
+
+### Added
+- **HDR output (experimental, off by default)** on Vulkan `gpu-next`: HDR10 and HLG clips play as HDR; SDR again in
+  PiP, on exit and for SDR files.
+- **Baseline profile** generated on the device: the browser and player start from precompiled code.
+
+### Changed
+- Quality mode toggle mid-file keeps position and tracks.
+- Background audio checked on Android 17 with audio hardening on; screen-off no longer stops PiP playback when
+  background audio is on.
+
+### Fixed
+- Native (JNI) null and exception checks, callbacks dropped after release, settings recover from a corrupt file,
+  MediaStore permission and missing-column errors handled.
+- Thumbnails of clips whose keyframes are all black now show a real frame.
 
 ## [0.5.0] - 2026-10-15
 
