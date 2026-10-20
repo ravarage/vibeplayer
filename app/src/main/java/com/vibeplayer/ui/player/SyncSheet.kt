@@ -1,14 +1,17 @@
 package com.vibeplayer.ui.player
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,7 +38,25 @@ fun SyncSheet(
 @Composable
 private fun DelayRow(label: String, valueMs: Int, onChange: (Int) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
-        PanelSectionLabel(label, modifier = Modifier.padding(start = 0.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PanelSectionLabel(label, modifier = Modifier.weight(1f))
+            // Reset sits on the label line so the value never moves when it appears.
+            if (valueMs != 0) {
+                Text(
+                    text = "Reset",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = PanelColors.accent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onChange(0) }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -51,7 +72,6 @@ private fun DelayRow(label: String, valueMs: Int, onChange: (Int) -> Unit) {
                 modifier = Modifier.weight(1f)
             )
             PanelChip(text = "+50", onClick = { onChange(SyncDelay.step(valueMs, 1)) })
-            if (valueMs != 0) PanelChip(text = "Reset", onClick = { onChange(0) })
         }
     }
 }
