@@ -574,6 +574,11 @@ fun PlayerControls(
                     positionFlow = playerEngine.position,
                     durationMs = durationMs,
                     chapters = chapters,
+                    paused = playerState.paused,
+                    onFrameStep = { forward ->
+                        interactionEvents.value = System.currentTimeMillis()
+                        playerEngine.frameStep(forward)
+                    },
                     onSeekProgress = { playerEngine.seekTo(it, exact = false) },
                     onSeekFinished = { playerEngine.seekTo(it, exact = true) },
                     onScrubbingChanged = { scrubbing ->
@@ -719,6 +724,8 @@ private fun SeekControls(
     positionFlow: kotlinx.coroutines.flow.StateFlow<Long>,
     durationMs: Long,
     chapters: List<Chapter>,
+    paused: Boolean,
+    onFrameStep: (forward: Boolean) -> Unit,
     onSeekProgress: (Long) -> Unit,
     onSeekFinished: (Long) -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
@@ -749,6 +756,13 @@ private fun SeekControls(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
+            // Frame by frame while paused (mpv frame-back-step / frame-step).
+            if (paused) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FrameStepButton("◀▮", "frame_back") { onFrameStep(false) }
+                    FrameStepButton("▮▶", "frame_forward") { onFrameStep(true) }
+                }
+            }
             Text(
                 text = formatTime(durationMs),
                 color = Color(0xFFCCCCCC),
@@ -782,3 +796,21 @@ private fun SeekControls(
     }
 }
 
+
+@Composable
+private fun FrameStepButton(text: String, tag: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0x33FFFFFF))
+            .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = tag
+                testTag = tag
+            }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = text, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
