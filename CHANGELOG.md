@@ -32,6 +32,7 @@ Built without the phone; every item still needs its device check (PROGRESS.md) b
 - **Screenshot tests**: the player panels and browser rows render on the JVM (Robolectric, Roborazzi).
 
 ### Changed
+- **DerpFest 17 colours**: the app and player panels use the system Material You theme, so they follow the ROM.
 - **Anime4K is Vulkan-only (P8-02)**: on the phone the Adreno OpenGL ES compiler rejects every Anime4K pass that
   reads the video (libplacebo's texture-offset macro through its alias), so on OpenGL ES the presets now load
   nothing and show "Anime4K needs the Vulkan renderer" instead of running a broken half chain. Snapdragon GSR
