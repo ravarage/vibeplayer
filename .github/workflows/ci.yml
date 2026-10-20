@@ -35,11 +35,15 @@ jobs:
       - name: Compile and run unit tests
         run: ./gradlew --no-daemon :player:testDebugUnitTest :app:compileDebugKotlin :app:testDebugUnitTest
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Tool tests (devcheck, bench)
         run: |
-          python3 -m pip install --quiet pillow
-          python3 -m unittest discover tools/devcheck/tests
-          python3 -m unittest discover -s tools/bench -p 'test_*.py'
+          python -m pip install --quiet pillow
+          python -m unittest discover tools/devcheck/tests
+          python -m unittest discover -s tools/bench -p 'test_*.py'
 
       - name: Test reports
         if: failure()
