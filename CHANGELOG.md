@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Built without the phone; every item still needs its device check (PROGRESS.md).
+
+### Added
+- **Chapters (P4-15)**: ticks on the seek bar, chapter name while scrubbing, a chapter list, the current chapter
+  in the top bar.
+- **Skip opening / ending (P11-01)**: a skip button on chapters named Opening, OP, Ending, ED, Credits; optional
+  auto-skip.
+- **Volume boost (P11-02)**: up to 150 % or 200 % past the media maximum with the swipe and volume keys.
+- **Night mode (P11-03)**: evens out loud music and quiet dialogue (dynaudnorm).
+- **Subtitle folders (P11-04)**: subtitle files next to a video in a granted folder load automatically.
+- **Subtitle encoding (P11-04)**: external subtitles in UTF-16 or a legacy code page (Arabic, Cyrillic, CJK and
+  others) are converted to UTF-8.
+- **More sheet (P11-05)**: sleep timer, A-B repeat, loop this video, rotate.
+- **Frame step (P11-06)** while paused.
+- **Search (P11-07)** across all videos and within a folder.
+
 ## [0.5.0] - 2026-10-15
 
 Features marked **(beta)** are merged but their device acceptance check is not finished

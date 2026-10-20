@@ -736,3 +736,50 @@ fix non-compliant paths (foreground service up before focus request/resume); aud
 docs/BG_AUDIO.md. *Files*: playback/PlaybackService.kt, PlaybackLifecyclePolicy.kt, VibePlayerAdapter.kt, tests,
 docs/BG_AUDIO.md. *Accept*: unit tests pass; device check open (`cmd audio set-enable-hardening throw`).
 **P10-09 HDR output on Vulkan gpu-next** — behind a setting "HDR output (experimental)" (default off). When the setting is on, the file is HDR (PQ or HLG: MediaExtractor KEY_COLOR_TRANSFER before the open, mpv `video-params/gamma` once known) and the effective config is Vulkan + vo=gpu-next (docs/HDR.md), set mpv `target-colorspace-hint=yes` and request `Window.colorMode = COLOR_MODE_HDR` plus `desiredHdrHeadroom`; revert to `auto` / SDR color mode when the file is not HDR, in PiP and on exit. Otherwise change nothing (tone mapping to SDR as today). Pure decision logic with unit tests (HdrOutputPolicy); overlay row "HDR: on/off (reason)". The Vulkan -> GLES -> software fallback chain is untouched. *Files*: see the HDR output track. *Accept*: unit tests and assembleDebug pass; device check per docs/HDR.md section 6 (open).
+
+## Phase 11: player extras (user request 2026-10-20)
+
+Built in a cloud session without the phone; each needs its device check. All settings are in the
+existing store and Settings screen.
+
+**P11-01 Skip opening / ending** — chapter titles classified by whole word (Opening, OP, OP2, Intro / Ending,
+ED, Outro, Credits; `ChapterSkip`). A "Skip opening" / "Skip ending" button for 10 s after such a chapter starts
+and while the controls are up; it seeks to the next chapter start, or to the end for the last chapter. Setting
+"Auto-skip openings and endings" (default off): each chapter once per file, with an on-screen notice.
+*Accept*: on an MKV with an "Opening" chapter the button appears, skips to the next chapter start (time-pos
+within 1 s); with the setting on the opening is skipped once and plays when sought back into; an ending as the
+last chapter goes to the end and auto-play next starts the next file.
+
+**P11-02 Volume boost** — setting "Volume boost" (Off / 150 % / 200 %). The volume swipe and the volume keys use
+one scale: media volume, then mpv `volume` above 100 (`volume-max` 200) once the media volume is at its maximum;
+indicator in orange above 100 %. Media volume turned down elsewhere ends the boost; a lower setting applies at
+once; an audio-focus duck keeps the boost (`VolumeBoost`). *Accept*: at full media volume a further swipe up shows
+101 to 200 % and is audibly louder (mpv `volume` in the log); swiping down returns to 100 % then lowers the media
+volume; setting Off at 180 % drops to 100 %; a notification duck and unduck return to the boosted volume.
+
+**P11-03 Night mode** — `af=@night:lavfi=[dynaudnorm=...]` (`AudioFilters`), saved setting, toggled at the top of
+the audio sheet or in Settings; applied to every file and a new handle. *Accept*: on toggling, the mpv log shows
+the af change without an error and quiet dialogue is louder against music; survives a quality toggle and the
+next file; no new dropped frames on 1080p H.264.
+
+**P11-04 Subtitle folders and encoding** — "Subtitle folders" grants folders with OPEN_DOCUMENT_TREE (persisted);
+subtitle files with the video's name (`SubtitleMatcher`: Ep01.srt, Ep01.en.ass) in that folder are added after
+the file loads, the last chosen one selected. mpv has no iconv, so external files that are UTF-16 or a legacy code
+page are converted to a UTF-8 copy in the cache (`SubtitleCharset`, setting "Subtitle encoding", default
+Windows-1252) for the picker, the remembered subtitle, auto-load and a reload on a new handle. *Accept*: with
+Movies granted, Ep01.srt next to Ep01.mkv shows in the subtitle sheet without picking it; a Windows-1256 Arabic
+SRT shows correct letters with the encoding set to Arabic; a UTF-8 file is passed as fdclose:// (log).
+
+**P11-05 More sheet** — "⋮" in the top bar: sleep timer (15 to 90 min or end of this video; in PlaybackService, so
+it works with the screen off; end of video stops auto-play next), A-B repeat (mpv ab-loop, `AbLoop`), loop this
+video (loop-file), Rotate (Auto / Landscape / Portrait, `RotationMode`). A-B and loop are kept over a reload of the
+same file and cleared by a new one. *Accept*: a 1 min timer pauses with the screen off; end of video pauses at the
+end without the next file; A-B loops between the two points; loop restarts the file; Rotate turns a landscape
+video to portrait and back; the top bar still fits in portrait (check: one more button).
+
+**P11-06 Frame step** — while paused, two buttons between the time labels (frame-back-step / frame-step).
+*Accept*: each tap moves time-pos by about one frame (1/fps) on H.264 and AV1.
+
+**P11-07 Browser search** — a search button on the folder screen (all videos) and in a folder (that folder); every
+word of the query must appear, ignoring case, accents and punctuation (`VideoSearch`). *Accept*: "bocchi 01" finds
+the Bocchi file; typing in the 925-video WhatsApp folder stays smooth (gfxinfo janky frames no worse than P7-05).
