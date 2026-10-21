@@ -93,6 +93,15 @@ object VideoFormatDetector {
      * bit depth, for the MediaCodec operating-rate hint (P6-08 fix). Must be called off the main thread.
      */
     fun detectClip(context: Context, pathOrUri: String, identityKey: String? = null): ClipInfo {
+        // P13: never probe over the network. MediaExtractor on a stream URL blocks for up to ~30 s
+        // (NuCachedSource2 retries) before the player may open it, and a provider file would connect to its
+        // server once more; mpv finds the format itself and the default configuration row applies.
+        if (com.vibeplayer.player.NetOptions.isUrl(pathOrUri) || identityKey?.let { com.vibeplayer.player.NetOptions.isUrl(it) } == true ||
+            identityKey?.startsWith("content://${context.packageName}.netfiles/") == true
+        ) {
+            Log.i("VP-Perf", "Format detection skipped for a network file")
+            return ClipInfo(VideoFormat.OTHER)
+        }
         val startMs = SystemClock.elapsedRealtime()
         val extractor = MediaExtractor()
         try {

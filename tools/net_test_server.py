@@ -86,8 +86,23 @@ def main():
         args = [a for a in args if a != auth]
     root = args[0] if args else "."
     port = int(args[1]) if len(args) > 1 else 8765
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), make_handler(os.path.abspath(root), auth))
-    print("serving %s on http://127.0.0.1:%d" % (root, port), flush=True)
+    handler = make_handler(os.path.abspath(root), auth)
+    bind = os.environ.get("VP_NET_BIND", "127.0.0.1")
+    srv = http.server.ThreadingHTTPServer((bind, port), handler)
+    # adb reverse may connect to the IPv6 loopback ("localhost" -> ::1): listen there too (loopback only).
+    if bind == "127.0.0.1":
+        import socket
+        import threading
+
+        class V6(http.server.ThreadingHTTPServer):
+            address_family = socket.AF_INET6
+
+        try:
+            v6 = V6(("::1", port), handler)
+            threading.Thread(target=v6.serve_forever, daemon=True).start()
+        except OSError as e:
+            sys.stderr.write("net-test: no IPv6 loopback (%s)\n" % e)
+    print("serving %s on http://%s:%d" % (root, bind, port), flush=True)
     srv.serve_forever()
 
 

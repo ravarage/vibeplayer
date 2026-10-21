@@ -6,6 +6,8 @@
 #
 #   tools/network_check.sh            # build and install first
 #   tools/network_check.sh --no-build
+#   tools/network_check.sh --lan      # no adb reverse: the phone reaches this PC's Wi-Fi address (port 8765 must be
+#                                     # open in the PC's firewall); for when adb reverse does not get through
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=$(pwd)
@@ -14,9 +16,11 @@ OUT="/tmp/vp_network_check/$(date +%Y%m%d-%H%M%S)"
 SERVE="${XDG_CACHE_HOME:-$HOME/.cache}/vibeplayer-net-test"
 PORT=8765
 BUILD=1
+LAN=0
 for a in "$@"; do
   case "$a" in
     --no-build) BUILD=0 ;;
+    --lan) LAN=1 ;;
     *) echo "unknown option $a"; exit 2 ;;
   esac
 done
@@ -35,7 +39,7 @@ if [ "$BUILD" = 1 ]; then
 fi
 
 say "Test clips ($SERVE)"
-if [ ! -f "$SERVE/.version1" ]; then
+if [ ! -f "$SERVE/.version2" ]; then
   python3 - "$SERVE" <<'PY'
 import sys
 d = sys.argv[1]
@@ -50,18 +54,25 @@ PY
   ffmpeg -loglevel error -y -f lavfi -i testsrc2=size=854x480:rate=24 -f lavfi -i sine=frequency=550:sample_rate=48000 \
     -t 40 -c:v libx264 -preset veryfast -crf 34 -g 48 -bf 0 -pix_fmt yuv420p -c:a aac -b:a 48k \
     -f hls -hls_time 4 -hls_playlist_type vod "$SERVE/hls/stream.m3u8"
-  cat > "$SERVE/list.m3u" <<M3U
+  cat > "$SERVE/list.m3u.in" <<M3U
 #EXTM3U
 #EXTINF:-1 tvg-logo="" group-title="News",Channel One
-http://127.0.0.1:$PORT/hls/stream.m3u8
+http://HOSTPLACEHOLDER:$PORT/hls/stream.m3u8
 #EXTINF:-1 group-title="Movies",Channel Two
 #EXTVLCOPT:http-user-agent=VibeTest/1.0 (Android, network check)
-http://127.0.0.1:$PORT/p13_ep02.mkv
+http://HOSTPLACEHOLDER:$PORT/p13_ep02.mkv
 M3U
-  touch "$SERVE/.version1"
+  touch "$SERVE/.version2"
 fi
 
 say "Test server and adb reverse"
+HOST=127.0.0.1
+if [ "$LAN" = 1 ]; then
+  PHONE_IP=$(adb shell ip -4 route get 1.1.1.1 2>/dev/null | tr -d '\r' | grep -o 'src [0-9.]*' | cut -d' ' -f2 || true)
+  HOST=$(ip -4 route get "${PHONE_IP:-1.1.1.1}" 2>/dev/null | grep -o 'src [0-9.]*' | cut -d' ' -f2)
+  [ -n "$HOST" ] || { echo "cannot tell this PC's Wi-Fi address"; exit 1; }
+  export VP_NET_BIND=0.0.0.0
+fi
 python3 tools/net_test_server.py "$SERVE" "$PORT" > "$OUT/server.log" 2>&1 &
 SERVER=$!
 cleanup() {
@@ -71,8 +82,20 @@ cleanup() {
 }
 trap cleanup EXIT
 sleep 1
-adb reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
+[ "$LAN" = 1 ] || adb reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
 adb shell touch /data/local/tmp/vp_net_check
+# Can the phone reach the server? (toybox nc on the phone; the server log shows the request)
+probe=$(adb shell "printf 'GET / HTTP/1.0\r\n\r\n' | toybox nc -w 5 $HOST $PORT 2>&1 | head -1" | tr -d '\r' || true)
+echo "phone -> http://$HOST:$PORT: ${probe:-no answer}"
+if ! echo "$probe" | grep -q "HTTP/1.0 200"; then
+  echo "The phone cannot reach the test server. adb reverse list: $(adb reverse --list 2>&1 | tr '\n' ' ')"
+  [ "$LAN" = 1 ] && echo "With --lan: is port $PORT open in this PC's firewall, and are phone and PC on the same Wi-Fi?" \
+    || echo "Try: tools/network_check.sh --no-build --lan"
+  exit 1
+fi
+echo "$HOST" > "$OUT/host"
+sed "s/HOSTPLACEHOLDER/$HOST/" "$SERVE/list.m3u.in" > "$SERVE/list.m3u"
+export VP_NET_HOST="$HOST"
 # Android 17 local network permission: granted for the run so its dialog does not cover the screen.
 adb shell pm grant com.vibeplayer android.permission.ACCESS_LOCAL_NETWORK 2>/dev/null || echo "(could not pre-grant ACCESS_LOCAL_NETWORK; allow it when asked)"
 echo "phone sees http://127.0.0.1:$PORT -> this PC ($SERVE)"

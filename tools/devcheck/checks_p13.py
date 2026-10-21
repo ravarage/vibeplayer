@@ -9,7 +9,12 @@ from .checks_p11 import _tap_desc
 from .checks_p12 import _find_desc
 from .ctx import Skip, need, PLAYER
 
-BASE = "http://127.0.0.1:8765"
+import os
+
+# 127.0.0.1 through adb reverse, or the PC's Wi-Fi address with network_check.sh --lan
+HOST = os.environ.get("VP_NET_HOST", "127.0.0.1")
+BASE = f"http://{HOST}:8765"
+_HOST_RE = HOST.replace(".", r"\.")
 
 
 def _server_up(ctx):
@@ -53,7 +58,7 @@ def _open_link_in_network_screen(ctx, url):
 def p13_http_link(ctx):
     url = f"{BASE}/p13_ep01.mkv"
     m = _play_url(ctx, url)
-    opts = ctx.log.find(r"Loading http://127\.0\.0\.1:8765/p13_ep01\.mkv with options: (.*)$", m)
+    opts = ctx.log.find(rf"Loading http://{_HOST_RE}:8765/p13_ep01\.mkv with options: (.*)$", m)
     need(opts and "cache=yes" in opts[1].group(1) and "stream-lavf-o=" in opts[1].group(1),
          "the http load did not get the network options (cache, reconnect)")
     m2 = ctx.log.mark()
@@ -85,7 +90,7 @@ def p13_folder_next(ctx):
     ctx.sleep(1.5)
     m2 = ctx.log.mark()
     ctx.phone.broadcast(extras="--es action next")
-    need(ctx.log.wait(r"Loading http://127\.0\.0\.1:8765/p13_ep02\.mkv", 15, since=m2), "next did not open p13_ep02.mkv from the same folder")
+    need(ctx.log.wait(rf"Loading http://{_HOST_RE}:8765/p13_ep02\.mkv", 15, since=m2), "next did not open p13_ep02.mkv from the same folder")
     need(ctx.wait_restart(m2, 30), "p13_ep02.mkv did not start")
     return "web folder listed; ep01 played" + (" with its subtitle" if sub else " (subtitle NOT offered)") + "; next opened ep02"
 
@@ -101,7 +106,7 @@ def p13_m3u_channels(ctx):
     m = ctx.log.mark()
     ctx.phone.tap(*uix.center(row))
     need(ctx.wait_restart(m, 30), "Channel Two did not start")
-    opts = ctx.log.find(r"Loading http://127\.0\.0\.1:8765/p13_ep02\.mkv with options: (.*)$", m)
+    opts = ctx.log.find(rf"Loading http://{_HOST_RE}:8765/p13_ep02\.mkv with options: (.*)$", m)
     need(opts and "user-agent=%" in opts[1].group(1), "the channel's #EXTVLCOPT user agent was not passed to mpv")
     return "playlist groups and channels listed; Channel Two played with its user agent"
 
