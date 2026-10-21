@@ -63,9 +63,16 @@ def p13_http_link(ctx):
          "the http load did not get the network options (cache, reconnect)")
     m2 = ctx.log.mark()
     ctx.phone.broadcast(extras="--es action seek:40000")
-    ctx.sleep(3.0)
-    pos = ctx.last_value(r"pos_ms=(\d+)", m2, tag="VP-Check")
-    need(pos is None or int(pos) >= 38_000, f"after seeking to 40 s the position is {pos} ms (no Range support?)")
+    need(ctx.wait_restart(m2, 10), "no playback-restart after seeking to 40 s")
+    # The position is only refreshed while the controls are up (time-pos observed): show them, then read a
+    # VP-Check line written after that, not one from before the seek.
+    ctx.sleep(1.0)
+    ctx.controls_nodes()
+    m3 = ctx.log.mark()
+    ctx.sleep(2.5)
+    hit = ctx.log.wait(r"pos_ms=(\d+)", 8, since=m3, tag="VP-Check")
+    pos = hit[1].group(1) if hit else None
+    need(pos is not None and int(pos) >= 38_000, f"after seeking to 40 s the position is {pos} ms (no Range support?)")
     ctx.need_moving("http picture")
     return f"played over http with the network options; seek to 40 s landed at {pos or '?'} ms"
 
