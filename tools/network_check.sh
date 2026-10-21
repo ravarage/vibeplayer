@@ -102,7 +102,22 @@ sed "s/HOSTPLACEHOLDER/$HOST/" "$SERVE/list.m3u.in" > "$SERVE/list.m3u"
 export VP_NET_HOST="$HOST"
 # Android 17 local network permission: granted for the run so its dialog does not cover the screen.
 adb shell pm grant com.vibeplayer android.permission.ACCESS_LOCAL_NETWORK 2>/dev/null || echo "(could not pre-grant ACCESS_LOCAL_NETWORK; allow it when asked)"
-echo "phone sees http://127.0.0.1:$PORT -> this PC ($SERVE)"
+echo "phone sees http://$HOST:$PORT -> this PC ($SERVE)"
+# The shell above is not the app: a per-app network block (Android 17 local network permission, a ROM's per-app
+# firewall, data restrictions) only shows from the app's own user id. The debug build allows run-as.
+before=$(grep -c '"GET /vp-app-probe' "$OUT/server.log" || true)
+adb shell "run-as com.vibeplayer sh -c \"printf 'GET /vp-app-probe HTTP/1.0\\r\\n\\r\\n' | toybox nc -w 5 $HOST $PORT\"" \
+  > "$OUT/app_probe.txt" 2>&1 || true
+sleep 1
+after=$(grep -c '"GET /vp-app-probe' "$OUT/server.log" || true)
+if [ "$after" -gt "$before" ]; then
+  echo "the app's user id reaches the server too"
+else
+  echo "WARNING: the app's user id cannot reach the server ($(head -c 200 "$OUT/app_probe.txt" | tr '\r\n' '  '))"
+  echo "  local network permission: $(adb shell dumpsys package com.vibeplayer | tr -d '\r' | grep -o 'ACCESS_LOCAL_NETWORK: granted=[a-z]*' | head -1)"
+  echo "  background data: $(adb shell cmd netpolicy get restrict-background 2>&1 | tr -d '\r')"
+  echo "  check Settings > Apps > Vibe Player > Mobile data and Wi-Fi (network access on)"
+fi
 
 say "Device checks (P13)"
 set +e
@@ -111,4 +126,17 @@ RC=$?
 set -e
 say "Done"
 echo "Results: $OUT/p13 (server requests in $OUT/server.log)"
+# What happened on the wire and in the app, so a failed run explains itself without digging through folders.
+if [ "$RC" != 0 ]; then
+  say "Diagnosis"
+  echo "requests the server got from the app (last 15):"
+  grep -v 'vp-probe\|vp-app-probe' "$OUT/server.log" | tail -15 | sed 's/^/  /'
+  [ -n "$(grep -v 'vp-probe\|vp-app-probe' "$OUT/server.log")" ] || echo "  none: the app never reached the server"
+  for d in "$OUT"/p13/p13_*/; do
+    [ -f "$d/logcat.txt" ] || continue
+    echo "$(basename "$d"): app log lines about the network or errors:"
+    grep -E 'VP-Net|Loading http|playback-restart|end-file|[Ee]rror|[Ff]ailed|EACCES|EPERM|refused|[Tt]imed out|cleartext|denied' \
+      "$d/logcat.txt" | grep -v VP-Check | tail -12 | cut -c1-220 | sed 's/^/  /'
+  done
+fi
 exit $RC
