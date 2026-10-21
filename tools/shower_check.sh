@@ -1,11 +1,14 @@
 #!/bin/bash
-# About 10 minutes of device checks for the P12 features: start it, leave the phone alone (unlocked, on the
-# desk), share the result. Builds and installs the debug app, creates the P12 clips (ffmpeg) in
-# /sdcard/Movies/vibeplayer-p12, pushes a fresh copy without history for the folder-memory checks, runs the
-# p12 checks and leaves summary.md and screenshots in one folder.
+# About 15 minutes of device checks: start it, leave the phone alone (unlocked, on the desk), share the
+# result. Builds and installs the debug app once, then:
+#   1. P12: creates the clips in /sdcard/Movies/vibeplayer-p12 (plus a fresh copy without history for the
+#      folder-memory checks) and runs the p12 checks;
+#   2. P13 network: tools/network_check.sh (test server on this PC through adb reverse).
+# Each part leaves summary.md and screenshots in its own folder; the last lines list both.
 #
-#   tools/shower_check.sh            # build, install, P12 checks
-#   tools/shower_check.sh --no-build # the app is already on the phone
+#   tools/shower_check.sh               # build, install, P12 and network checks
+#   tools/shower_check.sh --no-build    # the app is already on the phone
+#   tools/shower_check.sh --no-network  # P12 only
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=$(pwd)
@@ -13,9 +16,11 @@ export PATH="$REPO/tools/bin:$PATH"
 OUT="/tmp/vp_shower_check/$(date +%Y%m%d-%H%M%S)"
 P12_DIR=/sdcard/Movies/vibeplayer-p12
 BUILD=1
+NETWORK=1
 for a in "$@"; do
   case "$a" in
     --no-build) BUILD=0 ;;
+    --no-network) NETWORK=0 ;;
     *) echo "unknown option $a"; exit 2 ;;
   esac
 done
@@ -96,11 +101,23 @@ echo "fresh copy: $FRESH"
 say "Device checks (P12)"
 ONLY=p12_rotated_clip,p12_resume_chip,p12_up_next,p12_sub_line,p12_bookmarks,p12_shader_switch,p12_folder_speed,p12_folder_lang,no_fatal
 set +e
-python3 tools/devcheck/run.py --only "$ONLY" --out "$OUT/p12"
-RC=$?
+python3 tools/devcheck/run.py --only "$ONLY" --out "$OUT/p12" 2>&1 | tee "$OUT/p12.log"
+RC=${PIPESTATUS[0]}
+NET_RC=0
+if [ "$NETWORK" = 1 ]; then
+  say "Network checks (P13)"
+  # already built and installed above
+  tools/network_check.sh --no-build 2>&1 | tee "$OUT/network.log"
+  NET_RC=${PIPESTATUS[0]}
+fi
 set -e
 
 say "Done"
-echo "Results: $OUT/p12 (summary.md and screenshots)"
-echo "Share the table above; for a failure also its trace.txt and logcat.txt from the check's folder."
-exit $RC
+echo "== P12 results ($OUT/p12):"
+grep -E "^(p12_[a-z_]+|no_fatal) +(PASS|FAIL|SKIP)" "$OUT/p12.log" || true
+if [ "$NETWORK" = 1 ]; then
+  echo "== Network results ($(grep -o '/tmp/vp_network_check/[0-9-]*/p13' "$OUT/network.log" | tail -1)):"
+  grep -E "^(p13_[a-z_]+|no_fatal) +(PASS|FAIL|SKIP)" "$OUT/network.log" || true
+fi
+echo "Share these lines; for a failure also its trace.txt and logcat.txt from the check's folder."
+exit $((RC | NET_RC))
