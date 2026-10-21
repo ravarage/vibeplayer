@@ -1362,6 +1362,9 @@ class PlaybackService : Service() {
                 playerEngine.addSubtitleTrack(fdPath = subFdPath, title = subTitle, select = selectExternal, sourceUri = externalSubUri)
                 Log.i("VP", "Reopening video: re-added external subtitle $externalSubUri ($subTitle, select=$selectExternal)")
             }
+            com.vibeplayer.net.NetPlaylist.item(identityKey ?: path)?.takeIf { it.subtitles.isNotEmpty() }?.let {
+                addNetSubtitles(it, path, generation)
+            }
             if (appSettings.subtitleFolders.isNotEmpty() && path.startsWith("/")) {
                 val rememberedTitle = if (fileSettings?.subEnabled != false) fileSettings?.subTrackTitle else null
                 autoLoadSubtitles(path, generation, appSettings.subtitleFolders, externalSubUri, rememberedTitle)
@@ -1522,6 +1525,22 @@ class PlaybackService : Service() {
      * Subtitle files next to [path] in the granted folders, added once the file has loaded (sub-add
      * then runs at once, one per file). A file whose title was the last chosen subtitle is selected.
      */
+    /** P13: subtitle files next to a network video (same name), offered in the Subtitles panel. */
+    private fun addNetSubtitles(item: com.vibeplayer.net.NetPlaylist.Item, path: String, generation: Long) {
+        serviceScope.launch(Dispatchers.IO) {
+            withTimeoutOrNull(AUTO_SUB_WAIT_MS) { playerEngine.state.first { it.durationMs > 0L } } ?: return@launch
+            for ((uri, name) in item.subtitles) {
+                if (generation != loadGeneration || currentVideoPath != path) return@launch
+                // Provider files are read (and converted to UTF-8) like any content:// subtitle; a URL is
+                // handed to mpv, which reads it with this file's headers.
+                val subPath = if (uri.startsWith("content://")) subtitleFiles.openForMpv(Uri.parse(uri), name) else uri
+                if (subPath == null) continue
+                playerEngine.addSubtitleTrack(subPath, name, select = false, sourceUri = uri.takeIf { it.startsWith("content://") })
+                Log.i("VP", "Network subtitle $name added")
+            }
+        }
+    }
+
     private fun autoLoadSubtitles(path: String, generation: Long, folders: List<String>, skipUri: String?, rememberedTitle: String?) {
         serviceScope.launch(Dispatchers.IO) {
             // The remembered file may be the same document under another URI form (picker document URI

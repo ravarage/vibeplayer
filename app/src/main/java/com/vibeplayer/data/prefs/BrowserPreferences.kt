@@ -62,6 +62,27 @@ class BrowserPreferences(private val context: Context) {
         }
     }
 
+    private val recentLinksKey = stringPreferencesKey("recent_links")
+
+    /** P13: links opened in Network > Open a link, newest first. */
+    val recentLinksFlow: Flow<List<String>> = context.browserDataStore.data
+        .catch { exception -> if (exception is IOException) emit(emptyPreferences()) else throw exception }
+        .map { p -> p[recentLinksKey]?.split('\n')?.filter { it.isNotBlank() } ?: emptyList() }
+
+    suspend fun addRecentLink(link: String) {
+        context.browserDataStore.edit { p ->
+            val old = p[recentLinksKey]?.split('\n')?.filter { it.isNotBlank() } ?: emptyList()
+            p[recentLinksKey] = (listOf(link) + old.filter { it != link }).take(10).joinToString("\n")
+        }
+    }
+
+    suspend fun removeRecentLink(link: String) {
+        context.browserDataStore.edit { p ->
+            val old = p[recentLinksKey]?.split('\n')?.filter { it.isNotBlank() } ?: emptyList()
+            p[recentLinksKey] = old.filter { it != link }.joinToString("\n")
+        }
+    }
+
     suspend fun setSortOrder(order: VideoSortOrder) {
         context.browserDataStore.edit { preferences ->
             preferences[sortOrderKey] = order.name

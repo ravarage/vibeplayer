@@ -63,6 +63,8 @@ fun FolderListScreen(
     onFolderClick: (VideoFolder) -> Unit = {},
     onPlayVideo: ((VideoItem) -> Unit)? = null,
     onSettingsClick: () -> Unit = {},
+    /** P13: the Network screen (links, servers, DLNA, IPTV). */
+    onNetworkClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     thumbnailCache: ThumbnailCache? = null,
     /** Every video, for the search across folders. */
@@ -116,6 +118,17 @@ fun FolderListScreen(
                             }
                         ) {
                             Text(text = "🔍", fontSize = 18.sp)
+                        }
+                    }
+                    if (!searching && onNetworkClick != null) {
+                        IconButton(
+                            onClick = onNetworkClick,
+                            modifier = Modifier.semantics {
+                                contentDescription = "network"
+                                testTag = "network"
+                            }
+                        ) {
+                            Text(text = "🌐", fontSize = 18.sp)
                         }
                     }
                     IconButton(onClick = onSettingsClick) {

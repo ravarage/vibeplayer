@@ -6,8 +6,19 @@ package com.vibeplayer.net
  * using their folder on disk.
  */
 object NetPlaylist {
-    /** One playable item: its identity (provider content:// URI or the stream URL) and how to open it. */
-    data class Item(val identity: String, val title: String, val entry: RemoteEntry, val sourceId: Long)
+    /**
+     * One playable item: its identity (provider content:// URI or the stream URL) and how to open it, with the
+     * subtitle files next to it in the same folder (identity and name).
+     */
+    data class Item(
+        val identity: String,
+        val title: String,
+        val entry: RemoteEntry,
+        val sourceId: Long,
+        val subtitles: List<Pair<String, String>> = emptyList()
+    )
+
+    fun item(identity: String?): Item? = items.getOrNull(indexOf(identity))
 
     @Volatile private var items: List<Item> = emptyList()
 

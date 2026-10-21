@@ -34,6 +34,15 @@ object NavRoutes {
     const val VIDEOS = "videos/{bucketId}/{bucketName}"
     const val PLAYER = "player/{videoPath}"
     const val SETTINGS = "settings"
+    const val NETWORK = "network"
+    const val REMOTE = "remote/{sourceId}"
+    /** An unsaved URL source (an opened playlist link, a discovered DLNA server), handed over in memory. */
+    const val REMOTE_TEMP = "remote_temp"
+
+    fun remote(sourceId: Long) = "remote/$sourceId"
+
+    /** The unsaved source the next REMOTE_TEMP screen shows (a URL survives no round trip through a route). */
+    @Volatile var tempSource: com.vibeplayer.net.NetSource? = null
 
     fun videos(bucketId: String, bucketName: String): String {
         val encodedName = Uri.encode(bucketName)
@@ -157,8 +166,45 @@ fun BrowserNavGraph(
                 onSettingsClick = {
                     Log.d("VP", "Navigating to settings")
                     navController.navigate(NavRoutes.SETTINGS)
+                },
+                onNetworkClick = { navController.navigate(NavRoutes.NETWORK) }
+            )
+        }
+
+        composable(NavRoutes.NETWORK) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val netRepo = remember { com.vibeplayer.net.NetRepository(context.applicationContext) }
+            com.vibeplayer.ui.net.NetworkScreen(
+                repo = netRepo,
+                preferences = preferences,
+                onBack = { navController.popBackStack() },
+                onBrowse = { s ->
+                    if (s.id != 0L) navController.navigate(NavRoutes.remote(s.id))
+                    else {
+                        NavRoutes.tempSource = s
+                        navController.navigate(NavRoutes.REMOTE_TEMP)
+                    }
                 }
             )
+        }
+
+        composable(
+            route = NavRoutes.REMOTE,
+            arguments = listOf(navArgument("sourceId") { type = NavType.LongType })
+        ) { entry ->
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val netRepo = remember { com.vibeplayer.net.NetRepository(context.applicationContext) }
+            val id = entry.arguments?.getLong("sourceId") ?: 0L
+            val source by androidx.compose.runtime.produceState<com.vibeplayer.net.NetSource?>(null, id) { value = netRepo.get(id) }
+            source?.let { s -> com.vibeplayer.ui.net.RemoteBrowserScreen(netRepo, s, onBack = { navController.popBackStack() }) }
+        }
+
+        composable(NavRoutes.REMOTE_TEMP) { entry ->
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val netRepo = remember { com.vibeplayer.net.NetRepository(context.applicationContext) }
+            val s = remember(entry) { NavRoutes.tempSource }
+            if (s != null) com.vibeplayer.ui.net.RemoteBrowserScreen(netRepo, s, onBack = { navController.popBackStack() })
+            else androidx.compose.runtime.LaunchedEffect(Unit) { navController.popBackStack() }
         }
 
         composable(NavRoutes.SETTINGS) {

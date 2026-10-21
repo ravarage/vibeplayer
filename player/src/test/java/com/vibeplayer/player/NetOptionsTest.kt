@@ -18,7 +18,7 @@ class NetOptionsTest {
 
     @Test
     fun quotesByByteLength() {
-        assertEquals("user-agent=%11%a, b (c,d)", NetOptions.quoted("user-agent", "a, b (c,d)"))
+        assertEquals("user-agent=%10%a, b (c,d)", NetOptions.quoted("user-agent", "a, b (c,d)"))
         assertEquals("k=%3%é1", NetOptions.quoted("k", "é1"))
     }
 
