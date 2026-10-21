@@ -85,14 +85,35 @@ sleep 1
 [ "$LAN" = 1 ] || adb reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
 adb shell touch /data/local/tmp/vp_net_check
 # Can the phone reach the server? A request from the phone (toybox nc) must show up in the server log; nc's own
-# output is not trusted (it may quit at the end of its input before the reply arrives).
-before=$(grep -c '"GET /vp-probe' "$OUT/server.log" || true)
-probe=$(adb shell "printf 'GET /vp-probe HTTP/1.0\r\n\r\n' | toybox nc -w 5 $HOST $PORT 2>&1 | head -1" | tr -d '\r' || true)
-sleep 1
-after=$(grep -c '"GET /vp-probe' "$OUT/server.log" || true)
-echo "phone -> http://$HOST:$PORT: ${probe:-no reply text}; server saw the request: $([ "$after" -gt "$before" ] && echo yes || echo no)"
-if [ "$after" -le "$before" ]; then
+# output is not trusted. nc's input stays open for 2 s: when it ends at once, nc may close the socket before
+# the server reads the request line, and nothing is logged. A few tries, since the forward can take a moment.
+for i in $(seq 1 20); do
+  grep -q '^serving' "$OUT/server.log" 2>/dev/null && break
+  sleep 0.25
+done
+# probe <path> [run-as]: sends GET <path> from the phone; prints yes when the server logged it
+probe() {
+  local path=$1 who=${2:-} before after cmd
+  cmd="(printf 'GET $path HTTP/1.0\\r\\n\\r\\n'; sleep 2) | toybox nc -w 5 $HOST $PORT"
+  for _ in 1 2 3; do
+    before=$(grep -c "\"GET $path" "$OUT/server.log" || true)
+    if [ -n "$who" ]; then
+      adb shell "run-as $who sh -c \"$cmd\"" >> "$OUT/probe.txt" 2>&1 || true
+    else
+      adb shell "$cmd" >> "$OUT/probe.txt" 2>&1 || true
+    fi
+    sleep 0.5
+    after=$(grep -c "\"GET $path" "$OUT/server.log" || true)
+    [ "$after" -gt "$before" ] && { echo yes; return; }
+    sleep 1
+  done
+  echo no
+}
+SHELL_OK=$(probe /vp-probe)
+echo "phone shell -> http://$HOST:$PORT: $SHELL_OK"
+if [ "$SHELL_OK" != yes ]; then
   echo "The phone cannot reach the test server. adb reverse list: $(adb reverse --list 2>&1 | tr '\n' ' ')"
+  echo "nc said: $(tail -c 300 "$OUT/probe.txt" | tr '\r\n' '  ')"
   [ "$LAN" = 1 ] && echo "With --lan: is port $PORT open in this PC's firewall, and are phone and PC on the same Wi-Fi?" \
     || echo "Try: tools/network_check.sh --no-build --lan"
   exit 1
@@ -103,17 +124,12 @@ export VP_NET_HOST="$HOST"
 # Android 17 local network permission: granted for the run so its dialog does not cover the screen.
 adb shell pm grant com.vibeplayer android.permission.ACCESS_LOCAL_NETWORK 2>/dev/null || echo "(could not pre-grant ACCESS_LOCAL_NETWORK; allow it when asked)"
 echo "phone sees http://$HOST:$PORT -> this PC ($SERVE)"
-# The shell above is not the app: a per-app network block (Android 17 local network permission, a ROM's per-app
-# firewall, data restrictions) only shows from the app's own user id. The debug build allows run-as.
-before=$(grep -c '"GET /vp-app-probe' "$OUT/server.log" || true)
-adb shell "run-as com.vibeplayer sh -c \"printf 'GET /vp-app-probe HTTP/1.0\\r\\n\\r\\n' | toybox nc -w 5 $HOST $PORT\"" \
-  > "$OUT/app_probe.txt" 2>&1 || true
-sleep 1
-after=$(grep -c '"GET /vp-app-probe' "$OUT/server.log" || true)
-if [ "$after" -gt "$before" ]; then
+# The shell is not the app: a per-app network block (Android 17 local network permission, a ROM's per-app
+# firewall, data restrictions) only shows with the app's own user id. The debug build allows run-as.
+if [ "$(probe /vp-app-probe com.vibeplayer)" = yes ]; then
   echo "the app's user id reaches the server too"
 else
-  echo "WARNING: the app's user id cannot reach the server ($(head -c 200 "$OUT/app_probe.txt" | tr '\r\n' '  '))"
+  echo "WARNING: the app's user id cannot reach the server (nc: $(tail -c 200 "$OUT/probe.txt" | tr '\r\n' '  '))"
   echo "  local network permission: $(adb shell dumpsys package com.vibeplayer | tr -d '\r' | grep -o 'ACCESS_LOCAL_NETWORK: granted=[a-z]*' | head -1)"
   echo "  background data: $(adb shell cmd netpolicy get restrict-background 2>&1 | tr -d '\r')"
   echo "  check Settings > Apps > Vibe Player > Mobile data and Wi-Fi (network access on)"
