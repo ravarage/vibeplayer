@@ -32,7 +32,9 @@ enum class ShaderPresetOption(val displayName: String, val description: String) 
     ANIME4K_A("Anime4K A (Fast)", "Restore CNN + Upscale CNN x2 for fast perceptual anime upscaling (Quality mode, Vulkan renderer only)"),
     ANIME4K_B("Anime4K B (Fast)", "Restore CNN Soft + Upscale CNN x2 for softer line reconstruction (Quality mode, Vulkan renderer only)"),
     ANIME4K_C("Anime4K C (Fast)", "Upscale Denoise + Upscale CNN x2 for sharp high-detail anime (Quality mode, Vulkan renderer only)"),
-    SNAPDRAGON_GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution spatial upscaler (Quality mode only)")
+    SNAPDRAGON_GSR("Snapdragon GSR", "Qualcomm Snapdragon Game Super Resolution spatial upscaler (Quality mode only)"),
+    FSRCNNX("FSRCNNX x2", "Small neural-network upscaler, best on live action; heavier than GSR (Quality mode, Vulkan renderer only)"),
+    RAVU("RAVU Lite", "Fast learned prescaler with anti-ringing, for sharper lines at low cost (Quality mode, Vulkan renderer only)")
 }
 
 enum class SubtitlePreferenceMode(val displayName: String, val description: String) {
@@ -71,6 +73,8 @@ data class AppSettings(
     val volumeBoostMax: Int = 100,
     /** Night mode: even out loud and quiet sounds (dynaudnorm), default off. */
     val nightMode: Boolean = false,
+    /** P13 extra: libplacebo debanding (with its light grain) in Quality mode; off by default. */
+    val deband: Boolean = false,
     /** Folders (SAF tree URIs) searched for subtitle files next to a video, loaded automatically. */
     val subtitleFolders: List<String> = emptyList(),
     /** Code page for external subtitle files that are not UTF-8 (converted before mpv reads them). */
@@ -186,6 +190,7 @@ class AppSettingsRepository(private val context: Context) {
         private val KEY_SUBTITLE_ENCODING = stringPreferencesKey("subtitle_encoding")
         private val KEY_SUBTITLE_FOLDERS = stringPreferencesKey("subtitle_folders")
         private val KEY_NIGHT_MODE = booleanPreferencesKey("night_mode")
+        private val KEY_DEBAND = booleanPreferencesKey("deband")
         private val KEY_VOLUME_BOOST_MAX = intPreferencesKey("volume_boost_max")
         private val KEY_AUTO_SKIP_CHAPTERS = booleanPreferencesKey("auto_skip_chapters")
     }
@@ -278,6 +283,7 @@ class AppSettingsRepository(private val context: Context) {
             autoSkipChapters = prefs[KEY_AUTO_SKIP_CHAPTERS] ?: false,
             volumeBoostMax = com.vibeplayer.player.VolumeBoost.normalizeMax(prefs[KEY_VOLUME_BOOST_MAX] ?: 100),
             nightMode = prefs[KEY_NIGHT_MODE] ?: false,
+            deband = prefs[KEY_DEBAND] ?: false,
             subtitleFolders = (prefs[KEY_SUBTITLE_FOLDERS] ?: "").split("\n").filter { it.isNotBlank() },
             subtitleEncoding = com.vibeplayer.data.subs.SubtitleCharset.normalize(prefs[KEY_SUBTITLE_ENCODING]),
             pictureBrightness = com.vibeplayer.player.PictureAdjust.clamp(prefs[KEY_PICTURE_BRIGHTNESS] ?: 0),
@@ -403,6 +409,7 @@ class AppSettingsRepository(private val context: Context) {
             prefs[KEY_SUBTITLE_ENCODING] = settings.subtitleEncoding
             prefs[KEY_SUBTITLE_FOLDERS] = settings.subtitleFolders.joinToString("\n")
             prefs[KEY_NIGHT_MODE] = settings.nightMode
+            prefs[KEY_DEBAND] = settings.deband
             prefs[KEY_VOLUME_BOOST_MAX] = settings.volumeBoostMax
             prefs[KEY_AUTO_SKIP_CHAPTERS] = settings.autoSkipChapters
         }

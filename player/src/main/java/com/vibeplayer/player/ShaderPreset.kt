@@ -10,7 +10,11 @@ enum class ShaderPreset(val displayName: String) {
     ANIME4K_A("Anime4K A (Fast)"),
     ANIME4K_B("Anime4K B (Fast)"),
     ANIME4K_C("Anime4K C (Fast)"),
-    SNAPDRAGON_GSR("Snapdragon GSR");
+    SNAPDRAGON_GSR("Snapdragon GSR"),
+    /** A small neural upscaler (igv, LGPL-3.0) for live action; luma x2, 8-0-4-1 is the lighter variant. */
+    FSRCNNX("FSRCNNX x2"),
+    /** RAVU-Lite with anti-ringing (bjin, LGPL-3.0): a fast learned prescaler for luma. */
+    RAVU("RAVU Lite");
 
     /**
      * Returns the ordered list of shader file names for this preset.
@@ -23,13 +27,19 @@ enum class ShaderPreset(val displayName: String) {
      * same sources compile with glslang and on Vulkan. Snapdragon GSR runs on both.
      */
     fun getShaderFiles(mode: PlaybackMode, renderer: Renderer = Renderer.VULKAN): List<String> =
-        if (renderer == Renderer.GLES && isAnime4K) emptyList() else chain(mode)
+        if (renderer == Renderer.GLES && vulkanOnly) emptyList() else chain(mode)
 
     val isAnime4K: Boolean get() = this == ANIME4K_A || this == ANIME4K_B || this == ANIME4K_C
 
-    /** True when this preset is wanted but cannot run on [renderer] in [mode] (Anime4K on OpenGL ES). */
+    /**
+     * Presets that read the video through libplacebo's texture-offset macros, which the phone's Adreno OpenGL ES
+     * compiler rejected for Anime4K (P8-02): Vulkan only until a device check shows OpenGL ES compiles them.
+     */
+    val vulkanOnly: Boolean get() = isAnime4K || this == FSRCNNX || this == RAVU
+
+    /** True when this preset is wanted but cannot run on [renderer] in [mode] (Vulkan-only presets on OpenGL ES). */
     fun unavailableOn(mode: PlaybackMode, renderer: Renderer): Boolean =
-        mode == PlaybackMode.QUALITY && renderer == Renderer.GLES && isAnime4K
+        mode == PlaybackMode.QUALITY && renderer == Renderer.GLES && vulkanOnly
 
     private fun chain(mode: PlaybackMode): List<String> {
         if (mode != PlaybackMode.QUALITY) return emptyList()
@@ -61,6 +71,8 @@ enum class ShaderPreset(val displayName: String) {
             SNAPDRAGON_GSR -> listOf(
                 "SGSR.glsl"
             )
+            FSRCNNX -> listOf("FSRCNNX_x2_8-0-4-1.glsl")
+            RAVU -> listOf("ravu-lite-ar-r4.hook")
         }
     }
 

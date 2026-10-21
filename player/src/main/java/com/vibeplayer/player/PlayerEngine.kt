@@ -1143,6 +1143,7 @@ class PlayerEngine(
         if (nightMode || equalizer.isActive) MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode, equalizer))
         if (audioSessionId > 0) MpvNative.setPropertyString(handle, "audiotrack-session-id", audioSessionId.toString())
         if (!pictureAdjust.isDefault) pictureAdjust.mpvProperties().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
+        if (deband) MpvNative.setPropertyString(handle, "deband", "yes")
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -1658,12 +1659,12 @@ class PlayerEngine(
         // the preset again, so the GLES chain (without Clamp_Highlights, P8-02) is picked up there.
         val renderer = playbackConfig.renderer
         val glslShadersValue = if (shaderCompare) "" else currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory, renderer)
-        // Anime4K is Vulkan-only (P8-02): say so once per file and renderer instead of silently showing nothing.
+        // Anime4K, FSRCNNX and RAVU are Vulkan-only: say so once per file and renderer instead of silently showing nothing.
         if (currentShaderPreset.unavailableOn(playbackConfig.mode, renderer)) {
             val key = "$currentFileIdentity|$renderer|$currentShaderPreset"
             if (key != shaderNoticeKey) {
                 shaderNoticeKey = key
-                _onScreenMessage.tryEmit("Anime4K needs the Vulkan renderer")
+                _onScreenMessage.tryEmit("${if (currentShaderPreset.isAnime4K) "Anime4K" else currentShaderPreset.displayName} needs the Vulkan renderer")
             }
         }
         MpvNative.setPropertyString(handle, "glsl-shaders", glslShadersValue)
@@ -2457,6 +2458,20 @@ class PlayerEngine(
     /** Night mode (dynaudnorm), kept for every file and new handle. */
     @Volatile var nightMode: Boolean = false
         private set
+
+    /** Debanding in the GPU renderer (Quality mode; the Efficient path has no renderer to apply it). */
+    @Volatile private var deband = false
+
+    fun setDeband(on: Boolean) {
+        if (on == deband) return
+        deband = on
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.setPropertyString(handle, "deband", if (on) "yes" else "no")
+            Log.i("VP", "setDeband $on res=$res")
+        }
+    }
 
     fun setNightMode(on: Boolean) {
         if (on == nightMode) return

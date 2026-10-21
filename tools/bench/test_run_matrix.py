@@ -71,11 +71,11 @@ class TestMatrixDefinitions(unittest.TestCase):
 
     def test_shaders_matrix(self):
         rows = get_predefined_matrix("shaders")
-        self.assertEqual(len(rows), 5)
+        self.assertEqual(len(rows), 7)
         presets = [r.shader for r in rows]
         self.assertEqual(
             presets,
-            ["none", "anime4k_a", "anime4k_b", "anime4k_c", "snapdragon_gsr"],
+            ["none", "anime4k_a", "anime4k_b", "anime4k_c", "snapdragon_gsr", "fsrcnnx", "ravu"],
         )
         for r in rows:
             self.assertEqual(r.seconds, 300)

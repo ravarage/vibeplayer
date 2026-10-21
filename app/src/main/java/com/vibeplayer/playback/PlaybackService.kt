@@ -463,6 +463,10 @@ class PlaybackService : Service() {
             appSettingsRepository.appSettingsFlow.map { it.nightMode }.distinctUntilChanged()
                 .collect { playerEngine.setNightMode(it) }
         }
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.deband }.distinctUntilChanged()
+                .collect { playerEngine.setDeband(it) }
+        }
 
         // Listen for background audio setting changes
         serviceScope.launch {
@@ -647,6 +651,8 @@ class PlaybackService : Service() {
         ShaderPresetOption.ANIME4K_B -> ShaderPreset.ANIME4K_B
         ShaderPresetOption.ANIME4K_C -> ShaderPreset.ANIME4K_C
         ShaderPresetOption.SNAPDRAGON_GSR -> ShaderPreset.SNAPDRAGON_GSR
+        ShaderPresetOption.FSRCNNX -> ShaderPreset.FSRCNNX
+        ShaderPresetOption.RAVU -> ShaderPreset.RAVU
     }
 
     private fun createMediaSession() {

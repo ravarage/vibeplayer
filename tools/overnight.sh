@@ -1,7 +1,7 @@
 #!/bin/bash
 # The long phone runs, for a night with the PC on and the phone on its charger (about 2.5 hours):
 #   1. P6-05 stability: 30 min of hevc10_4k.mp4 on Vulkan and on OpenGL ES (drops, crashes, temperature)
-#   2. P8-04 shader benchmark: 5 min of ichiban.mp4 per preset (none, Anime4K A/B/C, GSR) on Vulkan
+#   2. P8-04 shader benchmark: 5 min of ichiban.mp4 per preset (none, Anime4K A/B/C, GSR, FSRCNNX, RAVU) on Vulkan
 #   3. the full devcheck regression (every check, P11 and P12 included)
 # Benchmark rows are written to the results folder, not to docs/BENCHMARK.md, so the repo stays clean for
 # tools/release.sh; share the folder (or its summary.txt) in the morning.
@@ -48,7 +48,7 @@ python3 tools/bench/run_matrix.py --matrix stability --allow-charging --out-dir 
 RC=$((RC | ${PIPESTATUS[0]}))
 echo "battery after stability: $(battery)" | tee -a "$SUMMARY"
 
-say "P8-04 shader benchmark (5 x 5 min, Vulkan)"
+say "P8-04 shader benchmark (7 x 5 min, Vulkan)"
 python3 tools/bench/run_matrix.py --matrix shaders --allow-charging --out-dir "$OUT/shaders" \
   --markdown-doc "$OUT/BENCHMARK_rows.md" 2>&1 | tee "$OUT/shaders.log" | tail -15
 RC=$((RC | ${PIPESTATUS[0]}))

@@ -51,6 +51,8 @@ Notes:
 | Component | Licence | Notes |
 |---|---|---|
 | Anime4K v4.0.1 (bloc97) | MIT, Copyright (c) 2019 bloc97 | https://github.com/bloc97/Anime4K ; licence in `LICENSE_Anime4K` |
+| FSRCNNX x2 8-0-4-1 (igv), release 1.1 | LGPL-3.0-or-later, Copyright (C) 2017-2021 igv | https://github.com/igv/FSRCNN-TensorFlow ; licence in `LICENSE_FSRCNNX` |
+| RAVU-Lite-AR r4 (bjin, mpv-prescalers) | LGPL-3.0-or-later | https://github.com/bjin/mpv-prescalers ; licence in `LICENSE_RAVU` |
 | Snapdragon Game Super Resolution v1, mpv GLSL port by agyild | BSD-3-Clause, Copyright (c) 2023, Qualcomm Innovation Center, Inc. | https://gist.github.com/agyild/7715b6b1f38427839d58f80884902cab (commit 0ac71744883918af581f0824435e46b3b364a0d0); licence in `LICENSE_GSR` |
 
 ## Android libraries (Maven)

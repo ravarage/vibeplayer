@@ -416,6 +416,13 @@ fun SettingsScreen(
                 onClick = { showShaderDialog = true }
             )
 
+            SettingsSwitchRow(
+                title = "Deband",
+                description = "Smooths colour banding in dark scenes and gradients (adds a light grain). Quality mode only; off costs nothing",
+                checked = settings.deband,
+                onCheckedChange = { onUpdateSettings(settings.copy(deband = it)) }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)

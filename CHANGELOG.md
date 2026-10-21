@@ -33,6 +33,9 @@ Built in a cloud session without the phone; `tools/shower_check.sh` runs the dev
   - next / previous, Up next and matching subtitles work inside a network folder or channel list;
   - passwords are encrypted with an Android Keystore key and kept out of URLs and logs; Android 17's local
     network permission is asked on the Network screen.
+- **More upscalers and deband (opt-in)**: FSRCNNX x2 (a small neural upscaler, good on live action) and RAVU
+  Lite (a fast learned prescaler) as shader presets, Vulkan renderer only like Anime4K; a Deband switch for
+  Quality mode. All off by default, so playback is unchanged unless they are picked.
 - **Device scripts**: `tools/network_check.sh` (P13 checks with a test server on the PC through adb reverse),
   `tools/shower_check.sh` (the P12 checks, about 10 minutes) and `tools/overnight.sh` (30-minute
   stability runs, the shader benchmark and the full regression).

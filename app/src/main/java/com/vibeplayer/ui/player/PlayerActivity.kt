@@ -792,6 +792,8 @@ class PlayerActivity : ComponentActivity() {
             "anime4k_b", "b" -> com.vibeplayer.player.ShaderPreset.ANIME4K_B
             "anime4k_c", "c" -> com.vibeplayer.player.ShaderPreset.ANIME4K_C
             "snapdragon_gsr", "gsr" -> com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR
+            "fsrcnnx" -> com.vibeplayer.player.ShaderPreset.FSRCNNX
+            "ravu" -> com.vibeplayer.player.ShaderPreset.RAVU
             "none" -> com.vibeplayer.player.ShaderPreset.NONE
             else -> null
         }
@@ -1186,6 +1188,8 @@ class PlayerActivity : ComponentActivity() {
                             "anime4k_b", "b" -> com.vibeplayer.player.ShaderPreset.ANIME4K_B
                             "anime4k_c", "c" -> com.vibeplayer.player.ShaderPreset.ANIME4K_C
                             "snapdragon_gsr", "gsr" -> com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR
+                            "fsrcnnx" -> com.vibeplayer.player.ShaderPreset.FSRCNNX
+                            "ravu" -> com.vibeplayer.player.ShaderPreset.RAVU
                             else -> null
                         }
                         if (preset != null) {

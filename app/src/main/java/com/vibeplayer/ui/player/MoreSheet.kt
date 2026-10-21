@@ -329,6 +329,8 @@ private fun ShaderSection(c: ShaderControls) {
                     com.vibeplayer.player.ShaderPreset.ANIME4K_B -> "Anime4K B"
                     com.vibeplayer.player.ShaderPreset.ANIME4K_C -> "Anime4K C"
                     com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR -> "GSR"
+                    com.vibeplayer.player.ShaderPreset.FSRCNNX -> "FSRCNNX"
+                    com.vibeplayer.player.ShaderPreset.RAVU -> "RAVU"
                 }
                 PanelChip(text = label, selected = p == preset, tag = "shader_${p.name.lowercase()}", onClick = { c.onSelect(p) })
             }
@@ -344,7 +346,7 @@ private fun ShaderSection(c: ShaderControls) {
         val note = when {
             preset == com.vibeplayer.player.ShaderPreset.NONE -> null
             !c.qualityMode -> "Shaders run in Quality mode only"
-            preset.isAnime4K && !c.vulkan -> "Anime4K needs the Vulkan renderer"
+            preset.vulkanOnly && !c.vulkan -> "${if (preset.isAnime4K) "Anime4K" else preset.displayName} needs the Vulkan renderer"
             else -> null
         }
         if (note != null) {
