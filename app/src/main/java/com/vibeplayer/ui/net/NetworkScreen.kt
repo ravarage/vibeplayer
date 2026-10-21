@@ -154,7 +154,7 @@ fun NetworkScreen(
                         value = link,
                         onValueChange = { link = it },
                         singleLine = true,
-                        placeholder = { Text("https://…/video.mkv, …/stream.m3u8, rtsp://, udp://") },
+                        placeholder = { Text("Video, .m3u8, .m3u or rtsp:// link", maxLines = 1) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                         modifier = Modifier.weight(1f).semantics { contentDescription = "net_link" }
                     )
