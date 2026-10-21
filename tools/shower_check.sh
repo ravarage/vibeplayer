@@ -43,7 +43,7 @@ fi
 say "P12 test clips"
 A="$OUT/assets"
 CLIPS_VERSION=1
-ON_PHONE=$(adb shell ls "$P12_DIR" 2>/dev/null | tr -d '\r')
+ON_PHONE=$(adb shell ls "$P12_DIR" 2>/dev/null | tr -d '\r' || true)  # empty on the first run (no folder yet)
 have_all() { for f in p12_ep01.mkv p12_ep02.mkv p12_portrait.mp4; do grep -qx "$f" <<<"$ON_PHONE" || return 1; done; }
 if [ "$(adb shell cat "$P12_DIR/.clips_version" 2>/dev/null | tr -d '\r')" = "$CLIPS_VERSION" ] && have_all; then
   echo "already on the phone ($P12_DIR)"
