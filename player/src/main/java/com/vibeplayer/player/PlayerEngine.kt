@@ -134,7 +134,9 @@ class PlayerEngine(
         /** Stable identity of the file (its content:// URI for an fdclose:// path); defaults to the path. */
         val identity: String = path,
         /** Format detection result (frame rate, size) for the MediaCodec operating-rate hint (P6-08 fix). */
-        val clip: ClipInfo? = null
+        val clip: ClipInfo? = null,
+        /** P13: per-file network options (NetOptions.build); kept for reloads on a new handle. */
+        val netOptions: List<String> = emptyList()
     )
     @Volatile private var lastLoad: LoadRequest? = null
     private data class PendingSubtitle(
@@ -1242,14 +1244,16 @@ class PlayerEngine(
         audioDelayMs: Int = 0,
         identity: String? = null,
         /** What the format detection learned about the video track; null when unknown. */
-        clip: ClipInfo? = null
+        clip: ClipInfo? = null,
+        /** P13: network options for this file (cache, reconnect, sign-in headers). */
+        netOptions: List<String> = emptyList()
     ) {
         val fileIdentity = identity ?: path
         val hadOverride = speedOverride != null
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, chapters = emptyList(), currentChapter = -1, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
-        val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity, clip)
+        val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity, clip, netOptions)
         lastLoad = request
         val serial = loadSerial.incrementAndGet()
         latestOpenSerial = serial
@@ -1274,7 +1278,8 @@ class PlayerEngine(
                 audioDelayMs = audioDelayMs,
                 paused = false,
                 identity = fileIdentity,
-                clip = clip
+                clip = clip,
+                netOptions = netOptions
             )
             if (!isStaleCommandThread()) markIssued(serial)
         }
@@ -1293,7 +1298,8 @@ class PlayerEngine(
         audioDelayMs: Int = 0,
         paused: Boolean = false,
         identity: String = path,
-        clip: ClipInfo? = null
+        clip: ClipInfo? = null,
+        netOptions: List<String> = emptyList()
     ) {
         assertCommandThread()
         if (isStaleCommandThread()) {
@@ -1477,9 +1483,14 @@ class PlayerEngine(
             hdrMpvGamma = null
             evaluateHdr()
 
+            // P13: network files (cache, reconnect, sign-in and IPTV headers); per-file, so the next file starts clean.
+            options.addAll(netOptions)
+
             val cmd = if (options.isNotEmpty()) {
                 val optStr = options.joinToString(",")
-                Log.i("VP", "Loading $path with options: $optStr")
+                // Sign-in headers stay out of the log (P13).
+                val shown = options.joinToString(",") { if (it.startsWith("http-header-fields=")) "http-header-fields=<hidden>" else it }
+                Log.i("VP", "Loading ${NetOptions.redact(path)} with options: $shown")
                 arrayOf("loadfile", path, "replace", "-1", optStr)
             } else {
                 Log.i("VP", "Loading $path from start without options")
@@ -1515,7 +1526,8 @@ class PlayerEngine(
             audioDelayMs = request.audioDelayMs,
             paused = paused,
             identity = request.identity,
-            clip = request.clip
+            clip = request.clip,
+            netOptions = request.netOptions
         )
     }
 
@@ -1742,8 +1754,8 @@ class PlayerEngine(
                 // fdclose://N: mpv closed N with the old handle; reopening it would read a dead or
                 // reused fd, so a fresh one is resolved from the file's content:// identity.
                 val serial = loadSerial.incrementAndGet()
-                val curClip = lastLoad?.takeIf { it.identity == curIdentity }?.clip
-                val request = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay, curIdentity, curClip)
+                val curLoad = lastLoad?.takeIf { it.identity == curIdentity }
+                val request = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay, curIdentity, curLoad?.clip, curLoad?.netOptions ?: emptyList())
                 reloadOnNewHandle(request, serial, wasPaused, "reconfigure")
             }
         }

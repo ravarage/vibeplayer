@@ -334,6 +334,8 @@ class PlaybackService : Service() {
     @Volatile private var backgroundAudioEnabled = false
 
     @Volatile private var currentKey: String? = null
+    /** Identity of the file being opened or played (content:// URI, stream URL or path), for P13 playlists. */
+    @Volatile private var currentIdentity: String? = null
     @Volatile private var currentVideoPath: String? = null
     @Volatile private var currentFolderPath: String? = null
     private var periodicSaveJob: Job? = null
@@ -591,8 +593,10 @@ class PlaybackService : Service() {
         upNextJob = null
         _upNext.value = null
         if (currentVideoPath != u.endedPath) return // file changed meanwhile
-        Log.i("VP", "Auto-play: ${u.endedPath} ended -> ${u.path}")
-        openVideo(u.path, startFromBeginning = true, playAfterLoad = true)
+        Log.i("VP", "Auto-play: ${u.endedPath} ended -> ${com.vibeplayer.player.NetOptions.redact(u.path)}")
+        val netItem = com.vibeplayer.net.NetPlaylist.neighbour(currentIdentity, forward = true)?.takeIf { it.identity == u.path }
+        if (netItem != null) openNetItem(netItem, startFromBeginning = true)
+        else openVideo(u.path, startFromBeginning = true, playAfterLoad = true)
     }
 
     /** Stops the countdown; the ended file stays on its last frame. */
@@ -927,7 +931,8 @@ class PlaybackService : Service() {
             checkShouldStop()
             return
         }
-        val next = withContext(Dispatchers.IO) { FolderPlaylist.next(endedPath) }
+        val netNext = com.vibeplayer.net.NetPlaylist.neighbour(currentIdentity, forward = true)
+        val next = netNext?.identity ?: withContext(Dispatchers.IO) { FolderPlaylist.next(endedPath) }
         if (next == null) {
             Log.i("VP", "Auto-play: no next file after $endedPath")
             checkShouldStop()
@@ -938,7 +943,7 @@ class PlaybackService : Service() {
         _upNext.value = UpNext(
             endedPath = endedPath,
             path = next,
-            title = File(next).name,
+            title = netNext?.title ?: File(next).name,
             endsAtElapsedMs = android.os.SystemClock.elapsedRealtime() + countdown * 1000L
         )
         if (countdown <= 0) {
@@ -964,11 +969,42 @@ class PlaybackService : Service() {
             savePositionSnapshot(leavingKey, leavingPosition, leavingState)
 
             if (currentVideoPath != from) return@launch
+            com.vibeplayer.net.NetPlaylist.neighbour(currentIdentity, forward)?.let { item ->
+                openNetItem(item, leavingPositionSaved = true)
+                return@launch
+            }
             val target = withContext(Dispatchers.IO) {
                 if (forward) FolderPlaylist.next(from) else FolderPlaylist.previous(from)
             } ?: return@launch
             if (currentVideoPath != from) return@launch
             openVideo(target, playAfterLoad = true, leavingPositionSaved = true)
+        }
+    }
+
+    /**
+     * P13: opens an item of the network list the current file came from (next / previous / Up next): a
+     * provider file gets a fresh descriptor (network, IO), a stream URL is handed to mpv with its headers.
+     */
+    fun openNetItem(
+        item: com.vibeplayer.net.NetPlaylist.Item,
+        startFromBeginning: Boolean = false,
+        leavingPositionSaved: Boolean = false
+    ) {
+        serviceScope.launch {
+            val path = if (item.identity.startsWith("content://")) {
+                withContext(Dispatchers.IO) { reopenContentUri(item.identity) }
+            } else item.entry.playUrl
+            if (path == null) {
+                playerEngine.showOnScreenMessage("Cannot open ${item.title}")
+                return@launch
+            }
+            val e = item.entry
+            openVideo(
+                path, identityKey = item.identity, folderKey = item.identity.substringBeforeLast('/', ""),
+                startFromBeginning = startFromBeginning, playAfterLoad = true, title = item.title,
+                leavingPositionSaved = leavingPositionSaved,
+                netHints = com.vibeplayer.player.NetHints(e.headers, e.userAgent, e.referrer, e.live)
+            )
         }
     }
 
@@ -1029,7 +1065,9 @@ class PlaybackService : Service() {
         shaderPreset: ShaderPreset? = null,
         startPositionOverride: Long? = null,
         /** skipToNeighbour already saved the leaving file with a fresh (bounded) read. */
-        leavingPositionSaved: Boolean = false
+        leavingPositionSaved: Boolean = false,
+        /** P13: sign-in / IPTV headers and live flag of a network file. */
+        netHints: com.vibeplayer.player.NetHints? = null
     ) {
         val leavingKey = currentKey
         val leavingPath = currentVideoPath
@@ -1065,10 +1103,20 @@ class PlaybackService : Service() {
         _neighbours.value = Neighbours()
         // The title/path/neighbours collector in onCreate refreshes the notification.
 
+        val openIdentity = identityKey ?: path
+        currentIdentity = openIdentity
         serviceScope.launch(Dispatchers.IO) {
-            val files = if (path.startsWith("/")) FolderPlaylist.list(path) else emptyList()
-            val index = files.indexOf(File(path).absolutePath)
-            val updated = Neighbours(previous = index > 0, next = index >= 0 && index < files.lastIndex)
+            val updated = if (com.vibeplayer.net.NetPlaylist.contains(openIdentity)) {
+                // P13: a network file plays within the folder or channel list it was opened from.
+                Neighbours(
+                    previous = com.vibeplayer.net.NetPlaylist.neighbour(openIdentity, forward = false) != null,
+                    next = com.vibeplayer.net.NetPlaylist.neighbour(openIdentity, forward = true) != null
+                )
+            } else {
+                val files = if (path.startsWith("/")) FolderPlaylist.list(path) else emptyList()
+                val index = files.indexOf(File(path).absolutePath)
+                Neighbours(previous = index > 0, next = index >= 0 && index < files.lastIndex)
+            }
             withContext(Dispatchers.Main.immediate) {
                 if (currentVideoPath == path) _neighbours.value = updated
             }
@@ -1076,6 +1124,10 @@ class PlaybackService : Service() {
         // An fdclose://N path is owned by this open until it is handed to the engine; a superseded or
         // cancelled open closes it (unless a newer open uses the same path string).
         var handedToEngine = false
+        val isUrlOpen = com.vibeplayer.player.NetOptions.isUrl(path)
+        val isProxiedOpen = identityKey?.startsWith("content://${com.vibeplayer.net.NetFileProvider.authority(packageName)}/") == true
+        val isNetworkOpen = isUrlOpen || isProxiedOpen
+        val netOptions = com.vibeplayer.player.NetOptions.build(isUrlOpen, isProxiedOpen, netHints)
         loadJob = serviceScope.launch {
             val resolvedFolderKey = folderKey ?: (File(path).parent ?: "")
             // The same folder may be opened as /sdcard/... or /storage/emulated/0/...: one key for the show settings.
@@ -1098,7 +1150,10 @@ class PlaybackService : Service() {
             }
             val settingsDeferred = async(Dispatchers.IO) { appSettingsRepository.appSettingsFlow.first() }
             val clipDeferred = async(Dispatchers.IO) {
-                VideoFormatDetector.detectClip(applicationContext, path, identityKey)
+                // P13: no probing over the network (MediaExtractor would download the start of the file once
+                // more); mpv finds the format itself and the default row applies.
+                if (isNetworkOpen) com.vibeplayer.player.ClipInfo(com.vibeplayer.player.VideoFormat.OTHER)
+                else VideoFormatDetector.detectClip(applicationContext, path, identityKey)
             }
             val formatDeferred = async { clipDeferred.await().format }
             // IO: the gpu-api query can create a temporary mpv handle, and the driver cache reads
@@ -1296,7 +1351,8 @@ class PlaybackService : Service() {
                 subDelayMs = subDelayMs,
                 audioDelayMs = audioDelayMs,
                 identity = identityKey ?: path,
-                clip = detectedClip
+                clip = detectedClip,
+                netOptions = netOptions
             )
             if (externalSub != null) {
                 val (subFdPath, subTitle) = externalSub

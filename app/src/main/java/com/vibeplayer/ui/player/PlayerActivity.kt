@@ -93,6 +93,13 @@ import kotlinx.coroutines.flow.map
 class PlayerActivity : ComponentActivity() {
 
     companion object {
+        /** P13 intent extras from the network browser. */
+        const val EXTRA_TITLE = "title"
+        const val EXTRA_NET_HEADERS = "net_headers"
+        const val EXTRA_NET_USER_AGENT = "net_user_agent"
+        const val EXTRA_NET_REFERRER = "net_referrer"
+        const val EXTRA_NET_LIVE = "net_live"
+
         /** P7-02: deferred start-up work (thumbnails, permission dialog) resumes at the latest after this. */
         const val STARTUP_DEFER_TIMEOUT_MS = 4000L
 
@@ -871,7 +878,10 @@ class PlayerActivity : ComponentActivity() {
             } else {
                 currentVideoPath = dataUri.toString()
                 currentVideoTitle = dataUri.lastPathSegment ?: "Video"
+                currentIdentityKey = dataUri.toString()
             }
+            // P13: the network browser passes the name it showed (a channel, a DLNA title).
+            intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }?.let { currentVideoTitle = it }
         } else {
             // Launched without a target (notification tap after the player was closed with background
             // audio on): show the file the service is playing, not the built-in default.
@@ -927,9 +937,20 @@ class PlayerActivity : ComponentActivity() {
                 title = currentVideoTitle,
                 playbackConfig = startup.config,
                 shaderPreset = startup.preset,
-                startPositionOverride = debugStartMs
+                startPositionOverride = debugStartMs,
+                netHints = netHintsFrom(intent)
             )
         }
+    }
+
+    /** P13: sign-in / IPTV headers and the live flag the network browser put on the intent. */
+    private fun netHintsFrom(intent: Intent): com.vibeplayer.player.NetHints? {
+        val headers = intent.getStringArrayListExtra(EXTRA_NET_HEADERS).orEmpty()
+        val ua = intent.getStringExtra(EXTRA_NET_USER_AGENT)
+        val referrer = intent.getStringExtra(EXTRA_NET_REFERRER)
+        val live = intent.getBooleanExtra(EXTRA_NET_LIVE, false)
+        if (headers.isEmpty() && ua == null && referrer == null && !live) return null
+        return com.vibeplayer.player.NetHints(headers, ua, referrer, live)
     }
 
     private fun queryDisplayName(uri: Uri): String {
@@ -964,7 +985,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun checkPermissionAndProceed() {
         val dataUri = intent.data
-        if (dataUri != null && dataUri.scheme == "content") {
+        // content:// carries its own grant; a stream URL (P13) needs no storage permission.
+        if (dataUri != null && (dataUri.scheme == "content" || com.vibeplayer.player.NetOptions.isUrl(dataUri.toString()))) {
             tryStartPlayback()
             return
         }

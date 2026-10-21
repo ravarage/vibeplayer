@@ -115,7 +115,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val title: String? = null,
         val playbackConfig: PlaybackConfig? = null,
         val shaderPreset: ShaderPreset? = null,
-        val startPositionOverride: Long? = null
+        val startPositionOverride: Long? = null,
+        val netHints: com.vibeplayer.player.NetHints? = null
     )
     @Volatile private var pendingOpen: PendingOpen? = null
 
@@ -191,7 +192,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 s.openVideo(
                     req.path, req.sizeBytes, req.identityKey, req.folderKey,
                     req.startFromBeginning, req.playAfterLoad, req.title,
-                    req.playbackConfig, req.shaderPreset, req.startPositionOverride
+                    req.playbackConfig, req.shaderPreset, req.startPositionOverride, netHints = req.netHints
                 )
             }
         }
@@ -252,14 +253,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         title: String? = null,
         playbackConfig: PlaybackConfig? = null,
         shaderPreset: ShaderPreset? = null,
-        startPositionOverride: Long? = null
+        startPositionOverride: Long? = null,
+        netHints: com.vibeplayer.player.NetHints? = null
     ) {
         _currentPath.value = path
         val active = service ?: PlaybackService.currentInstance
         if (active != null) {
-            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride)
+            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride, netHints = netHints)
         } else {
-            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride)
+            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride, netHints)
         }
     }
 
