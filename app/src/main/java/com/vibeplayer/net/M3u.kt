@@ -80,7 +80,8 @@ object M3u {
     fun resolve(url: String, base: String?): String {
         if (base == null || Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://").containsMatchIn(url)) return url
         return try {
-            java.net.URI(base).resolve(url.replace(" ", "%20")).toString()
+            // URL, not URI.resolve: the JDK's URI drops the slash when the base has no path ("http://h:p" + "x").
+            java.net.URL(java.net.URL(base), url.replace(" ", "%20")).toString()
         } catch (e: Exception) {
             url
         }

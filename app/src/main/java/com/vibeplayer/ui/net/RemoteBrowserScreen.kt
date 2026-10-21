@@ -41,9 +41,6 @@ import com.vibeplayer.net.MediaNames
 import com.vibeplayer.net.NetRepository
 import com.vibeplayer.net.NetSource
 import com.vibeplayer.net.RemoteEntry
-import com.vibeplayer.net.RemoteFs
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * P13: browses one network source: folders open in place (Back goes up), videos and channels play with
@@ -53,7 +50,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun RemoteBrowserScreen(repo: NetRepository, source: NetSource, onBack: () -> Unit) {
     val context = LocalContext.current
-    var fs by remember { mutableStateOf<RemoteFs?>(null) }
+    val session = remember(source) { com.vibeplayer.net.RemoteSession(repo, source) }
     val stack = remember { mutableStateListOf<Pair<String, String>>() } // (path, title)
     var entries by remember { mutableStateOf<List<RemoteEntry>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -62,30 +59,22 @@ fun RemoteBrowserScreen(repo: NetRepository, source: NetSource, onBack: () -> Un
     var nav by remember { mutableIntStateOf(0) }
     var filter by remember { mutableStateOf("") }
 
-    DisposableEffect(source) {
-        onDispose {
-            val open = fs
-            fs = null
-            if (open != null) Thread { runCatching { open.close() } }.start()
-        }
+    DisposableEffect(session) {
+        onDispose { session.close() }
     }
 
     LaunchedEffect(source, nav, reload) {
         entries = null
         error = null
         try {
-            val result = withContext(Dispatchers.IO) {
-                val conn = fs ?: repo.connect(source).also { fs = it }
-                val path = stack.lastOrNull()?.first ?: conn.root
-                conn.list(path) to path
-            }
+            val result = session.list(stack.lastOrNull()?.first)
             if (stack.isEmpty()) stack.add(result.second to source.name)
             entries = result.first
+        } catch (e: java.util.concurrent.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w("VP-Net", "Listing ${source.name} failed: ${e.message}")
             error = NetRepository.explain(e)
-            // a dead connection is replaced on Retry
-            fs?.let { old -> fs = null; Thread { runCatching { old.close() } }.start() }
         }
     }
 

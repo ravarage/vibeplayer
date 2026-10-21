@@ -57,7 +57,13 @@ class NetFileProvider : ContentProvider() {
         val thread = HandlerThread("net-file-$id").apply { start() }
         val sm = ctx.getSystemService(StorageManager::class.java)
         Log.i("VP-Net", "Opened ${source.type} file $path (${reader.size} bytes)")
-        return sm.openProxyFileDescriptor(ParcelFileDescriptor.MODE_READ_ONLY, ReaderCallback(reader, thread), android.os.Handler(thread.looper))
+        return try {
+            sm.openProxyFileDescriptor(ParcelFileDescriptor.MODE_READ_ONLY, ReaderCallback(reader, thread), android.os.Handler(thread.looper))
+        } catch (e: Exception) {
+            runCatching { reader.close() }
+            thread.quitSafely()
+            throw FileNotFoundException("cannot hand out $path: ${e.message}")
+        }
     }
 
     private class ReaderCallback(private val reader: RandomReader, private val thread: HandlerThread) : ProxyFileDescriptorCallback() {

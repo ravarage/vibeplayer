@@ -28,13 +28,37 @@ class SmbFs(
 ) : ReadableFs {
     override val root: String = "/" + startPath.trim('/')
 
-    private val client = SMBClient(
-        SmbConfig.builder().withTimeout(Http.TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
-            .withSoTimeout(Http.TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS).build()
-    )
-    private val connection: Connection = client.connect(host, if (port > 0) port else 445)
-    private val session: Session = connection.authenticate(auth())
-    private val shares = HashMap<String, DiskShare>()
+    /** One client, connection and session; opened on first use. */
+    private class Link(host: String, port: Int, auth: AuthenticationContext) : java.io.Closeable {
+        val client = SMBClient(
+            SmbConfig.builder().withTimeout(Http.TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+                .withSoTimeout(Http.TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS).build()
+        )
+        val connection: Connection
+        val session: Session
+        private val shares = HashMap<String, DiskShare>()
+
+        init {
+            try {
+                connection = client.connect(host, if (port > 0) port else 445)
+                session = connection.authenticate(auth)
+            } catch (e: Exception) {
+                runCatching { client.close() }
+                throw e
+            }
+        }
+
+        fun share(name: String): DiskShare = synchronized(shares) { shares.getOrPut(name) { session.connectShare(name) as DiskShare } }
+
+        override fun close() {
+            synchronized(shares) { shares.values.forEach { runCatching { it.close() } } }
+            runCatching { session.close() }
+            runCatching { connection.close() }
+            runCatching { client.close() }
+        }
+    }
+
+    private var browse: Link? = null
 
     private fun auth(): AuthenticationContext {
         if (user.isEmpty()) return AuthenticationContext.guest()
@@ -50,15 +74,12 @@ class SmbFs(
         return share to parts.drop(1).joinToString("\\")
     }
 
-    private fun share(name: String): DiskShare = synchronized(shares) {
-        shares.getOrPut(name) { session.connectShare(name) as DiskShare }
-    }
-
+    @Synchronized
     override fun list(path: String): List<RemoteEntry> {
         val (shareName, dir) = split(path)
-        val share = share(shareName)
+        val link = browse ?: Link(host, port, auth()).also { browse = it }
         val out = ArrayList<RemoteEntry>()
-        for (f in share.list(dir)) {
+        for (f in link.share(shareName).list(dir)) {
             val name = f.fileName
             if (name == "." || name == ".." || name.startsWith(".")) continue
             val isDir = f.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value != 0L
@@ -70,30 +91,51 @@ class SmbFs(
 
     override fun open(path: String): RandomReader {
         val (shareName, file) = split(path)
-        val fs = SmbFs(host, port, user, password, "/$shareName")
-        val f = fs.share(shareName).openFile(
-            file, EnumSet.of(AccessMask.GENERIC_READ), null, SMB2ShareAccess.ALL,
-            SMB2CreateDisposition.FILE_OPEN, null
-        )
         return object : RandomReader {
-            override val size: Long = f.fileInformation.standardInformation.endOfFile
+            private var link: Link? = null
+            private var f: com.hierynomus.smbj.share.File? = null
+            override val size: Long
 
-            override fun read(offset: Long, buf: ByteArray, bufOffset: Int, len: Int): Int {
-                if (offset >= size) return -1
-                return f.read(buf, offset, bufOffset, len)
+            init {
+                try {
+                    size = reopen().fileInformation.standardInformation.endOfFile
+                } catch (e: Exception) {
+                    close()
+                    throw e
+                }
             }
 
+            private fun reopen(): com.hierynomus.smbj.share.File {
+                runCatching { f?.close() }
+                runCatching { link?.close() }
+                val l = Link(host, port, auth()).also { link = it }
+                return l.share(shareName).openFile(
+                    file, EnumSet.of(AccessMask.GENERIC_READ), null, SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, null
+                ).also { f = it }
+            }
+
+            @Synchronized
+            override fun read(offset: Long, buf: ByteArray, bufOffset: Int, len: Int): Int {
+                if (offset >= size) return -1
+                return try {
+                    f!!.read(buf, offset, bufOffset, len)
+                } catch (e: Exception) {
+                    // An expired session or a dropped connection: open the file again once.
+                    reopen().read(buf, offset, bufOffset, len)
+                }
+            }
+
+            @Synchronized
             override fun close() {
-                runCatching { f.close() }
-                fs.close()
+                runCatching { f?.close() }
+                runCatching { link?.close() }
             }
         }
     }
 
+    @Synchronized
     override fun close() {
-        synchronized(shares) { shares.values.forEach { runCatching { it.close() } } }
-        runCatching { session.close() }
-        runCatching { connection.close() }
-        runCatching { client.close() }
+        browse?.close()
+        browse = null
     }
 }

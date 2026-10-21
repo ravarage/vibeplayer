@@ -59,7 +59,7 @@ object Http {
 
     private fun charset(contentType: String?): java.nio.charset.Charset =
         contentType?.substringAfter("charset=", "")?.substringBefore(';')?.trim()?.ifEmpty { null }
-            ?.let { runCatching { charset(it) }.getOrNull() } ?: Charsets.UTF_8
+            ?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8
 
     /**
      * WebDAV PROPFIND: HttpURLConnection refuses methods outside the HTTP/1.1 set, so this one request is
@@ -71,13 +71,20 @@ object Http {
         val port = if (u.port > 0) u.port else if (tls) 443 else 80
         val socket: java.net.Socket = if (tls) {
             (javax.net.ssl.SSLSocketFactory.getDefault().createSocket() as javax.net.ssl.SSLSocket).also { s ->
-                s.connect(java.net.InetSocketAddress(u.host, port), TIMEOUT_MS)
-                // SNI and hostname check, as HttpsURLConnection does
-                val params = s.sslParameters
-                params.endpointIdentificationAlgorithm = "HTTPS"
-                params.serverNames = listOf(javax.net.ssl.SNIHostName(u.host))
-                s.sslParameters = params
-                s.startHandshake()
+                try {
+                    s.connect(java.net.InetSocketAddress(u.host, port), TIMEOUT_MS)
+                    // Hostname check as HttpsURLConnection does; SNI only for names (not IPv4/IPv6 literals)
+                    val params = s.sslParameters
+                    params.endpointIdentificationAlgorithm = "HTTPS"
+                    if (!u.host.contains(':') && !u.host.matches(Regex("[0-9.]+"))) {
+                        params.serverNames = listOf(javax.net.ssl.SNIHostName(u.host))
+                    }
+                    s.sslParameters = params
+                    s.startHandshake()
+                } catch (e: Exception) {
+                    runCatching { s.close() }
+                    throw e
+                }
             }
         } else {
             java.net.Socket().also { it.connect(java.net.InetSocketAddress(u.host, port), TIMEOUT_MS) }

@@ -819,7 +819,9 @@ class PlayerActivity : ComponentActivity() {
         // a benchmark must not keep the benchmark flag (no history writes, no notification).
         PlaybackService.benchmarkRun = intent.getBooleanExtra("benchmark", false)
         val oldPath = viewModel.currentPath.value ?: currentVideoPath
-        resolveVideoPath()
+        // A content:// target is resolved on IO in openResolvedVideo: a network file (P13 provider) connects
+        // to its server while opening, which must not happen on the main thread.
+        resolveVideoPath(deferContent = true)
         val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
         if (!forceHwdec.isNullOrEmpty()) {
             playerEngine.setHwdec(forceHwdec)
@@ -927,6 +929,7 @@ class PlayerActivity : ComponentActivity() {
                     computeStartup(viewModel.appSettingsRepository.appSettingsFlow.first())
                 }
             if (useStartup) contentDeferred?.await()
+            else if (pendingContentUri != null) withContext(Dispatchers.IO) { resolveContentOnIo() }
             val debugStartMs = if (intent.hasExtra("start_ms")) {
                 intent.getLongExtra("start_ms", -1L).takeIf { it >= 0 }
                     ?: intent.getIntExtra("start_ms", -1).toLong().takeIf { it >= 0 }

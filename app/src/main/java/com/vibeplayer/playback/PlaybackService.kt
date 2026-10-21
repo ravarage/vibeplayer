@@ -336,6 +336,8 @@ class PlaybackService : Service() {
     @Volatile private var currentKey: String? = null
     /** Identity of the file being opened or played (content:// URI, stream URL or path), for P13 playlists. */
     @Volatile private var currentIdentity: String? = null
+    /** History keys of live streams (IPTV) opened this session: no resume position, no Up next (P13). */
+    private val liveKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     @Volatile private var currentVideoPath: String? = null
     @Volatile private var currentFolderPath: String? = null
     private var periodicSaveJob: Job? = null
@@ -926,6 +928,11 @@ class PlaybackService : Service() {
 
     private suspend fun onPlaybackEnded() {
         val endedPath = currentVideoPath ?: return
+        if (currentKey in liveKeys) {
+            // A live stream ended (or dropped for good): nothing to count down to.
+            checkShouldStop()
+            return
+        }
         if (_sleepTimer.value?.atEndOfFile == true) {
             // keep-open already holds the last frame paused; nothing more is played.
             onSleepTimerFired()
@@ -1184,7 +1191,9 @@ class PlaybackService : Service() {
             if (generation != loadGeneration || currentVideoPath != path) return@launch
 
             var resumedAt = 0L
-            val startPositionMs = if (startPositionOverride != null) {
+            val startPositionMs = if (netHints?.live == true) {
+                0L // a live stream has no position to resume
+            } else if (startPositionOverride != null) {
                 Log.i("VP", "Resume: override starting from $startPositionOverride ms")
                 startPositionOverride
             } else if (startFromBeginning) {
@@ -1379,6 +1388,7 @@ class PlaybackService : Service() {
             lastPathHandedToEngine = path
             currentKey = key
             _currentKeyFlow.value = key
+            if (netHints?.live == true) liveKeys += key
             if (resumedAt > 0L) {
                 _resumedFrom.value = ResumeInfo(path = path, positionMs = resumedAt, generation = generation)
                 // Gone for good after its time, so a recreated activity (rotation) does not show it again.
@@ -1638,6 +1648,7 @@ class PlaybackService : Service() {
         if (benchmarkRun) { releaseWhenDone?.release(); return }
         val generation = loadGeneration
         val key = currentKey ?: run { releaseWhenDone?.release(); return }
+        if (key in liveKeys) { releaseWhenDone?.release(); return }
         val knownPos = engine.lastKnownPositionMs()
         val state = engine.state.value
         if (generation != loadGeneration || key != currentKey) { releaseWhenDone?.release(); return }
@@ -1725,7 +1736,7 @@ class PlaybackService : Service() {
     }
 
     private suspend fun savePositionSnapshot(key: String, positionMs: Long, state: PlayerState) {
-        if (benchmarkRun) return
+        if (benchmarkRun || key in liveKeys) return
         withContext(Dispatchers.IO) {
             val existing = dao.getByKey(key)
             val duration = if (state.durationMs > 0L) state.durationMs else (existing?.durationMs ?: 0L)

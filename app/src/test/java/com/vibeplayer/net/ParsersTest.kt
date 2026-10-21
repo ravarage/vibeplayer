@@ -136,6 +136,20 @@ class HttpIndexTest {
     }
 }
 
+class OriginTest {
+    @Test
+    fun rootFolderKeepsOnlyItsOwnServer() {
+        val html = """<a href="a.mkv">a</a><a href="http://evil/x.mkv">x</a><a href="http://nas:8000.evil.com/y.mkv">y</a><a href="https://nas:8000/z.mkv">z</a>"""
+        assertEquals(listOf("a.mkv"), HttpIndex.parse(html, "http://nas:8000/").map { it.name })
+    }
+
+    @Test
+    fun resolvesAgainstABaseWithoutPath() {
+        assertEquals("http://h:8000/ctl", M3u.resolve("ctl", "http://h:8000"))
+        assertEquals("http://h/dir/x.ts", M3u.resolve("x.ts", "http://h/dir/list.m3u"))
+    }
+}
+
 class MediaNamesTest {
     @Test
     fun sortsNaturallyWithFoldersFirst() {

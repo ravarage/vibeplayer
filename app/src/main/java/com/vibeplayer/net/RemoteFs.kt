@@ -36,11 +36,25 @@ abstract class ReopeningReader : RandomReader {
     protected abstract fun openAt(offset: Long): java.io.InputStream
     protected open fun closeStream(s: java.io.InputStream) = s.close()
 
+    /** Replaces a dropped connection (idle timeout, Wi-Fi back); called once before a retry. */
+    protected open fun reconnect() {}
+
     @Synchronized
     override fun read(offset: Long, buf: ByteArray, bufOffset: Int, len: Int): Int {
         if (offset >= size) return -1
+        return try {
+            readOnce(offset, buf, bufOffset, len).also { if (it < 0) throw java.io.EOFException("stream ended at $offset of $size") }
+        } catch (e: java.io.IOException) {
+            // A server idle timeout or a dropped connection: reconnect once, then give up (mpv sees EIO).
+            dropStream()
+            reconnect()
+            readOnce(offset, buf, bufOffset, len)
+        }
+    }
+
+    private fun readOnce(offset: Long, buf: ByteArray, bufOffset: Int, len: Int): Int {
         if (stream == null || offset != position) {
-            stream?.let { runCatching { closeStream(it) } }
+            dropStream()
             stream = openAt(offset)
             position = offset
         }
@@ -49,9 +63,14 @@ abstract class ReopeningReader : RandomReader {
         return n
     }
 
-    @Synchronized
-    override fun close() {
+    private fun dropStream() {
         stream?.let { runCatching { closeStream(it) } }
         stream = null
+        position = -1L
+    }
+
+    @Synchronized
+    override fun close() {
+        dropStream()
     }
 }
