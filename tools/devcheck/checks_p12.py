@@ -119,8 +119,13 @@ def p12_resume_chip(ctx):
     need(ctx.log.wait(r"Resume: start over", 5, since=m3), "tapping Start over logged no 'Resume: start over'")
     seek = ctx.log.wait(r"seekTo 0 ms", 5, since=m3)
     need(seek, "Start over did not seek to 0 ('seekTo 0 ms')")
-    # the VP-Check state line is periodic: only one logged after the seek tells the new position
-    after = ctx.log.wait(r"pos_ms=(\d+)", 8, since=seek[0].seq + 1, tag="VP-Check")
+    # VP-Check's position follows time-pos, which is only observed while the controls are up (power
+    # saving): show them, then read a line logged after that.
+    ctx.sleep(1.0)
+    ctx.controls_nodes()
+    m4 = ctx.log.mark()
+    ctx.sleep(2.5)
+    after = ctx.log.wait(r"pos_ms=(\d+)", 8, since=m4, tag="VP-Check")
     pos = after[1].group(1) if after else None
     need(pos is None or int(pos) < 10_000, f"position after Start over is {pos} ms")
     return f"chip shown on the resumed open; Start over went back to {pos or '?'} ms (screenshot resume_chip)"

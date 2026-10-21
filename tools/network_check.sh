@@ -84,10 +84,14 @@ trap cleanup EXIT
 sleep 1
 [ "$LAN" = 1 ] || adb reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
 adb shell touch /data/local/tmp/vp_net_check
-# Can the phone reach the server? (toybox nc on the phone; the server log shows the request)
-probe=$(adb shell "printf 'GET / HTTP/1.0\r\n\r\n' | toybox nc -w 5 $HOST $PORT 2>&1 | head -1" | tr -d '\r' || true)
-echo "phone -> http://$HOST:$PORT: ${probe:-no answer}"
-if ! echo "$probe" | grep -q "HTTP/1.0 200"; then
+# Can the phone reach the server? A request from the phone (toybox nc) must show up in the server log; nc's own
+# output is not trusted (it may quit at the end of its input before the reply arrives).
+before=$(grep -c '"GET /vp-probe' "$OUT/server.log" || true)
+probe=$(adb shell "printf 'GET /vp-probe HTTP/1.0\r\n\r\n' | toybox nc -w 5 $HOST $PORT 2>&1 | head -1" | tr -d '\r' || true)
+sleep 1
+after=$(grep -c '"GET /vp-probe' "$OUT/server.log" || true)
+echo "phone -> http://$HOST:$PORT: ${probe:-no reply text}; server saw the request: $([ "$after" -gt "$before" ] && echo yes || echo no)"
+if [ "$after" -le "$before" ]; then
   echo "The phone cannot reach the test server. adb reverse list: $(adb reverse --list 2>&1 | tr '\n' ' ')"
   [ "$LAN" = 1 ] && echo "With --lan: is port $PORT open in this PC's firewall, and are phone and PC on the same Wi-Fi?" \
     || echo "Try: tools/network_check.sh --no-build --lan"
