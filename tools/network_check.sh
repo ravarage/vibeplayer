@@ -135,9 +135,12 @@ else
   if [ "$(adb shell settings get global restricted_networking_mode 2>/dev/null | tr -d '\r')" = 1 ]; then
     echo "  CAUSE: the phone's restricted networking mode is on (new apps get no network until allowed)."
     echo "  Fix: Settings > Apps > Vibe Player > Mobile data and Wi-Fi > turn on 'Network access', then rerun."
+    echo "  Or turn the mode off for the whole phone: adb shell settings put global restricted_networking_mode 0"
   else
     echo "  check Settings > Apps > Vibe Player > Mobile data and Wi-Fi (network access on)"
   fi
+  echo "Not running the checks: with no network for the app they can only fail."
+  exit 1
 fi
 
 say "Device checks (P13)"
