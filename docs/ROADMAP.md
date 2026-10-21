@@ -56,6 +56,54 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
 - Vulkan is experimental and depends on the owner's unfinished driver port.
 - The release is signed with a debug key (see README).
 
+## Next version (0.9.0) candidates, drafted 2026-10-21
+
+Not started. Each was checked against the code (none of these exist yet) and against the non-goals in SPEC.md.
+The owner picks what goes in; the chosen items become Phase 14 in TASKS.md. Size: S about a day, M two to
+three days, L a week. "Phone" means it can only be finished with device checks.
+
+### Watching (player)
+1. **Seek bar thumbnails** (M, phone). A small picture above the seek bar while scrubbing, from a second
+   low-resolution mpv handle or the existing thumbnail decoder at the scrub position; local files only, cached
+   per file. The most asked-for feature of players like MX and mpvKt that this one lacks.
+2. **Two subtitles at once** (S). mpv's `secondary-sid`: a second track (for example English under Japanese)
+   picked in the Subtitles panel, remembered per file like the first. Language learners and anime.
+3. **Drag subtitles up and down** (S). A vertical drag on the subtitle area moves `sub-pos`, saved per file;
+   today the position is only in the style settings.
+4. **Smooth motion** (M, phone). Optional `video-sync=display-resample` with `interpolation` on Vulkan for
+   24 fps content on the 120 Hz panel (less judder on pans). Off by default; benchmark power before it ships.
+
+### Library
+5. **Queue / play list** (M). "Play next" and "Add to queue" from a long-press, a queue sheet in the player,
+   mixing local and network files. Today next/previous only follows the folder or the network listing.
+6. **Network items in Continue Watching** (S). Network files already remember their position; show them in the
+   Continue Watching row with the source name, and reopen through the saved source.
+7. **Quick Settings tile and app shortcuts** (S). "Resume last video" as a tile and as a long-press shortcut on
+   the launcher icon.
+
+### Network (after P13)
+8. **Jellyfin / Emby client** (L). Their own API on top of DLNA: library by series and season, watched state
+   synced both ways, subtitles from the server, direct play only (no server transcoding requests). Big, but
+   it is the natural next step for someone with a home server.
+9. **Save for offline** (M). Copy a file from SFTP / SMB / WebDAV / HTTP to the phone in the background with a
+    progress notification (Android 16+ progress-style), resumable. Useful before a trip.
+10. **Thumbnails for network videos** (M). Generated once from the first megabytes over SFTP / SMB / HTTP and
+    cached, so remote folders look like local ones. Only on Wi-Fi, off on metered networks.
+11. **Explain blocked network in the app** (S). When every connection times out, say that the ROM may be
+    blocking network for the app (the restricted networking mode found on 2026-10-21) and link to its app
+    settings page, instead of a plain timeout.
+
+### Quality and upkeep
+12. **Run the overnight suite** (phone, about 2.5 h, no code). Skipped for 0.8.0: 30-minute stability on
+    Vulkan and OpenGL ES, the shader benchmark (including FSRCNNX and RAVU) and the full regression. Do it
+    before 0.9.0 work so new features start from known numbers.
+13. **By-hand P13 checks** (phone). SFTP, SMB, WebDAV, FTP, DLNA, a real IPTV list, Open with from a browser.
+14. **HEVC 10-bit 4K drops** (phone). Finish the operating-rate fix that is in progress.
+15. **P9 tuned native build** (M, phone). `-mcpu=cortex-a78` and ThinLTO, compared against today's build.
+
+### Left out on purpose
+Casting, online subtitle download, EPG / recording, screenshots, transcoding and DRM stay non-goals (SPEC.md).
+
 ## Ideas
 
 minSdk stays 37 (Android 17): the app is built for one phone and one OS version and uses Android 17 APIs.
