@@ -34,6 +34,7 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
 - P8-01 a test shader visibly applied and removed; P8-03 GSR sharpening on a 720p clip.
 - P11 and P12 (player extras, watching series): the by-hand checks in PROGRESS.md; P12 automatic checks in
   `tools/shower_check.sh`.
+- P13 network playback: `tools/network_check.sh`, then SFTP, SMB, WebDAV, FTP, DLNA and a real IPTV list by hand.
 - HEVC 10-bit 4K drops: operating-rate hint to the decoder, confirmed by a device A/B, fix in progress.
 
 ## Planned
@@ -59,7 +60,8 @@ Source of truth for task status is `PROGRESS.md` and `TASKS.md`; this is a summa
 
 minSdk stays 37 (Android 17): the app is built for one phone and one OS version and uses Android 17 APIs.
 
-Casting (Chromecast, DLNA) stays a non-goal (SPEC.md), decided with the owner 2026-10-20: on a TV the TV decodes
+Network playback (links, SFTP, SMB, FTP, WebDAV, DLNA as a client, M3U / IPTV) is in scope since 2026-10-21 (P13).
+Casting (Chromecast, DLNA send-to-TV) stays a non-goal (SPEC.md), decided with the owner 2026-10-20: on a TV the TV decodes
 and renders, so styled ASS, the shaders and the tuned decoding do not apply; the Google Cast library is closed
 source, which clashes with the GPL build; and the app cannot transcode (encoders are disabled). For the TV, use
 Android's screen cast (mirrors the player as it looks, ASS and shaders included). DLNA "send to TV" would be the

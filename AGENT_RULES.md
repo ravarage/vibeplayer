@@ -102,6 +102,7 @@ Filled in and kept current by the tasks that create them (P0-06, P0-07).
 | Is video really visible? | `tools/check_video.py` (exit 0 = visible, 1 = black/frozen) |
 | P4-15 / P11 / P8-02 device checks in one go (owner, no agent needed; `--full`, `--no-build`) | `tools/phone_check.sh` |
 | P12 device checks, about 10 min (owner; `--no-build`) | `tools/shower_check.sh` |
+| P13 network checks with a PC test server via adb reverse, about 5 min (owner; `--no-build`) | `tools/network_check.sh` |
 | Long runs overnight, phone charging: P6-05, P8-04, full regression (owner; `--no-build`) | `tools/overnight.sh` |
 | Publish a release from main (owner's PC, signing key) | `tools/release.sh` |
 

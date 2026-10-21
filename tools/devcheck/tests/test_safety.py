@@ -90,5 +90,13 @@ class AutoPlayTests(unittest.TestCase):
         self.assertIsNone(f(""))
 
 
+class InputTextTests(unittest.TestCase):
+    def test_only_url_characters(self):
+        self.assertTrue(chk(["shell", "input text http://127.0.0.1:8765/p13/list.m3u"]))
+        for bad in ("input text a b", "input text $(reboot)", "input text 'x'", "input text a;reboot"):
+            with self.assertRaises(Refused):
+                chk(["shell", bad])
+
+
 if __name__ == "__main__":
     unittest.main()

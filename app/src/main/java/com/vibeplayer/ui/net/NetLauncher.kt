@@ -17,7 +17,7 @@ object NetLauncher {
         e.playUrl ?: NetFileProvider.uri(context.packageName, sourceId, e.path).toString()
 
     fun play(context: Context, sourceId: Long, entry: RemoteEntry, listing: List<RemoteEntry>) {
-        val playable = listing.filter { !it.isDir && (it.playUrl != null || MediaNames.isVideo(it.name)) }
+        val playable = listing.filter { !it.isDir && !MediaNames.isSubtitle(it.name) && (it.playUrl != null || MediaNames.isVideo(it.name)) }
         val subtitleFiles = listing.filter { !it.isDir && MediaNames.isSubtitle(it.name) }
         NetPlaylist.set(playable.map { e ->
             val subs = SubtitleMatcher.select(e.name, subtitleFiles.map { it.name }).mapNotNull { n ->

@@ -7,7 +7,7 @@ package com.vibeplayer.net
 object HttpIndex {
     private val HREF = Regex("""<a\s[^>]*href\s*=\s*["']([^"'#?]+)["'][^>]*>""", RegexOption.IGNORE_CASE)
 
-    /** Entries under [folderUrl] (ending in /): sub-folders and video files; parent links and sort links dropped. */
+    /** Entries under [folderUrl] (ending in /): sub-folders, videos, playlists and subtitles; parent and sort links dropped. */
     fun parse(html: String, folderUrl: String): List<RemoteEntry> {
         val base = if (folderUrl.endsWith("/")) folderUrl else "$folderUrl/"
         val basePath = java.net.URI(base).rawPath ?: "/"
@@ -26,7 +26,7 @@ object HttpIndex {
             if (!seen.add(path)) continue
             val isDir = path.endsWith("/")
             val name = java.net.URLDecoder.decode(rest.trimEnd('/').replace("+", "%2B"), "UTF-8")
-            if (!isDir && !MediaNames.isVideo(name) && !MediaNames.isPlaylist(name)) continue
+            if (!isDir && !MediaNames.isVideo(name) && !MediaNames.isPlaylist(name) && !MediaNames.isSubtitle(name)) continue
             out += RemoteEntry(name = name, path = abs, isDir = isDir, playUrl = if (isDir) null else abs)
         }
         return out

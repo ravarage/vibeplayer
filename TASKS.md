@@ -861,3 +861,27 @@ non-goals), AI upscaling, frame interpolation, plugins, cloud sync. Deferred: sh
 screen (needs the mpv log hook in mpv_jni.c, built on the owner's PC), custom shader import, a scaler choice for
 Quality mode.
 
+## Phase 13: network playback (user request 2026-10-21; SPEC.md "Network playback")
+
+Built in a cloud session without the phone. `tools/network_check.sh` runs the automatic part with a test
+server on the PC reached through `adb reverse`; the rest is by hand (devcheck MANUAL p13_*).
+
+**P13-01 Links** — http, https, HLS, DASH, ftp, rtsp, rtmp, udp, rtp, srt open in the player (FFmpeg with
+mbedtls), from Network > Open a link (recent links kept) and Open with (intent filters). Per-file mpv options:
+`cache=yes`, `network-timeout=30`, FFmpeg http reconnect, sign-in headers, user agent and referrer (NetOptions,
+%length% quoting); credentials hidden in logs; no MediaExtractor probe over the network. *Accept*:
+`p13_http_link` (seek through Range) and `p13_hls` pass; Open with from a browser plays.
+
+**P13-02 Saved sources** — Room 7 `network_sources`; passwords AES-GCM with an Android Keystore key. SFTP
+(JSch, host key accept-new), SMB 2/3 (smbj, share first in the path), FTP (Commons Net) read through
+NetFileProvider (proxy file descriptors, seekable); WebDAV (PROPFIND over a socket), HTTP listings, DLNA (SSDP,
+ContentDirectory Browse) and M3U played by URL with the sign-in header. *Accept*: by hand for each type.
+
+**P13-03 Network UI** — 🌐 in the library: Network screen (link, recent, saved with edit/delete, DLNA search
+and save), add/edit dialog per type, remote browser (folders in place, search in long lists, M3U groups as
+folders). Android 17 ACCESS_LOCAL_NETWORK asked on first visit. *Accept*: `p13_folder_next`, `p13_m3u_channels`.
+
+**P13-04 Playlists and subtitles** — NetPlaylist: next / previous, the notification and Up next follow the
+network listing; subtitle files with the video's name are offered (provider files converted to UTF-8, URLs
+read by mpv). *Accept*: `p13_folder_next` (next and the subtitle).
+

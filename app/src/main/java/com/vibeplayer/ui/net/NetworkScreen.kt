@@ -400,4 +400,5 @@ internal fun sizeText(size: Long): String = when {
     else -> "${size / 1024} KB"
 }
 
-internal fun isPlayable(name: String, playUrl: String?): Boolean = playUrl != null || MediaNames.isVideo(name)
+internal fun isPlayable(name: String, playUrl: String?): Boolean =
+    !MediaNames.isSubtitle(name) && (playUrl != null || MediaNames.isVideo(name))

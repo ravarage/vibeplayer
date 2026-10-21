@@ -24,6 +24,7 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | Baseline Profile / Macrobenchmark | 1.5.0 | https://dl.google.com/dl/android/maven2 | latest stable benchmark-macro |
 | androidx.baselineprofile plugin / benchmark-macro-junit4 | 1.5.0 / 1.5.0 | https://dl.google.com/dl/android/maven2 (maven-metadata, 2026-10-14) | latest stable; 1.6.0-alpha01 ignored |
 | profileinstaller | 1.4.1 | https://dl.google.com/dl/android/maven2 | latest stable |
+| JSch (mwiede) / smbj / Commons Net | 2.28.8 / 0.15.0 / 3.13.0 | https://repo1.maven.org/maven2 (2026-10-21) | latest stable; smbj brings BouncyCastle 1.85.2, mbassador, asn-one, slf4j-api (P13) |
 | UI Automator | 2.4.0 | https://dl.google.com/dl/android/maven2 | latest stable |
 | androidx.test.ext:junit (baselineprofile module) | 1.3.0 | same as app androidTest | |
 | NDK | r30 (30.0.16248370) | https://github.com/android/ndk/releases | latest stable release |
@@ -161,6 +162,10 @@ Latest stable, looked up from official sources during P0 (AGENT_RULES.md, Depend
 | P12-08 | Shaders in the player (switch, compare) | IN PROGRESS | CLAUDE-CLOUD | see git log (P12-08) | 2026-10-20, cloud, no phone. Builds. Next: `p12_shader_switch`; look at Compare on an anime clip in Quality mode on Vulkan. |
 | P12-09 | Fuller stats overlay | IN PROGRESS | CLAUDE-CLOUD | see git log (P12-09) | 2026-10-20, cloud, no phone. Builds. Next: open the overlay on H.264 and HEVC 10-bit and read the new rows. |
 | P12-10 | Backup and restore | IN PROGRESS | CLAUDE-CLOUD | see git log (P12-10) | 2026-10-20, cloud, no phone. BackupTest. Next: by hand (TASKS.md acceptance). |
+| P13-01 | Network links | IN PROGRESS | CLAUDE-CLOUD | see git log (P13) | 2026-10-21, cloud, no phone. NetOptionsTest; R8 release shrink passes with the new keep rules. Next: tools/network_check.sh (p13_http_link, p13_hls); Open with from a browser by hand. |
+| P13-02 | Saved network sources (SFTP, SMB, FTP, WebDAV, HTTP, DLNA, M3U) | IN PROGRESS | CLAUDE-CLOUD | see git log (P13) | 2026-10-21, cloud, no phone. Parser tests (M3U, WebDAV, DIDL, SSDP, HTTP listing), DatabaseMigration6To7Test. Next: by hand per type (MANUAL p13_*). |
+| P13-03 | Network screen and remote browser | IN PROGRESS | CLAUDE-CLOUD | see git log (P13) | 2026-10-21, cloud, no phone. Next: p13_folder_next, p13_m3u_channels; the local network permission prompt. |
+| P13-04 | Network playlists and subtitles | IN PROGRESS | CLAUDE-CLOUD | see git log (P13) | 2026-10-21, cloud, no phone. Next: p13_folder_next (next episode, subtitle offered). |
 | STAB-01 | Stability audit | DONE | CLAUDE-STAB | pending | Audit of lifecycle, threading, JNI, Room, DataStore, MediaStore, and lint. Hardened mpv_jni.c NULL/exception checks; verified Room migrations 1..5 in DatabaseMigrationTest; added DataStore corruption handler and catch for IOExceptions; added MediaStore SecurityException & missing column guards; moved container-fps read off mpv event thread; gated callbacks on !released; cancelled vulkan/gles checks and scope in PlayerEngine.release(); managed service observation coroutines in PlayerViewModel; resolved 42 lint errors (:app:lintDebug clean); noted ThumbnailEngine native extractor hr-seek=no keyframe limitation for reviewer. |
 
 

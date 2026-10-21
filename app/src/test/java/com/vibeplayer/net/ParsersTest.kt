@@ -125,11 +125,12 @@ class HttpIndexTest {
             <li><a href="Season%201/">Season 1/</a></li>
             <li><a href="ep%2001.mkv">ep 01.mkv</a></li>
             <li><a href="notes.txt">notes.txt</a></li>
+            <li><a href="ep%2001.srt">ep 01.srt</a></li>
             <li><a href="/other/x.mkv">elsewhere</a></li>
             <li><a href="http://evil/x.mkv">other host</a></li>
             </ul></body></html>"""
         val e = HttpIndex.parse(html, "http://127.0.0.1:8765/movies/")
-        assertEquals(listOf("Season 1", "ep 01.mkv"), e.map { it.name })
+        assertEquals(listOf("Season 1", "ep 01.mkv", "ep 01.srt"), e.map { it.name })
         assertTrue(e[0].isDir)
         assertEquals("http://127.0.0.1:8765/movies/ep%2001.mkv", e[1].playUrl)
     }

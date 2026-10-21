@@ -26,7 +26,15 @@ Built in a cloud session without the phone; `tools/shower_check.sh` runs the dev
   and transfer, active shaders and passes, A/V sync and the demuxer cache.
 - **Backup and restore (P12-10)**: Settings > Library saves positions, tracks, bookmarks, folder settings and all
   settings to one zip and restores them (the app restarts), for example after a reinstall.
-- **Device scripts**: `tools/shower_check.sh` (the P12 checks, about 10 minutes) and `tools/overnight.sh` (30-minute
+- **Network playback (P13)**: the 🌐 button in the library opens Network:
+  - open a link (http, https, HLS .m3u8, DASH, FTP, RTSP, RTMP, UDP, SRT), also via Open with from other apps;
+  - saved sources: SFTP, SMB / Windows shares, FTP, WebDAV (Nextcloud, NAS), web folder listings, DLNA / UPnP
+    media servers found on the Wi-Fi, and M3U / IPTV playlists with groups, user agent and referrer;
+  - next / previous, Up next and matching subtitles work inside a network folder or channel list;
+  - passwords are encrypted with an Android Keystore key and kept out of URLs and logs; Android 17's local
+    network permission is asked on the Network screen.
+- **Device scripts**: `tools/network_check.sh` (P13 checks with a test server on the PC through adb reverse),
+  `tools/shower_check.sh` (the P12 checks, about 10 minutes) and `tools/overnight.sh` (30-minute
   stability runs, the shader benchmark and the full regression).
 
 ### Fixed

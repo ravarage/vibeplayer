@@ -40,10 +40,27 @@ device: **POCO X5 Pro 5G (redwood)**, Snapdragon 778G, Adreno GPU, Android 17, a
 | P7 | Performance pass: Baseline Profiles, R8, minimal recomposition, start under 1 s, release builds only |
 | P8 | Optional shaders in quality mode: Anime4K light presets, Snapdragon GSR; toggle in settings |
 | P9 | Optional native tuning with the final compile flags |
+| P10 to P12 | Android 17 integration, player extras, watching series (TASKS.md) |
+| P13 | Network playback (owner's decision 2026-10-21, see "Network playback" below) |
+
+## Network playback (P13)
+Added at the owner's request on 2026-10-21; it was a non-goal until then.
+- **Links**: http, https, HLS (.m3u8), DASH, FTP, RTSP, RTMP, UDP / RTP multicast and SRT, opened in the
+  player directly (FFmpeg with mbedtls), from Network > Open a link or Open with from another app.
+- **Saved sources**: SFTP, SMB 2/3, FTP, WebDAV (Nextcloud, NAS), HTTP folder listings, DLNA / UPnP media
+  servers (found on the Wi-Fi) and M3U / M3U8 playlists (IPTV, with groups, logos, user agent and referrer).
+  Passwords are encrypted with an Android Keystore key and never put in URLs or logs: SFTP, SMB and FTP files
+  reach mpv through the app's own content provider as seekable file descriptors.
+- Next / previous, Up next and subtitles next to a video work within the network folder or channel list.
+- Permissions: INTERNET, and Android 17's ACCESS_LOCAL_NETWORK for the home network (asked on the Network
+  screen). The app sends nothing anywhere unless a network source or link is opened.
+- Not included: casting to a TV, EPG / TV guide, recording, transcoding, cloud accounts.
 
 ## Non-goals
 - Other devices, ABIs, tablets, TV, Play Store release, localisation, accessibility polish.
-- Network streaming, casting, DLNA, playlists, audio-only library, online subtitle download.
+- Casting to a TV or another device (the TV would decode and render: no ASS styling, shaders or tuned
+  decoding), audio-only library, online subtitle download, EPG / recording. (Network streaming, DLNA as a
+  client and M3U playlists moved into scope as P13.)
 - Screenshots and any transcoding (FFmpeg encoders and muxers are disabled).
 - DRM content.
 
