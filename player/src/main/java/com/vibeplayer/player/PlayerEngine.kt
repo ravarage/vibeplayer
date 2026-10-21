@@ -134,7 +134,9 @@ class PlayerEngine(
         /** Stable identity of the file (its content:// URI for an fdclose:// path); defaults to the path. */
         val identity: String = path,
         /** Format detection result (frame rate, size) for the MediaCodec operating-rate hint (P6-08 fix). */
-        val clip: ClipInfo? = null
+        val clip: ClipInfo? = null,
+        /** P13: per-file network options (NetOptions.build); kept for reloads on a new handle. */
+        val netOptions: List<String> = emptyList()
     )
     @Volatile private var lastLoad: LoadRequest? = null
     private data class PendingSubtitle(
@@ -469,6 +471,7 @@ class PlayerEngine(
         const val REPLY_HDR_GAMMA = 15L
         const val REPLY_CHAPTER = 16L
         const val REPLY_CHAPTER_COUNT = 17L
+        const val REPLY_ROTATE = 18L
     }
 
 
@@ -571,12 +574,16 @@ class PlayerEngine(
                     _state.update { it.copy(speed = spd) }
                 }
                 "dwidth" -> {
-                    val w = (value as? Number)?.toInt() ?: 0
-                    _state.update { it.copy(videoWidth = w) }
+                    rawVideoWidth = (value as? Number)?.toInt() ?: 0
+                    publishVideoSize()
                 }
                 "dheight" -> {
-                    val h = (value as? Number)?.toInt() ?: 0
-                    _state.update { it.copy(videoHeight = h) }
+                    rawVideoHeight = (value as? Number)?.toInt() ?: 0
+                    publishVideoSize()
+                }
+                "video-out-params/rotate" -> {
+                    videoRotate = (value as? Number)?.toInt() ?: 0
+                    publishVideoSize()
                 }
                 "aid" -> {
                     val aid = when (value) {
@@ -975,6 +982,15 @@ class PlayerEngine(
                     ?: (playbackConfig.getOptionTable()["gpu-context"] ?: "none")
                 val modeStr = "${playbackConfig.mode} (${if (playbackConfig.mode == PlaybackMode.EFFICIENT) playbackConfig.efficientPath else playbackConfig.renderer})"
                 val rendererInUse = playbackConfig.renderer.name
+                // P12-09: what is decoded and how it is shown, for the overlay.
+                val pixfmt = MpvNative.getPropertyString(handle, "video-params/hw-pixelformat")
+                    ?: MpvNative.getPropertyString(handle, "video-params/pixelformat")
+                val sw = MpvNative.getPropertyString(handle, "video-params/pixelformat")
+                val primaries = MpvNative.getPropertyString(handle, "video-params/primaries")
+                val gamma = MpvNative.getPropertyString(handle, "video-params/gamma")
+                val avsync = MpvNative.getPropertyDouble(handle, "avsync")
+                val cache = MpvNative.getPropertyDouble(handle, "demuxer-cache-duration")
+                val shaderFiles = if (shaderCompare) 0 else currentShaderPreset.getShaderFiles(playbackConfig.mode, playbackConfig.renderer).size
                 _stats.value = PlayerStats(
                     vo = vo,
                     hwdecCurrent = hwdec,
@@ -994,7 +1010,13 @@ class PlayerEngine(
                     containerFps = _state.value.containerFps,
                     thermalStatus = _thermalStatus.value,
                     adpfStatus = adpfStatus,
-                    hdrStatus = _hdrDecision.value.overlayText
+                    hdrStatus = _hdrDecision.value.overlayText,
+                    videoCodec = _state.value.videoCodec,
+                    pixelFormat = listOfNotNull(pixfmt, sw?.takeIf { it != pixfmt }).joinToString(" / ").ifEmpty { null },
+                    colors = listOfNotNull(primaries, gamma).joinToString(" / ").ifEmpty { null },
+                    shaders = StatsText.shaders(currentShaderPreset, shaderFiles, shaderCompare),
+                    avsyncSec = avsync,
+                    cacheSec = cache
                 )
 
 
@@ -1104,6 +1126,8 @@ class PlayerEngine(
         MpvNative.observeProperty(handle, REPLY_SPEED, "speed", MpvFormat.DOUBLE)
         MpvNative.observeProperty(handle, REPLY_DWIDTH, "dwidth", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_DHEIGHT, "dheight", MpvFormat.INT64)
+        // video-out-params, like dwidth/dheight: the rotation the VO still applies (0 when a filter already did).
+        MpvNative.observeProperty(handle, REPLY_ROTATE, "video-out-params/rotate", MpvFormat.INT64)
         MpvNative.observeProperty(handle, REPLY_VIDEO_CODEC, "video-codec", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_VIDEO_FORMAT, "video-format", MpvFormat.STRING)
         MpvNative.observeProperty(handle, REPLY_AID, "aid", MpvFormat.STRING)
@@ -1119,6 +1143,7 @@ class PlayerEngine(
         if (nightMode || equalizer.isActive) MpvNative.setPropertyString(handle, "af", AudioFilters.chain(nightMode, equalizer))
         if (audioSessionId > 0) MpvNative.setPropertyString(handle, "audiotrack-session-id", audioSessionId.toString())
         if (!pictureAdjust.isDefault) pictureAdjust.mpvProperties().forEach { (k, v) -> MpvNative.setPropertyString(handle, k, v) }
+        if (deband) MpvNative.setPropertyString(handle, "deband", "yes")
 
         MpvNative.setPropertyString(handle, "keepaspect", "yes")
 
@@ -1220,14 +1245,16 @@ class PlayerEngine(
         audioDelayMs: Int = 0,
         identity: String? = null,
         /** What the format detection learned about the video track; null when unknown. */
-        clip: ClipInfo? = null
+        clip: ClipInfo? = null,
+        /** P13: network options for this file (cache, reconnect, sign-in headers). */
+        netOptions: List<String> = emptyList()
     ) {
         val fileIdentity = identity ?: path
         val hadOverride = speedOverride != null
         speedOverride = null // P3-09: a new file never inherits a hold
         _position.value = 0L
         _state.update { it.copy(durationMs = 0L, tracks = emptyList(), selectedAudioTrackId = null, selectedSubTrackId = null, chapters = emptyList(), currentChapter = -1, subDelayMs = SyncDelay.clamp(subDelayMs), audioDelayMs = SyncDelay.clamp(audioDelayMs)) }
-        val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity, clip)
+        val request = LoadRequest(path, startPositionMs, audioTrackId, audioEnabled, subTrackId, subEnabled, speed, aspect, subDelayMs, audioDelayMs, fileIdentity, clip, netOptions)
         lastLoad = request
         val serial = loadSerial.incrementAndGet()
         latestOpenSerial = serial
@@ -1252,7 +1279,8 @@ class PlayerEngine(
                 audioDelayMs = audioDelayMs,
                 paused = false,
                 identity = fileIdentity,
-                clip = clip
+                clip = clip,
+                netOptions = netOptions
             )
             if (!isStaleCommandThread()) markIssued(serial)
         }
@@ -1271,7 +1299,8 @@ class PlayerEngine(
         audioDelayMs: Int = 0,
         paused: Boolean = false,
         identity: String = path,
-        clip: ClipInfo? = null
+        clip: ClipInfo? = null,
+        netOptions: List<String> = emptyList()
     ) {
         assertCommandThread()
         if (isStaleCommandThread()) {
@@ -1282,6 +1311,11 @@ class PlayerEngine(
         currentFilePath = path
         if (identity != currentFileIdentity) {
             autoSkippedChapters.clear()
+            if (shaderCompare) {
+                // A new file starts with its shaders on (the compare is for the file it was turned on in).
+                shaderCompare = false
+                _shaderUi.value = ShaderUi(currentShaderPreset, false)
+            }
             _state.update { it.copy(abLoopAMs = null, abLoopBMs = null, loopFile = false) }
         }
         currentFileIdentity = identity
@@ -1450,9 +1484,14 @@ class PlayerEngine(
             hdrMpvGamma = null
             evaluateHdr()
 
+            // P13: network files (cache, reconnect, sign-in and IPTV headers); per-file, so the next file starts clean.
+            options.addAll(netOptions)
+
             val cmd = if (options.isNotEmpty()) {
                 val optStr = options.joinToString(",")
-                Log.i("VP", "Loading $path with options: $optStr")
+                // Sign-in headers stay out of the log (P13).
+                val shown = options.joinToString(",") { if (it.startsWith("http-header-fields=")) "http-header-fields=<hidden>" else it }
+                Log.i("VP", "Loading ${NetOptions.redact(path)} with options: $shown")
                 arrayOf("loadfile", path, "replace", "-1", optStr)
             } else {
                 Log.i("VP", "Loading $path from start without options")
@@ -1488,7 +1527,8 @@ class PlayerEngine(
             audioDelayMs = request.audioDelayMs,
             paused = paused,
             identity = request.identity,
-            clip = request.clip
+            clip = request.clip,
+            netOptions = request.netOptions
         )
     }
 
@@ -1568,15 +1608,45 @@ class PlayerEngine(
         shaderDirectory = dir
     }
 
+    /** P12-08: the preset in use and whether the shaders are bypassed to compare with the original. */
+    private val _shaderUi = MutableStateFlow(ShaderUi())
+    val shaderUi: StateFlow<ShaderUi> = _shaderUi.asStateFlow()
+    @Volatile private var shaderCompare = false
+
+    /** Shows the picture without the shaders (true) or with them again; reset by a new file or preset. */
+    fun setShaderCompare(original: Boolean) {
+        shaderCompare = original
+        _shaderUi.value = ShaderUi(currentShaderPreset, original)
+        executeCommand {
+            assertCommandThread()
+            applyShaderPresetInternal()
+            Log.i("VP", "Shader compare: original=$original")
+        }
+    }
+
     fun setShaderPreset(preset: ShaderPreset, dir: String? = null) {
         if (dir != null) {
             shaderDirectory = dir
         }
         currentShaderPreset = preset
+        shaderCompare = false
+        _shaderUi.value = ShaderUi(preset, false)
         executeCommand {
             assertCommandThread()
             applyShaderPresetInternal()
         }
+    }
+
+    // dwidth/dheight (video-out-params) are the frame size before the VO's rotation; a phone clip filmed upright
+    // is usually stored landscape with rotate=90, which the VO applies. The state carries the size as shown,
+    // so orientation and PiP follow it.
+    @Volatile private var rawVideoWidth = 0
+    @Volatile private var rawVideoHeight = 0
+    @Volatile private var videoRotate = 0
+
+    private fun publishVideoSize() {
+        val (w, h) = VideoRotation.displaySize(rawVideoWidth, rawVideoHeight, videoRotate)
+        _state.update { if (it.videoWidth == w && it.videoHeight == h) it else it.copy(videoWidth = w, videoHeight = h) }
     }
 
     /** Last file/renderer/preset the "Anime4K needs Vulkan" notice was shown for. */
@@ -1588,13 +1658,13 @@ class PlayerEngine(
         // The renderer of the current handle: a Vulkan -> GLES fallback creates a new handle and applies
         // the preset again, so the GLES chain (without Clamp_Highlights, P8-02) is picked up there.
         val renderer = playbackConfig.renderer
-        val glslShadersValue = currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory, renderer)
-        // Anime4K is Vulkan-only (P8-02): say so once per file and renderer instead of silently showing nothing.
+        val glslShadersValue = if (shaderCompare) "" else currentShaderPreset.toGlslShadersProperty(playbackConfig.mode, shaderDirectory, renderer)
+        // Anime4K, FSRCNNX and RAVU are Vulkan-only: say so once per file and renderer instead of silently showing nothing.
         if (currentShaderPreset.unavailableOn(playbackConfig.mode, renderer)) {
             val key = "$currentFileIdentity|$renderer|$currentShaderPreset"
             if (key != shaderNoticeKey) {
                 shaderNoticeKey = key
-                _onScreenMessage.tryEmit("Anime4K needs the Vulkan renderer")
+                _onScreenMessage.tryEmit("${if (currentShaderPreset.isAnime4K) "Anime4K" else currentShaderPreset.displayName} needs the Vulkan renderer")
             }
         }
         MpvNative.setPropertyString(handle, "glsl-shaders", glslShadersValue)
@@ -1685,8 +1755,8 @@ class PlayerEngine(
                 // fdclose://N: mpv closed N with the old handle; reopening it would read a dead or
                 // reused fd, so a fresh one is resolved from the file's content:// identity.
                 val serial = loadSerial.incrementAndGet()
-                val curClip = lastLoad?.takeIf { it.identity == curIdentity }?.clip
-                val request = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay, curIdentity, curClip)
+                val curLoad = lastLoad?.takeIf { it.identity == curIdentity }
+                val request = LoadRequest(curPath, curPos, curAid, curAudioEnabled, curSid, curSubEnabled, curSpeed, curAspect, curSubDelay, curAudioDelay, curIdentity, curLoad?.clip, curLoad?.netOptions ?: emptyList())
                 reloadOnNewHandle(request, serial, wasPaused, "reconfigure")
             }
         }
@@ -1940,6 +2010,16 @@ class PlayerEngine(
             if (handle == 0L) return@executeCommand
             val res = MpvNative.command(handle, arrayOf(if (forward) "frame-step" else "frame-back-step"))
             Log.i("VP", "frame step forward=$forward res=$res")
+        }
+    }
+
+    /** Jumps to the start of the previous or next subtitle line (mpv sub-seek; text subtitles mpv has read). */
+    fun subSeek(next: Boolean) {
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.command(handle, arrayOf("sub-seek", if (next) "1" else "-1"))
+            Log.i("VP", "sub-seek next=$next res=$res")
         }
     }
 
@@ -2378,6 +2458,20 @@ class PlayerEngine(
     /** Night mode (dynaudnorm), kept for every file and new handle. */
     @Volatile var nightMode: Boolean = false
         private set
+
+    /** Debanding in the GPU renderer (Quality mode; the Efficient path has no renderer to apply it). */
+    @Volatile private var deband = false
+
+    fun setDeband(on: Boolean) {
+        if (on == deband) return
+        deband = on
+        executeCommand {
+            assertCommandThread()
+            if (handle == 0L) return@executeCommand
+            val res = MpvNative.setPropertyString(handle, "deband", if (on) "yes" else "no")
+            Log.i("VP", "setDeband $on res=$res")
+        }
+    }
 
     fun setNightMode(on: Boolean) {
         if (on == nightMode) return

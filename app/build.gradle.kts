@@ -15,8 +15,8 @@ android {
         applicationId = "com.vibeplayer"
         minSdk = 37
         targetSdk = 37
-        versionCode = 5
-        versionName = "0.7.0"
+        versionCode = 6
+        versionName = "0.8.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -91,6 +91,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
+
+    // P13 network sources: SFTP, SMB 2/3, FTP (HTTP, WebDAV, DLNA and M3U use the platform's HttpURLConnection)
+    implementation(libs.jsch)
+    implementation(libs.smbj)
+    implementation(libs.commons.net)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

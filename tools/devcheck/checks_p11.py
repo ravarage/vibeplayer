@@ -50,8 +50,15 @@ def _pause_for_ui(ctx):
     hit = ctx.log.wait(r"togglePause", 6, since=m, tag="VP")
     ctx.trace(f"togglePause {'seen' if hit else 'NOT seen'}; gesture lines: "
               + "; ".join(l.msg for l, _ in ctx.log.find_all(r"Gesture detected", m))[:300])
+    if not hit:
+        # The first tap sometimes only brings the controls up (they were hiding, or an overlay chip took it).
+        ctx.shot("pause_attempt")
+        m = ctx.log.mark()
+        ctx.trace("no togglePause; tapping the centre button again")
+        ctx.tap_center_button("pause", None)
+        hit = ctx.log.wait(r"togglePause", 6, since=m, tag="VP")
     ctx.shot("pause_attempt")
-    need(hit, "could not pause with the centre button (no togglePause)")
+    need(hit, "could not pause with the centre button (no togglePause after two taps)")
     ctx.ctrl_pinned = True
     ctx.sleep(0.8)
 

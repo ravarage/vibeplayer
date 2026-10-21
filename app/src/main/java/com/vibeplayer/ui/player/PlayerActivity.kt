@@ -86,12 +86,20 @@ import android.view.KeyEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 class PlayerActivity : ComponentActivity() {
 
     companion object {
+        /** P13 intent extras from the network browser. */
+        const val EXTRA_TITLE = "title"
+        const val EXTRA_NET_HEADERS = "net_headers"
+        const val EXTRA_NET_USER_AGENT = "net_user_agent"
+        const val EXTRA_NET_REFERRER = "net_referrer"
+        const val EXTRA_NET_LIVE = "net_live"
+
         /** P7-02: deferred start-up work (thumbnails, permission dialog) resumes at the latest after this. */
         const val STARTUP_DEFER_TIMEOUT_MS = 4000L
 
@@ -437,9 +445,12 @@ class PlayerActivity : ComponentActivity() {
 
         // Auto-orient based on video aspect ratio (P1-09), unless the Rotate button fixed it.
         lifecycleScope.launch {
+            // The frame size and the rotation flag arrive as separate property changes: settle briefly so a
+            // clip filmed upright does not turn to landscape and straight back.
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
             kotlinx.coroutines.flow.combine(playerEngine.state, rotationMode) { state, mode ->
                 mode.orientationFor(state.videoWidth, state.videoHeight)
-            }.collect { targetOrientation ->
+            }.distinctUntilChanged().debounce(150L).collect { targetOrientation ->
                 if (targetOrientation != null && !isInPictureInPictureMode && !_isInPipFlow.value && requestedOrientation != targetOrientation) {
                     Log.i("VP", "Orienting (${rotationMode.value}): orientation=$targetOrientation")
                     requestedOrientation = targetOrientation
@@ -507,6 +518,10 @@ class PlayerActivity : ComponentActivity() {
             val volumeBoostMax by viewModel.volumeBoostMax.collectAsState()
             val nightMode by viewModel.nightMode.collectAsState()
             val sleepTimer by viewModel.sleepTimer.collectAsState()
+            val resumedFrom by viewModel.resumedFrom.collectAsState()
+            val upNext by viewModel.upNext.collectAsState()
+            val bookmarks by viewModel.bookmarks.collectAsState()
+            val folderShow by viewModel.folderShow.collectAsState()
             val pictureAdjust by viewModel.pictureAdjust.collectAsState()
             val equalizer by viewModel.equalizer.collectAsState()
             val currentRotation by rotationMode.collectAsState()
@@ -645,6 +660,16 @@ class PlayerActivity : ComponentActivity() {
                                 equalizer = equalizer,
                                 onPreviewEqualizer = { viewModel.previewEqualizer(it) },
                                 onSaveEqualizer = { viewModel.saveEqualizer(it) },
+                                onSelectShader = { viewModel.selectShaderPreset(it) },
+                                bookmarks = bookmarks,
+                                onAddBookmark = { viewModel.addBookmark() },
+                                onDeleteBookmark = { viewModel.deleteBookmark(it.id) },
+                                folderShow = FolderShowControls(
+                                    show = folderShow,
+                                    currentSpeed = playerState.speed,
+                                    onSetSpeed = { viewModel.setFolderSpeed(it) },
+                                    onSetAutoSkip = { viewModel.setFolderAutoSkip(it) }
+                                ),
                                 onCycleAspect = {
                                     val modes = listOf("fit", "crop", "stretch", "16:9", "4:3")
                                     val current = playerState.aspect ?: "fit"
@@ -665,6 +690,26 @@ class PlayerActivity : ComponentActivity() {
                                     .fillMaxSize()
                                     .windowInsetsPadding(WindowInsets.displayCutout)
                             )
+
+                            if (!isLocked && !isInPip) {
+                                ResumeChip(
+                                    info = resumedFrom,
+                                    onStartOver = { viewModel.startOver() },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
+                                        .padding(start = 24.dp, bottom = 112.dp)
+                                )
+                                UpNextCard(
+                                    upNext = upNext,
+                                    onPlayNow = { viewModel.playUpNext() },
+                                    onCancel = { viewModel.cancelUpNext() },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
+                                        .padding(end = 24.dp, bottom = 112.dp)
+                                )
+                            }
 
                             if (!isLocked) {
                                 ChapterSkipButton(
@@ -747,6 +792,8 @@ class PlayerActivity : ComponentActivity() {
             "anime4k_b", "b" -> com.vibeplayer.player.ShaderPreset.ANIME4K_B
             "anime4k_c", "c" -> com.vibeplayer.player.ShaderPreset.ANIME4K_C
             "snapdragon_gsr", "gsr" -> com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR
+            "fsrcnnx" -> com.vibeplayer.player.ShaderPreset.FSRCNNX
+            "ravu" -> com.vibeplayer.player.ShaderPreset.RAVU
             "none" -> com.vibeplayer.player.ShaderPreset.NONE
             else -> null
         }
@@ -772,7 +819,9 @@ class PlayerActivity : ComponentActivity() {
         // a benchmark must not keep the benchmark flag (no history writes, no notification).
         PlaybackService.benchmarkRun = intent.getBooleanExtra("benchmark", false)
         val oldPath = viewModel.currentPath.value ?: currentVideoPath
-        resolveVideoPath()
+        // A content:// target is resolved on IO in openResolvedVideo: a network file (P13 provider) connects
+        // to its server while opening, which must not happen on the main thread.
+        resolveVideoPath(deferContent = true)
         val forceHwdec = intent.getStringExtra("force_hwdec") ?: intent.getStringExtra("hwdec")
         if (!forceHwdec.isNullOrEmpty()) {
             playerEngine.setHwdec(forceHwdec)
@@ -833,7 +882,10 @@ class PlayerActivity : ComponentActivity() {
             } else {
                 currentVideoPath = dataUri.toString()
                 currentVideoTitle = dataUri.lastPathSegment ?: "Video"
+                currentIdentityKey = dataUri.toString()
             }
+            // P13: the network browser passes the name it showed (a channel, a DLNA title).
+            intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }?.let { currentVideoTitle = it }
         } else {
             // Launched without a target (notification tap after the player was closed with background
             // audio on): show the file the service is playing, not the built-in default.
@@ -877,6 +929,7 @@ class PlayerActivity : ComponentActivity() {
                     computeStartup(viewModel.appSettingsRepository.appSettingsFlow.first())
                 }
             if (useStartup) contentDeferred?.await()
+            else if (pendingContentUri != null) withContext(Dispatchers.IO) { resolveContentOnIo() }
             val debugStartMs = if (intent.hasExtra("start_ms")) {
                 intent.getLongExtra("start_ms", -1L).takeIf { it >= 0 }
                     ?: intent.getIntExtra("start_ms", -1).toLong().takeIf { it >= 0 }
@@ -889,9 +942,20 @@ class PlayerActivity : ComponentActivity() {
                 title = currentVideoTitle,
                 playbackConfig = startup.config,
                 shaderPreset = startup.preset,
-                startPositionOverride = debugStartMs
+                startPositionOverride = debugStartMs,
+                netHints = netHintsFrom(intent)
             )
         }
+    }
+
+    /** P13: sign-in / IPTV headers and the live flag the network browser put on the intent. */
+    private fun netHintsFrom(intent: Intent): com.vibeplayer.player.NetHints? {
+        val headers = intent.getStringArrayListExtra(EXTRA_NET_HEADERS).orEmpty()
+        val ua = intent.getStringExtra(EXTRA_NET_USER_AGENT)
+        val referrer = intent.getStringExtra(EXTRA_NET_REFERRER)
+        val live = intent.getBooleanExtra(EXTRA_NET_LIVE, false)
+        if (headers.isEmpty() && ua == null && referrer == null && !live) return null
+        return com.vibeplayer.player.NetHints(headers, ua, referrer, live)
     }
 
     private fun queryDisplayName(uri: Uri): String {
@@ -926,7 +990,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun checkPermissionAndProceed() {
         val dataUri = intent.data
-        if (dataUri != null && dataUri.scheme == "content") {
+        // content:// carries its own grant; a stream URL (P13) needs no storage permission.
+        if (dataUri != null && (dataUri.scheme == "content" || com.vibeplayer.player.NetOptions.isUrl(dataUri.toString()))) {
             tryStartPlayback()
             return
         }
@@ -1126,6 +1191,8 @@ class PlayerActivity : ComponentActivity() {
                             "anime4k_b", "b" -> com.vibeplayer.player.ShaderPreset.ANIME4K_B
                             "anime4k_c", "c" -> com.vibeplayer.player.ShaderPreset.ANIME4K_C
                             "snapdragon_gsr", "gsr" -> com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR
+                            "fsrcnnx" -> com.vibeplayer.player.ShaderPreset.FSRCNNX
+                            "ravu" -> com.vibeplayer.player.ShaderPreset.RAVU
                             else -> null
                         }
                         if (preset != null) {

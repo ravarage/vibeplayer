@@ -8,16 +8,21 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [FileSettings::class, FolderSettings::class],
-    version = 5,
+    entities = [FileSettings::class, FolderSettings::class, Bookmark::class, com.vibeplayer.net.NetSource::class],
+    version = AppDatabase.VERSION,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun fileSettingsDao(): FileSettingsDao
     abstract fun folderSettingsDao(): FolderSettingsDao
+    abstract fun bookmarkDao(): BookmarkDao
+    abstract fun netSourceDao(): com.vibeplayer.net.NetSourceDao
 
     companion object {
+        /** Schema version (also the newest a backup may have, P12-10). */
+        const val VERSION = 7
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -64,6 +69,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** P12-03 bookmarks, P12-04 per-folder (show) speed and auto-skip. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `bookmarks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `fileKey` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `label` TEXT, `createdAt` INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookmarks_fileKey` ON `bookmarks` (`fileKey`)")
+                db.execSQL("ALTER TABLE folder_settings ADD COLUMN speed REAL")
+                db.execSQL("ALTER TABLE folder_settings ADD COLUMN autoSkipChapters INTEGER")
+            }
+        }
+
+        /** P12-10: closes the database before a backup replaces its file (the app restarts right after). */
+        fun closeForRestore() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+        }
+
+        /** P13: saved network sources (password encrypted, see com.vibeplayer.net.Secrets). */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `network_sources` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL, `name` TEXT NOT NULL, `host` TEXT NOT NULL, `port` INTEGER NOT NULL, `path` TEXT NOT NULL, `username` TEXT NOT NULL, `secret` TEXT, `createdAt` INTEGER NOT NULL)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -71,7 +101,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vibeplayer.db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build().also { INSTANCE = it }
             }
         }

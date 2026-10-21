@@ -61,6 +61,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -71,6 +73,8 @@ import java.io.File
 class PlaybackService : Service() {
 
     companion object {
+        /** How long the "Resumed at ... Start over" chip stays (P12-01). */
+        const val RESUME_CHIP_MS = 8_000L
         /** P7-02: deferred start-up work (MediaSession, shader extraction) runs at the latest after this. */
         private const val DEFERRED_WORK_TIMEOUT_MS = 3000L
         /** How long auto-loaded subtitles wait for their file to load. */
@@ -257,6 +261,70 @@ class PlaybackService : Service() {
     private lateinit var db: AppDatabase
     private val dao by lazy { db.fileSettingsDao() }
     private val folderDao by lazy { db.folderSettingsDao() }
+    private val bookmarkDao by lazy { db.bookmarkDao() }
+
+    /** History key of the file in the engine (path + size), for the bookmarks of the current file. */
+    private val _currentKeyFlow = MutableStateFlow<String?>(null)
+
+    /** P12-03: bookmarks of the current file, by position. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val bookmarks: StateFlow<List<com.vibeplayer.data.db.Bookmark>> by lazy {
+        _currentKeyFlow.flatMapLatest { k ->
+            if (k == null) kotlinx.coroutines.flow.flowOf(emptyList()) else bookmarkDao.observe(k)
+        }.stateIn(serviceScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
+    }
+
+    /** Saves the current position as a bookmark, labelled with the chapter when there is one. */
+    fun addBookmark() {
+        val key = currentKey ?: return
+        serviceScope.launch {
+            val pos = playerEngine.currentPositionMs()
+            val state = playerEngine.state.value
+            val chapter = com.vibeplayer.player.Chapters.chapterAt(state.chapters, pos)
+            val label = chapter?.let { com.vibeplayer.player.Chapters.displayTitle(it) }
+            val id = withContext(Dispatchers.IO) {
+                bookmarkDao.insert(com.vibeplayer.data.db.Bookmark(fileKey = key, positionMs = pos, label = label))
+            }
+            Log.i("VP", "Bookmark $id added at $pos ms for key=$key")
+            playerEngine.showOnScreenMessage("Bookmark added at ${com.vibeplayer.ui.player.formatTime(pos)}")
+        }
+    }
+
+    fun deleteBookmark(id: Long) {
+        serviceScope.launch(Dispatchers.IO) {
+            bookmarkDao.delete(id)
+            Log.i("VP", "Bookmark $id deleted")
+        }
+    }
+
+    /** P12-04: speed and auto-skip of the current file's folder (a show). */
+    private val _folderShow = MutableStateFlow(FolderShow())
+    val folderShow: StateFlow<FolderShow> = _folderShow.asStateFlow()
+    @Volatile private var globalAutoSkip = false
+
+    private fun applyAutoSkip() {
+        playerEngine.autoSkipChapters = _folderShow.value.autoSkipChapters ?: globalAutoSkip
+    }
+
+    /** Uses [speed] for the folder's files that have no speed of their own; null back to 1x. */
+    fun setFolderSpeed(speed: Float?) = updateFolderShow { it.copy(speed = speed) }
+
+    /** Auto-skip openings and endings in this folder: true, false, or null to follow the app setting. */
+    fun setFolderAutoSkip(on: Boolean?) = updateFolderShow { it.copy(autoSkipChapters = on) }
+
+    private fun updateFolderShow(change: (com.vibeplayer.data.db.FolderSettings) -> com.vibeplayer.data.db.FolderSettings) {
+        val folder = currentFolderPath?.takeIf { it.startsWith("/") }?.let { com.vibeplayer.ui.normalizeMediaPath(it) } ?: return
+        serviceScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                val base = folderDao.getByPath(folder) ?: com.vibeplayer.data.db.FolderSettings(folderPath = folder)
+                change(base).copy(updatedAt = System.currentTimeMillis()).also { folderDao.upsert(it) }
+            }
+            if (currentFolderPath?.let { com.vibeplayer.ui.normalizeMediaPath(it) } != folder) return@launch
+            _folderShow.value = FolderShow(folder, saved.speed, saved.autoSkipChapters)
+            applyAutoSkip()
+            Log.i("VP", "Folder settings for $folder: speed=${saved.speed} autoSkip=${saved.autoSkipChapters}")
+        }
+    }
     private lateinit var appSettingsRepository: AppSettingsRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -266,6 +334,10 @@ class PlaybackService : Service() {
     @Volatile private var backgroundAudioEnabled = false
 
     @Volatile private var currentKey: String? = null
+    /** Identity of the file being opened or played (content:// URI, stream URL or path), for P13 playlists. */
+    @Volatile private var currentIdentity: String? = null
+    /** History keys of live streams (IPTV) opened this session: no resume position, no Up next (P13). */
+    private val liveKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     @Volatile private var currentVideoPath: String? = null
     @Volatile private var currentFolderPath: String? = null
     private var periodicSaveJob: Job? = null
@@ -342,7 +414,12 @@ class PlaybackService : Service() {
             appSettingsRepository.appSettingsFlow
                 .map { it.shaderPreset }
                 .distinctUntilChanged()
-                .collect { playerEngine.setShaderPreset(mapShaderPreset(it)) }
+                .collect {
+                    val preset = mapShaderPreset(it)
+                    // A preset picked in the player (P12-08) may come before the files are unpacked.
+                    if (preset != ShaderPreset.NONE) shaderExtraction.await()
+                    playerEngine.setShaderPreset(preset)
+                }
         }
 
         // P7-02: the Media3 adapter and MediaSession are built after the first frame (see
@@ -367,7 +444,10 @@ class PlaybackService : Service() {
 
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.autoSkipChapters }.distinctUntilChanged()
-                .collect { playerEngine.autoSkipChapters = it }
+                .collect {
+                    globalAutoSkip = it
+                    applyAutoSkip()
+                }
         }
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.subtitleEncoding }.distinctUntilChanged()
@@ -384,6 +464,10 @@ class PlaybackService : Service() {
         serviceScope.launch {
             appSettingsRepository.appSettingsFlow.map { it.nightMode }.distinctUntilChanged()
                 .collect { playerEngine.setNightMode(it) }
+        }
+        serviceScope.launch {
+            appSettingsRepository.appSettingsFlow.map { it.deband }.distinctUntilChanged()
+                .collect { playerEngine.setDeband(it) }
         }
 
         // Listen for background audio setting changes
@@ -479,6 +563,9 @@ class PlaybackService : Service() {
             playerEngine.state.collect { state ->
                 if (state.eof && !wasEof && state.durationMs > 0L) {
                     onPlaybackEnded()
+                } else if (!state.eof && wasEof && _upNext.value != null) {
+                    // Seeked back from the end during the countdown: keep watching this file.
+                    cancelUpNext(stopIfIdle = false)
                 }
                 wasEof = state.eof
             }
@@ -486,6 +573,47 @@ class PlaybackService : Service() {
     }
 
     private var pausedTimeoutJob: Job? = null
+
+    /** P12-01: set after a file opened at its saved position, for the "Resumed at ... Start over" chip. */
+    private val _resumedFrom = MutableStateFlow<ResumeInfo?>(null)
+    val resumedFrom: kotlinx.coroutines.flow.StateFlow<ResumeInfo?> = _resumedFrom
+
+    private var resumeChipJob: Job? = null
+
+    /** Plays the current file from the start (the resume chip's Start over). */
+    fun startOver() {
+        _resumedFrom.value = null
+        Log.i("VP", "Resume: start over")
+        playerEngine.seekTo(0L, exact = true)
+    }
+
+    /** P12-02: the next file while the "Up next" countdown runs, or null. */
+    private val _upNext = MutableStateFlow<UpNext?>(null)
+    val upNext: kotlinx.coroutines.flow.StateFlow<UpNext?> = _upNext
+    private var upNextJob: Job? = null
+
+    /** Plays the counted-down file now (the card's Play now, or the end of the countdown). */
+    fun playUpNext() {
+        val u = _upNext.value ?: return
+        upNextJob?.cancel()
+        upNextJob = null
+        _upNext.value = null
+        if (currentVideoPath != u.endedPath) return // file changed meanwhile
+        Log.i("VP", "Auto-play: ${u.endedPath} ended -> ${com.vibeplayer.player.NetOptions.redact(u.path)}")
+        val netItem = com.vibeplayer.net.NetPlaylist.neighbour(currentIdentity, forward = true)?.takeIf { it.identity == u.path }
+        if (netItem != null) openNetItem(netItem, startFromBeginning = true)
+        else openVideo(u.path, startFromBeginning = true, playAfterLoad = true)
+    }
+
+    /** Stops the countdown; the ended file stays on its last frame. */
+    fun cancelUpNext(stopIfIdle: Boolean = true) {
+        if (_upNext.value == null) return
+        upNextJob?.cancel()
+        upNextJob = null
+        _upNext.value = null
+        Log.i("VP", "Up next cancelled")
+        if (stopIfIdle) checkShouldStop()
+    }
 
     private val _sleepTimer = MutableStateFlow<SleepTimer?>(null)
     /** The running sleep timer, or null. */
@@ -525,6 +653,8 @@ class PlaybackService : Service() {
         ShaderPresetOption.ANIME4K_B -> ShaderPreset.ANIME4K_B
         ShaderPresetOption.ANIME4K_C -> ShaderPreset.ANIME4K_C
         ShaderPresetOption.SNAPDRAGON_GSR -> ShaderPreset.SNAPDRAGON_GSR
+        ShaderPresetOption.FSRCNNX -> ShaderPreset.FSRCNNX
+        ShaderPresetOption.RAVU -> ShaderPreset.RAVU
     }
 
     private fun createMediaSession() {
@@ -798,25 +928,47 @@ class PlaybackService : Service() {
 
     private suspend fun onPlaybackEnded() {
         val endedPath = currentVideoPath ?: return
+        if (currentKey in liveKeys) {
+            // A live stream ended (or dropped for good): nothing to count down to.
+            checkShouldStop()
+            return
+        }
         if (_sleepTimer.value?.atEndOfFile == true) {
             // keep-open already holds the last frame paused; nothing more is played.
             onSleepTimerFired()
             checkShouldStop()
             return
         }
-        if (!appSettingsRepository.appSettingsFlow.first().autoPlayNext) {
+        val appSettings = appSettingsRepository.appSettingsFlow.first()
+        if (!appSettings.autoPlayNext) {
             checkShouldStop()
             return
         }
-        val next = withContext(Dispatchers.IO) { FolderPlaylist.next(endedPath) }
+        val netNext = com.vibeplayer.net.NetPlaylist.neighbour(currentIdentity, forward = true)
+        val next = netNext?.identity ?: withContext(Dispatchers.IO) { FolderPlaylist.next(endedPath) }
         if (next == null) {
             Log.i("VP", "Auto-play: no next file after $endedPath")
             checkShouldStop()
             return
         }
         if (currentVideoPath != endedPath) return // file changed meanwhile
-        Log.i("VP", "Auto-play: $endedPath ended -> $next")
-        openVideo(next, startFromBeginning = true, playAfterLoad = true)
+        val countdown = appSettings.nextCountdownSeconds
+        _upNext.value = UpNext(
+            endedPath = endedPath,
+            path = next,
+            title = netNext?.title ?: File(next).name,
+            endsAtElapsedMs = android.os.SystemClock.elapsedRealtime() + countdown * 1000L
+        )
+        if (countdown <= 0) {
+            playUpNext()
+            return
+        }
+        Log.i("VP", "Up next: $next in $countdown s")
+        upNextJob?.cancel()
+        upNextJob = serviceScope.launch {
+            delay(countdown * 1000L)
+            playUpNext()
+        }
     }
 
     fun skipToNeighbour(forward: Boolean) {
@@ -830,11 +982,42 @@ class PlaybackService : Service() {
             savePositionSnapshot(leavingKey, leavingPosition, leavingState)
 
             if (currentVideoPath != from) return@launch
+            com.vibeplayer.net.NetPlaylist.neighbour(currentIdentity, forward)?.let { item ->
+                openNetItem(item, leavingPositionSaved = true)
+                return@launch
+            }
             val target = withContext(Dispatchers.IO) {
                 if (forward) FolderPlaylist.next(from) else FolderPlaylist.previous(from)
             } ?: return@launch
             if (currentVideoPath != from) return@launch
             openVideo(target, playAfterLoad = true, leavingPositionSaved = true)
+        }
+    }
+
+    /**
+     * P13: opens an item of the network list the current file came from (next / previous / Up next): a
+     * provider file gets a fresh descriptor (network, IO), a stream URL is handed to mpv with its headers.
+     */
+    fun openNetItem(
+        item: com.vibeplayer.net.NetPlaylist.Item,
+        startFromBeginning: Boolean = false,
+        leavingPositionSaved: Boolean = false
+    ) {
+        serviceScope.launch {
+            val path = if (item.identity.startsWith("content://")) {
+                withContext(Dispatchers.IO) { reopenContentUri(item.identity) }
+            } else item.entry.playUrl
+            if (path == null) {
+                playerEngine.showOnScreenMessage("Cannot open ${item.title}")
+                return@launch
+            }
+            val e = item.entry
+            openVideo(
+                path, identityKey = item.identity, folderKey = item.identity.substringBeforeLast('/', ""),
+                startFromBeginning = startFromBeginning, playAfterLoad = true, title = item.title,
+                leavingPositionSaved = leavingPositionSaved,
+                netHints = com.vibeplayer.player.NetHints(e.headers, e.userAgent, e.referrer, e.live)
+            )
         }
     }
 
@@ -895,7 +1078,9 @@ class PlaybackService : Service() {
         shaderPreset: ShaderPreset? = null,
         startPositionOverride: Long? = null,
         /** skipToNeighbour already saved the leaving file with a fresh (bounded) read. */
-        leavingPositionSaved: Boolean = false
+        leavingPositionSaved: Boolean = false,
+        /** P13: sign-in / IPTV headers and live flag of a network file. */
+        netHints: com.vibeplayer.player.NetHints? = null
     ) {
         val leavingKey = currentKey
         val leavingPath = currentVideoPath
@@ -909,6 +1094,15 @@ class PlaybackService : Service() {
 
         val generation = ++loadGeneration
         loadJob?.cancel()
+        // Any other open replaces a pending "Up next" and an old resume chip.
+        upNextJob?.cancel()
+        upNextJob = null
+        _upNext.value = null
+        _resumedFrom.value = null
+        resumeChipJob?.cancel()
+        // Bookmarks belong to the file in the engine: none while the next one loads.
+        currentKey = null
+        _currentKeyFlow.value = null
         currentVideoPath = path
         currentFolderPath = folderKey ?: File(path).parent
         _currentPath.value = path
@@ -922,10 +1116,20 @@ class PlaybackService : Service() {
         _neighbours.value = Neighbours()
         // The title/path/neighbours collector in onCreate refreshes the notification.
 
+        val openIdentity = identityKey ?: path
+        currentIdentity = openIdentity
         serviceScope.launch(Dispatchers.IO) {
-            val files = if (path.startsWith("/")) FolderPlaylist.list(path) else emptyList()
-            val index = files.indexOf(File(path).absolutePath)
-            val updated = Neighbours(previous = index > 0, next = index >= 0 && index < files.lastIndex)
+            val updated = if (com.vibeplayer.net.NetPlaylist.contains(openIdentity)) {
+                // P13: a network file plays within the folder or channel list it was opened from.
+                Neighbours(
+                    previous = com.vibeplayer.net.NetPlaylist.neighbour(openIdentity, forward = false) != null,
+                    next = com.vibeplayer.net.NetPlaylist.neighbour(openIdentity, forward = true) != null
+                )
+            } else {
+                val files = if (path.startsWith("/")) FolderPlaylist.list(path) else emptyList()
+                val index = files.indexOf(File(path).absolutePath)
+                Neighbours(previous = index > 0, next = index >= 0 && index < files.lastIndex)
+            }
             withContext(Dispatchers.Main.immediate) {
                 if (currentVideoPath == path) _neighbours.value = updated
             }
@@ -933,8 +1137,14 @@ class PlaybackService : Service() {
         // An fdclose://N path is owned by this open until it is handed to the engine; a superseded or
         // cancelled open closes it (unless a newer open uses the same path string).
         var handedToEngine = false
+        val isUrlOpen = com.vibeplayer.player.NetOptions.isUrl(path)
+        val isProxiedOpen = identityKey?.startsWith("content://${com.vibeplayer.net.NetFileProvider.authority(packageName)}/") == true
+        val isNetworkOpen = isUrlOpen || isProxiedOpen
+        val netOptions = com.vibeplayer.player.NetOptions.build(isUrlOpen, isProxiedOpen, netHints)
         loadJob = serviceScope.launch {
             val resolvedFolderKey = folderKey ?: (File(path).parent ?: "")
+            // The same folder may be opened as /sdcard/... or /storage/emulated/0/...: one key for the show settings.
+            val showFolderKey = com.vibeplayer.ui.normalizeMediaPath(resolvedFolderKey)
             // P7-02: key (File.exists/length), per-file row, folder row, app settings, and format detection in parallel,
             // none of it on the main thread; loadfile follows with everything at once.
             val keyDeferred = async(Dispatchers.IO) { computeKey(identityKey ?: path, sizeBytes) }
@@ -948,9 +1158,15 @@ class PlaybackService : Service() {
             val folderDeferred = async(Dispatchers.IO) {
                 if (resolvedFolderKey.isNotEmpty()) folderDao.getByPath(resolvedFolderKey) else null
             }
+            val showFolderDeferred = async(Dispatchers.IO) {
+                if (showFolderKey == resolvedFolderKey) null else if (showFolderKey.isNotEmpty()) folderDao.getByPath(showFolderKey) else null
+            }
             val settingsDeferred = async(Dispatchers.IO) { appSettingsRepository.appSettingsFlow.first() }
             val clipDeferred = async(Dispatchers.IO) {
-                VideoFormatDetector.detectClip(applicationContext, path, identityKey)
+                // P13: no probing over the network (MediaExtractor would download the start of the file once
+                // more); mpv finds the format itself and the default row applies.
+                if (isNetworkOpen) com.vibeplayer.player.ClipInfo(com.vibeplayer.player.VideoFormat.OTHER)
+                else VideoFormatDetector.detectClip(applicationContext, path, identityKey)
             }
             val formatDeferred = async { clipDeferred.await().format }
             // IO: the gpu-api query can create a temporary mpv handle, and the driver cache reads
@@ -974,7 +1190,10 @@ class PlaybackService : Service() {
             val isVulkanAvailable = vulkanDeferred.await()
             if (generation != loadGeneration || currentVideoPath != path) return@launch
 
-            val startPositionMs = if (startPositionOverride != null) {
+            var resumedAt = 0L
+            val startPositionMs = if (netHints?.live == true) {
+                0L // a live stream has no position to resume
+            } else if (startPositionOverride != null) {
                 Log.i("VP", "Resume: override starting from $startPositionOverride ms")
                 startPositionOverride
             } else if (startFromBeginning) {
@@ -987,6 +1206,7 @@ class PlaybackService : Service() {
                     0L
                 } else if (pos > 0L) {
                     Log.i("VP", "Resume: resuming from $pos ms for key $key")
+                    resumedAt = pos
                     pos
                 } else {
                     0L
@@ -1041,7 +1261,15 @@ class PlaybackService : Service() {
             val audioEnabled = fileChoice?.audioEnabled ?: true
             val subTrackId = fileChoice?.subTrackId
             val subEnabled = fileChoice?.subEnabled ?: true
-            val speed = fileSettings?.speed?.toDouble() ?: 1.0
+            // A file's own speed wins; a file left at 1x takes the folder's (show's) speed (P12-04).
+            val fileSpeed = fileSettings?.speed?.toDouble()?.takeIf { it != 1.0 }
+            val showSettings = showFolderDeferred.await() ?: folderSettings
+            val folderSpeed = showSettings?.speed?.toDouble()
+            val speed = fileSpeed ?: folderSpeed ?: 1.0
+            if (fileSpeed == null && folderSpeed != null) Log.i("VP", "Speed $folderSpeed from folder $resolvedFolderKey")
+            // Only a real folder (not a content:// open from another app) gets the Whole folder settings.
+            _folderShow.value = FolderShow(showFolderKey.takeIf { it.startsWith("/") }, showSettings?.speed, showSettings?.autoSkipChapters)
+            applyAutoSkip()
             val aspect = fileSettings?.aspect
             val subDelayMs = fileSettings?.subDelayMs ?: 0
             val audioDelayMs = fileSettings?.audioDelayMs ?: 0
@@ -1138,7 +1366,8 @@ class PlaybackService : Service() {
                 subDelayMs = subDelayMs,
                 audioDelayMs = audioDelayMs,
                 identity = identityKey ?: path,
-                clip = detectedClip
+                clip = detectedClip,
+                netOptions = netOptions
             )
             if (externalSub != null) {
                 val (subFdPath, subTitle) = externalSub
@@ -1148,6 +1377,9 @@ class PlaybackService : Service() {
                 playerEngine.addSubtitleTrack(fdPath = subFdPath, title = subTitle, select = selectExternal, sourceUri = externalSubUri)
                 Log.i("VP", "Reopening video: re-added external subtitle $externalSubUri ($subTitle, select=$selectExternal)")
             }
+            com.vibeplayer.net.NetPlaylist.item(identityKey ?: path)?.takeIf { it.subtitles.isNotEmpty() }?.let {
+                addNetSubtitles(it, path, generation)
+            }
             if (appSettings.subtitleFolders.isNotEmpty() && path.startsWith("/")) {
                 val rememberedTitle = if (fileSettings?.subEnabled != false) fileSettings?.subTrackTitle else null
                 autoLoadSubtitles(path, generation, appSettings.subtitleFolders, externalSubUri, rememberedTitle)
@@ -1155,6 +1387,16 @@ class PlaybackService : Service() {
             handedToEngine = true
             lastPathHandedToEngine = path
             currentKey = key
+            _currentKeyFlow.value = key
+            if (netHints?.live == true) liveKeys += key
+            if (resumedAt > 0L) {
+                _resumedFrom.value = ResumeInfo(path = path, positionMs = resumedAt, generation = generation)
+                // Gone for good after its time, so a recreated activity (rotation) does not show it again.
+                resumeChipJob = serviceScope.launch {
+                    delay(RESUME_CHIP_MS)
+                    _resumedFrom.value = null
+                }
+            }
             if (playAfterLoad) playerEngine.play()
         }
         loadJob?.invokeOnCompletion {
@@ -1299,6 +1541,22 @@ class PlaybackService : Service() {
      * Subtitle files next to [path] in the granted folders, added once the file has loaded (sub-add
      * then runs at once, one per file). A file whose title was the last chosen subtitle is selected.
      */
+    /** P13: subtitle files next to a network video (same name), offered in the Subtitles panel. */
+    private fun addNetSubtitles(item: com.vibeplayer.net.NetPlaylist.Item, path: String, generation: Long) {
+        serviceScope.launch(Dispatchers.IO) {
+            withTimeoutOrNull(AUTO_SUB_WAIT_MS) { playerEngine.state.first { it.durationMs > 0L } } ?: return@launch
+            for ((uri, name) in item.subtitles) {
+                if (generation != loadGeneration || currentVideoPath != path) return@launch
+                // Provider files are read (and converted to UTF-8) like any content:// subtitle; a URL is
+                // handed to mpv, which reads it with this file's headers.
+                val subPath = if (uri.startsWith("content://")) subtitleFiles.openForMpv(Uri.parse(uri), name) else uri
+                if (subPath == null) continue
+                playerEngine.addSubtitleTrack(subPath, name, select = false, sourceUri = uri.takeIf { it.startsWith("content://") })
+                Log.i("VP", "Network subtitle $name added")
+            }
+        }
+    }
+
     private fun autoLoadSubtitles(path: String, generation: Long, folders: List<String>, skipUri: String?, rememberedTitle: String?) {
         serviceScope.launch(Dispatchers.IO) {
             // The remembered file may be the same document under another URI form (picker document URI
@@ -1390,6 +1648,7 @@ class PlaybackService : Service() {
         if (benchmarkRun) { releaseWhenDone?.release(); return }
         val generation = loadGeneration
         val key = currentKey ?: run { releaseWhenDone?.release(); return }
+        if (key in liveKeys) { releaseWhenDone?.release(); return }
         val knownPos = engine.lastKnownPositionMs()
         val state = engine.state.value
         if (generation != loadGeneration || key != currentKey) { releaseWhenDone?.release(); return }
@@ -1433,11 +1692,9 @@ class PlaybackService : Service() {
                     val subTrackLang = existing?.subTrackLang ?: subTrack?.lang
                     val subEnabled = existing?.subEnabled ?: (currentSid != null)
 
-                    val speed = if (existing != null && existing.speed != 1.0f) {
-                        existing.speed
-                    } else {
-                        state.speed.toFloat()
-                    }
+                    // Only an explicit choice (persistSpeed) is the file's own speed: the playing speed may come
+                    // from the folder (P12-04), and saving it here would freeze it into the file.
+                    val speed = existing?.speed ?: 1.0f
 
                     val aspect = existing?.aspect ?: state.aspect
 
@@ -1479,7 +1736,7 @@ class PlaybackService : Service() {
     }
 
     private suspend fun savePositionSnapshot(key: String, positionMs: Long, state: PlayerState) {
-        if (benchmarkRun) return
+        if (benchmarkRun || key in liveKeys) return
         withContext(Dispatchers.IO) {
             val existing = dao.getByKey(key)
             val duration = if (state.durationMs > 0L) state.durationMs else (existing?.durationMs ?: 0L)

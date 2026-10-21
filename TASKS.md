@@ -811,3 +811,77 @@ audibly stronger in the bass without clipping; the mpv log shows the af change w
 rule), results ranked prefix / phrase / rest. *Accept*: a finished episode shows ✓ in the folder and search;
 "bocchi the rock" lists names that start with it first.
 
+## Phase 12: watching series (user request 2026-10-20)
+
+Built in a cloud session without the phone; `tools/shower_check.sh` runs the device checks (checks_p12.py) and
+`tools/overnight.sh` the long runs (P6-05, P8-04, full regression).
+
+**P12-01 Resume chip** — after a file opens at its saved position, "Resumed at 12:30 / Start over" for 8 s (bottom
+left); Start over seeks to 0. *Accept*: `p12_resume_chip` passes.
+
+**P12-02 Up next countdown** — at the end of a file with Auto-play next on, an "Up next" card with the next file's
+name counts down (Settings: Off, 5, 10, 15 s; default 5) with Play now and Cancel; seeking back or opening another
+file drops it; in PiP the card is hidden and the countdown still runs. *Accept*: `p12_up_next`, `autoplay` and
+`pip_autoadvance` pass.
+
+**P12-03 Bookmarks** — Room 6 `bookmarks` (file key, position, chapter label); More > Bookmarks: + Here, tap to
+jump, x to delete. *Accept*: `p12_bookmarks` passes; an update install over 0.7.0 keeps the history.
+
+**P12-04 Per-show settings** — folder_settings gains speed and autoSkipChapters. More > Whole folder: use the
+current speed for every file of the folder that has no speed of its own; auto-skip App / On / Off for the folder.
+*Accept*: `p12_folder_speed` and `p12_folder_lang` pass.
+
+**P12-05 Rename and delete** — long-press a video (folder view, search): Rename or Delete through MediaStore write /
+delete requests (the app only reads media); history and bookmarks move with a rename and go with a delete.
+*Accept*: by hand (MANUAL p12_browser_tools).
+
+**P12-06 Hidden folders** — long-press a folder > Hide; hidden folders are left out of the list, search and Continue
+Watching; Settings > Library > Hidden folders shows them again. *Accept*: by hand (MANUAL p12_browser_tools).
+
+**P12-07 Small fixes** — the engine reports the video size after the container rotation (`video-out-params/rotate`),
+so clips filmed upright open in portrait with a portrait PiP; Previous / Next line in the Subtitles panel (mpv
+`sub-seek`). *Accept*: `p12_rotated_clip`, `p12_sub_line` pass.
+
+**P12-08 Shaders in the player** — More > Shaders: Off / Anime4K A / B / C / GSR chips (saved as the setting, applied
+live by the service after the shader files are unpacked); Compare bypasses the chain (`glsl-shaders` empty) until
+tapped again or the next file; notes when Quality mode or Vulkan is needed, with Switch to Quality. *Accept*:
+`p12_shader_switch` passes; Compare visibly shows the unprocessed picture.
+
+**P12-09 Stats overlay** — adds VIDEO (size, codec), PIXFMT (hardware / software), COLOR (primaries / transfer),
+SHADERS (preset and passes, or bypassed / not active), A/V SYNC and CACHE. *Accept*: the rows read right on an
+H.264 file and on HEVC 10-bit (yuv420p10, bt.2020 / pq).
+
+**P12-10 Backup and restore** — Settings > Library: one zip (Room database after a WAL checkpoint, the two
+DataStore files); restore checks the zip (allowed names only, SQLite header, database version not newer than the
+app), replaces the files and restarts the process. *Accept*: by hand: back up, change a setting and a position,
+restore: both come back; a zip from elsewhere is refused with a reason.
+
+Considered and left out (2026-10-20 review of an outside feature list): network streaming and playlists (SPEC
+non-goals), AI upscaling, frame interpolation, plugins, cloud sync. Deferred: showing a shader's compile error on
+screen (needs the mpv log hook in mpv_jni.c, built on the owner's PC), custom shader import, a scaler choice for
+Quality mode.
+
+## Phase 13: network playback (user request 2026-10-21; SPEC.md "Network playback")
+
+Built in a cloud session without the phone. `tools/network_check.sh` runs the automatic part with a test
+server on the PC reached through `adb reverse`; the rest is by hand (devcheck MANUAL p13_*).
+
+**P13-01 Links** — http, https, HLS, DASH, ftp, rtsp, rtmp, udp, rtp, srt open in the player (FFmpeg with
+mbedtls), from Network > Open a link (recent links kept) and Open with (intent filters). Per-file mpv options:
+`cache=yes`, `network-timeout=30`, FFmpeg http reconnect, sign-in headers, user agent and referrer (NetOptions,
+%length% quoting); credentials hidden in logs; no MediaExtractor probe over the network. *Accept*:
+`p13_http_link` (seek through Range) and `p13_hls` pass; Open with from a browser plays.
+
+**P13-02 Saved sources** — Room 7 `network_sources`; passwords AES-GCM with an Android Keystore key. SFTP
+(JSch, host key accept-new), SMB 2/3 (smbj, share first in the path), FTP (Commons Net) read through
+NetFileProvider (proxy file descriptors, seekable); WebDAV (PROPFIND over a socket), HTTP listings, DLNA (SSDP,
+ContentDirectory Browse) and M3U played by URL with the sign-in header. *Accept*: by hand for each type.
+
+**P13-03 Network UI** — 🌐 in the library: Network screen (link, recent, saved with edit/delete, DLNA search
+and save), add/edit dialog per type, remote browser (folders in place, search in long lists, M3U groups as
+folders). Android 17 ACCESS_LOCAL_NETWORK asked on first visit. *Accept*: `p13_folder_next`, `p13_m3u_channels`.
+
+**P13-04 Playlists and subtitles** — NetPlaylist: next / previous, the notification and Up next follow the
+network listing; subtitle files with the video's name are offered (provider files converted to UTF-8, URLs
+read by mpv). *Accept*: `p13_folder_next` (next and the subtitle).
+

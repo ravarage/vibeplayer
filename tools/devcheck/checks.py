@@ -874,5 +874,7 @@ MANUAL = [
 
 # P4-15 / P11 / P8-02 checks register themselves (after MANUAL exists).
 from . import checks_p11  # noqa: E402,F401
+from . import checks_p12  # noqa: E402,F401
+from . import checks_p13  # noqa: E402,F401
 # no_fatal scans the whole run: keep it last.
 CHECKS.sort(key=lambda c: c[0] == "no_fatal")

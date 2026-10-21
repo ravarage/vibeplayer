@@ -75,6 +75,10 @@ class Phone:
         250 ms double-tap window, so they are not run back to back)."""
         self.sh(f"input tap {int(x)} {int(y)} & input tap {int(x)} {int(y)} & input tap {int(x)} {int(y)} & wait", 15)
 
+    def text(self, value):
+        """Types [value] into the focused field (URL characters only, see safety.py)."""
+        return self.sh(f"input text {value}")
+
     def swipe(self, x1, y1, x2, y2, ms=400):
         self.sh(f"input swipe {int(x1)} {int(y1)} {int(x2)} {int(y2)} {int(ms)}", 20)
 

@@ -130,4 +130,16 @@ class ShaderPresetTest {
     fun glesPropertyIsEmptyForAnime4k() {
         assertEquals("", ShaderPreset.ANIME4K_A.toGlslShadersProperty(PlaybackMode.QUALITY, "/shaders", Renderer.GLES))
     }
+
+    @Test
+    fun fsrcnnxAndRavuAreSingleFileVulkanOnlyPresets() {
+        assertEquals(listOf("FSRCNNX_x2_8-0-4-1.glsl"), ShaderPreset.FSRCNNX.getShaderFiles(PlaybackMode.QUALITY))
+        assertEquals(listOf("ravu-lite-ar-r4.hook"), ShaderPreset.RAVU.getShaderFiles(PlaybackMode.QUALITY))
+        for (p in listOf(ShaderPreset.FSRCNNX, ShaderPreset.RAVU)) {
+            assertTrue(p.unavailableOn(PlaybackMode.QUALITY, Renderer.GLES))
+            assertFalse(p.unavailableOn(PlaybackMode.QUALITY, Renderer.VULKAN))
+            assertEquals(emptyList<String>(), p.getShaderFiles(PlaybackMode.QUALITY, Renderer.GLES))
+            assertEquals(emptyList<String>(), p.getShaderFiles(PlaybackMode.EFFICIENT, Renderer.VULKAN))
+        }
+    }
 }

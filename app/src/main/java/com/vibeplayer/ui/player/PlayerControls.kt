@@ -104,6 +104,11 @@ fun PlayerControls(
     equalizer: com.vibeplayer.player.Equalizer = com.vibeplayer.player.Equalizer(),
     onPreviewEqualizer: (com.vibeplayer.player.Equalizer) -> Unit = {},
     onSaveEqualizer: (com.vibeplayer.player.Equalizer) -> Unit = {},
+    bookmarks: List<com.vibeplayer.data.db.Bookmark> = emptyList(),
+    onAddBookmark: (() -> Unit)? = null,
+    onDeleteBookmark: (com.vibeplayer.data.db.Bookmark) -> Unit = {},
+    folderShow: FolderShowControls? = null,
+    onSelectShader: ((com.vibeplayer.player.ShaderPreset) -> Unit)? = null,
     modifier: Modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout)
 ) {
     TrackRecomposition("PlayerControls")
@@ -128,9 +133,11 @@ fun PlayerControls(
     var showChapterSheet by remember { mutableStateOf(false) }
     var showMoreSheet by remember { mutableStateOf(false) }
     var showEqSheet by remember { mutableStateOf(false) }
+    var showBookmarkSheet by remember { mutableStateOf(false) }
+    val shaderUi by playerEngine.shaderUi.collectAsState()
 
     val anySheetOpen = showAudioTrackSheet || showSubTrackSheet || showSpeedSheet || showSyncSheet || showChapterSheet ||
-        showMoreSheet || showEqSheet
+        showMoreSheet || showEqSheet || showBookmarkSheet
     BackHandler(enabled = anySheetOpen) {
         showAudioTrackSheet = false
         showSubTrackSheet = false
@@ -139,6 +146,7 @@ fun PlayerControls(
         showChapterSheet = false
         showMoreSheet = false
         showEqSheet = false
+        showBookmarkSheet = false
         interactionEvents.value = System.currentTimeMillis()
     }
 
@@ -650,6 +658,10 @@ fun PlayerControls(
                     showSubTrackSheet = false
                     showSyncSheet = true
                 },
+                onSubSeek = { next ->
+                    interactionEvents.value = System.currentTimeMillis()
+                    playerEngine.subSeek(next)
+                },
                 onLoadSubtitle = if (onLoadSubtitle != null) {
                     {
                         showSubTrackSheet = false
@@ -668,6 +680,19 @@ fun PlayerControls(
                 onAudioDelay = { ms -> onSetAudioDelay?.invoke(ms) ?: playerEngine.setAudioDelay(ms) },
                 onDismiss = {
                     showSyncSheet = false
+                    interactionEvents.value = System.currentTimeMillis()
+                }
+            )
+        }
+
+        if (showBookmarkSheet && onAddBookmark != null) {
+            BookmarkSheet(
+                bookmarks = bookmarks,
+                onAdd = onAddBookmark,
+                onJump = { playerEngine.seekTo(it.positionMs, exact = true) },
+                onDelete = onDeleteBookmark,
+                onDismiss = {
+                    showBookmarkSheet = false
                     interactionEvents.value = System.currentTimeMillis()
                 }
             )
@@ -715,6 +740,24 @@ fun PlayerControls(
                 pictureAdjust = pictureAdjust,
                 onPreviewPicture = onPreviewPicture,
                 onSavePicture = onSavePicture,
+                bookmarkCount = bookmarks.size,
+                onOpenBookmarks = if (onAddBookmark != null) {
+                    {
+                        showMoreSheet = false
+                        showBookmarkSheet = true
+                    }
+                } else null,
+                folderShow = folderShow,
+                shaders = onSelectShader?.let { select ->
+                    ShaderControls(
+                        ui = shaderUi,
+                        qualityMode = playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY,
+                        vulkan = playerEngine.playbackConfig.renderer == com.vibeplayer.player.Renderer.VULKAN,
+                        onSelect = select,
+                        onCompare = { playerEngine.setShaderCompare(it) },
+                        onSwitchToQuality = onToggleMode
+                    )
+                },
                 quickActions = if (!compactBar) emptyList() else buildList {
                     val quality = playerEngine.playbackConfig.mode == com.vibeplayer.player.PlaybackMode.QUALITY
                     add(QuickAction("Speed ${HoldGesture.label(playerState.speed)}", "speed", selected = playerState.speed != 1.0) {

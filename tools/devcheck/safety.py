@@ -95,6 +95,10 @@ def _input(t):
         return
     if sub == "keyevent" and len(t) >= 3 and all(k in ALLOWED_KEYS for k in t[2:]):
         return
+    # P13: typing a test link into a text field: an http(s) URL in URL characters only (no spaces, quotes or
+    # shell syntax); any other text stays refused.
+    if sub == "text" and len(t) == 3 and re.match(r"^https?://[A-Za-z0-9:/._%~=?&-]{1,200}$", t[2]):
+        return
     raise Refused(f"input {' '.join(t[1:])} not allowed")
 
 

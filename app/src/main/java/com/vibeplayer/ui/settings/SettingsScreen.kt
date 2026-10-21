@@ -1,5 +1,6 @@
 package com.vibeplayer.ui.settings
 
+import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -49,9 +50,52 @@ fun SettingsScreen(
     settings: AppSettings,
     onUpdateSettings: (AppSettings) -> Unit,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hiddenFolders: List<com.vibeplayer.data.prefs.HiddenFolder> = emptyList(),
+    onUnhideFolder: (com.vibeplayer.data.prefs.HiddenFolder) -> Unit = {}
 ) {
     BackHandler(onBack = onBack)
+    var showHiddenFoldersDialog by remember { mutableStateOf(false) }
+    // P12-10 backup and restore
+    val backupScope = androidx.compose.runtime.rememberCoroutineScope()
+    var restoreCandidate by remember { mutableStateOf<com.vibeplayer.data.backup.Backup.Checked?>(null) }
+    var backupMessage by remember { mutableStateOf<String?>(null) }
+    val backupContext = androidx.compose.ui.platform.LocalContext.current
+    val exportBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) backupScope.launch {
+            backupMessage = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    backupContext.contentResolver.openOutputStream(uri)?.use { out ->
+                        val n = com.vibeplayer.data.backup.Backup.export(backupContext, out, com.vibeplayer.BuildConfig.VERSION_NAME)
+                        "Backup saved ($n files)"
+                    } ?: "Could not write the backup"
+                } catch (e: Exception) {
+                    "Backup failed: ${e.message}"
+                }
+            }
+        }
+    }
+    val importBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) backupScope.launch {
+            val (checked, reason) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    backupContext.contentResolver.openInputStream(uri)?.use { input ->
+                        com.vibeplayer.data.backup.Backup.unpack(
+                            input, java.io.File(backupContext.cacheDir, "restore"),
+                            maxDbVersion = com.vibeplayer.data.db.AppDatabase.VERSION
+                        )
+                    } ?: (null to "cannot read the file")
+                } catch (e: Exception) {
+                    null to (e.message ?: "cannot read the file")
+                }
+            }
+            if (checked != null) restoreCandidate = checked else backupMessage = "Cannot restore: $reason"
+        }
+    }
 
     var showPlaybackModeDialog by remember { mutableStateOf(false) }
     var showRendererDialog by remember { mutableStateOf(false) }
@@ -62,6 +106,7 @@ fun SettingsScreen(
     var showSubLangDialog by remember { mutableStateOf(false) }
     var showSubtitleModeDialog by remember { mutableStateOf(false) }
     var showVolumeBoostDialog by remember { mutableStateOf(false) }
+    var showNextCountdownDialog by remember { mutableStateOf(false) }
     var showSubEncodingDialog by remember { mutableStateOf(false) }
     var showSubColorDialog by remember { mutableStateOf(false) }
     var showSubOutlineDialog by remember { mutableStateOf(false) }
@@ -158,6 +203,15 @@ fun SettingsScreen(
                     onUpdateSettings(settings.copy(autoPlayNext = checked))
                 }
             )
+
+            if (settings.autoPlayNext) {
+                SettingsClickableRow(
+                    title = "Next video countdown",
+                    subtitle = nextCountdownLabel(settings.nextCountdownSeconds),
+                    description = "Shows an \"Up next\" card with Play now and Cancel before the next file starts",
+                    onClick = { showNextCountdownDialog = true }
+                )
+            }
 
             SettingsSwitchRow(
                 title = "Auto-skip openings and endings",
@@ -362,6 +416,42 @@ fun SettingsScreen(
                 onClick = { showShaderDialog = true }
             )
 
+            SettingsSwitchRow(
+                title = "Deband",
+                description = "Smooths colour banding in dark scenes and gradients (adds a light grain). Quality mode only; off costs nothing",
+                checked = settings.deband,
+                onCheckedChange = { onUpdateSettings(settings.copy(deband = it)) }
+            )
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+
+            // Category: Library
+            SettingsSectionHeader(title = "Library")
+
+            SettingsClickableRow(
+                title = "Hidden folders",
+                subtitle = if (hiddenFolders.isEmpty()) "None" else hiddenFolders.joinToString(", ") { it.name },
+                description = "Long-press a folder in the list to hide it; show it again here",
+                onClick = { if (hiddenFolders.isNotEmpty()) showHiddenFoldersDialog = true }
+            )
+
+            SettingsClickableRow(
+                title = "Back up history and settings",
+                subtitle = "Positions, tracks, bookmarks, folder settings and every setting, in one file",
+                description = "Keep it somewhere safe; Restore brings it back after a reinstall",
+                onClick = { exportBackup.launch(com.vibeplayer.data.backup.Backup.fileName(System.currentTimeMillis())) }
+            )
+
+            SettingsClickableRow(
+                title = "Restore from backup",
+                subtitle = "Replaces the current history and settings; the app restarts",
+                description = "Pick a vibeplayer-backup-*.zip made by Back up",
+                onClick = { importBackup.launch(arrayOf("application/zip", "application/octet-stream")) }
+            )
+
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -504,6 +594,69 @@ fun SettingsScreen(
                     Text("Close")
                 }
             }
+        )
+    }
+
+    restoreCandidate?.let { checked ->
+        AlertDialog(
+            onDismissRequest = { restoreCandidate = null },
+            title = { Text("Restore this backup?") },
+            text = { Text("Your current history, bookmarks and settings are replaced by the ones in the backup. Vibe Player restarts.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    restoreCandidate = null
+                    backupScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        com.vibeplayer.data.backup.Backup.restoreAndRestart(backupContext, checked)
+                    }
+                }) { Text("Restore") }
+            },
+            dismissButton = { TextButton(onClick = { restoreCandidate = null }) { Text("Cancel") } }
+        )
+    }
+
+    backupMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { backupMessage = null },
+            text = { Text(msg) },
+            confirmButton = { TextButton(onClick = { backupMessage = null }) { Text("OK") } }
+        )
+    }
+
+    if (showHiddenFoldersDialog) {
+        AlertDialog(
+            onDismissRequest = { showHiddenFoldersDialog = false },
+            title = { Text("Hidden folders") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    hiddenFolders.forEach { folder ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = folder.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                onUnhideFolder(folder)
+                                if (hiddenFolders.size <= 1) showHiddenFoldersDialog = false
+                            }) {
+                                Text("Show")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showHiddenFoldersDialog = false }) { Text("Done") } }
+        )
+    }
+
+    if (showNextCountdownDialog) {
+        SettingsChoiceDialog(
+            title = "Next video countdown",
+            options = com.vibeplayer.data.prefs.AppSettingsRepository.NEXT_COUNTDOWN_CHOICES,
+            selected = settings.nextCountdownSeconds,
+            label = ::nextCountdownLabel,
+            description = { null },
+            onSelect = { onUpdateSettings(settings.copy(nextCountdownSeconds = it)) },
+            onDismiss = { showNextCountdownDialog = false }
         )
     }
 
@@ -1038,6 +1191,8 @@ fun SettingsInfoRow(
 }
 
 private fun volumeBoostLabel(max: Int): String = if (max <= 100) "Off" else "Up to $max %"
+
+private fun nextCountdownLabel(seconds: Int): String = if (seconds <= 0) "Off (play at once)" else "$seconds s"
 
 /** A radio list that closes on a choice; shared by the newer settings. */
 @Composable

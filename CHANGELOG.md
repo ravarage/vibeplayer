@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - unreleased (versionCode 6)
+
+Built in a cloud session without the phone; `tools/shower_check.sh` runs the device checks.
+
+### Added
+- **Resume chip (P12-01)**: a video opened at its saved position shows "Resumed at 12:30" with Start over for 8 s.
+- **Up next countdown (P12-02)**: when a video ends and Auto-play next is on, a card counts down to the next file
+  (Settings: Off, 5, 10 or 15 s) with Play now and Cancel.
+- **Bookmarks (P12-03)**: More > Bookmarks saves spots in a video (named after the chapter), jumps back, deletes.
+- **Per-show settings (P12-04)**: More > Whole folder uses the current speed for every file of the folder, and
+  turns auto-skip of openings and endings on or off for that folder only.
+- **Rename and delete (P12-05)**: long-press a video in the browser; Android asks for permission first. Position,
+  tracks and bookmarks follow a renamed file.
+- **Hidden folders (P12-06)**: long-press a folder to hide it; Settings > Library > Hidden folders shows it again.
+- **Previous / next subtitle line**: two buttons in the Subtitles panel to hear a line again or skip ahead.
+- **Shaders in the player (P12-08)**: More > Shaders switches between Off, Anime4K A/B/C and GSR while watching (kept
+  as the setting), with Compare to see the original picture; it says when Quality mode or Vulkan is needed.
+- **Fuller stats overlay (P12-09)**: resolution and codec, pixel format (hardware and software), colour primaries
+  and transfer, active shaders and passes, A/V sync and the demuxer cache.
+- **Backup and restore (P12-10)**: Settings > Library saves positions, tracks, bookmarks, folder settings and all
+  settings to one zip and restores them (the app restarts), for example after a reinstall.
+- **Network playback (P13)**: the 🌐 button in the library opens Network:
+  - open a link (http, https, HLS .m3u8, DASH, FTP, RTSP, RTMP, UDP, SRT), also via Open with from other apps;
+  - saved sources: SFTP, SMB / Windows shares, FTP, WebDAV (Nextcloud, NAS), web folder listings, DLNA / UPnP
+    media servers found on the Wi-Fi, and M3U / IPTV playlists with groups, user agent and referrer;
+  - next / previous, Up next and matching subtitles work inside a network folder or channel list;
+  - passwords are encrypted with an Android Keystore key and kept out of URLs and logs; Android 17's local
+    network permission is asked on the Network screen.
+- **More upscalers and deband (opt-in)**: FSRCNNX x2 (a small neural upscaler, good on live action) and RAVU
+  Lite (a fast learned prescaler) as shader presets, Vulkan renderer only like Anime4K; a Deband switch for
+  Quality mode. All off by default, so playback is unchanged unless they are picked.
+- **Device scripts**: `tools/network_check.sh` (P13 checks with a test server on the PC through adb reverse),
+  `tools/shower_check.sh` (the P12 checks, about 10 minutes) and `tools/overnight.sh` (30-minute
+  stability runs, the shader benchmark and the full regression).
+
+### Fixed
+- Videos filmed upright on a phone (stored landscape with a 90 degree rotation flag) opened in landscape and got a
+  landscape mini player; the player now uses the size after rotation.
+
+### Changed
+- Gradle 9.8.2; CI runs on release tags and by hand only.
+
 ## [0.7.0] - 2026-10-20 (versionCode 5)
 
 Every automatic device check passes on the phone (2026-10-20). The by-ear and by-eye checks listed in

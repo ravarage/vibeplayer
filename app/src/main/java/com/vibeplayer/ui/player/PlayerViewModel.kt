@@ -74,6 +74,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun previewEqualizer(eq: com.vibeplayer.player.Equalizer) = playerEngine.setEqualizer(eq)
 
+    /** P12-08: saves the shader preset; the service applies it to the playing file and the next ones. */
+    fun selectShaderPreset(preset: com.vibeplayer.player.ShaderPreset) {
+        val option = com.vibeplayer.data.prefs.ShaderPresetOption.valueOf(preset.name)
+        viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setShaderPreset(option) }
+    }
+
     fun saveEqualizer(eq: com.vibeplayer.player.Equalizer) {
         playerEngine.setEqualizer(eq)
         viewModelScope.launch(Dispatchers.IO) { appSettingsRepository.setEqualizer(eq) }
@@ -109,7 +115,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val title: String? = null,
         val playbackConfig: PlaybackConfig? = null,
         val shaderPreset: ShaderPreset? = null,
-        val startPositionOverride: Long? = null
+        val startPositionOverride: Long? = null,
+        val netHints: com.vibeplayer.player.NetHints? = null
     )
     @Volatile private var pendingOpen: PendingOpen? = null
 
@@ -122,6 +129,25 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setSleepTimer(timer: com.vibeplayer.playback.SleepTimer?) {
         (service ?: PlaybackService.currentInstance)?.setSleepTimer(timer)
     }
+
+    private val _resumedFrom = MutableStateFlow<com.vibeplayer.playback.ResumeInfo?>(null)
+    val resumedFrom: StateFlow<com.vibeplayer.playback.ResumeInfo?> = _resumedFrom.asStateFlow()
+    private val _upNext = MutableStateFlow<com.vibeplayer.playback.UpNext?>(null)
+    val upNext: StateFlow<com.vibeplayer.playback.UpNext?> = _upNext.asStateFlow()
+
+    private val _bookmarks = MutableStateFlow<List<com.vibeplayer.data.db.Bookmark>>(emptyList())
+    val bookmarks: StateFlow<List<com.vibeplayer.data.db.Bookmark>> = _bookmarks.asStateFlow()
+    private val _folderShow = MutableStateFlow(com.vibeplayer.playback.FolderShow())
+    val folderShow: StateFlow<com.vibeplayer.playback.FolderShow> = _folderShow.asStateFlow()
+
+    fun addBookmark() { (service ?: PlaybackService.currentInstance)?.addBookmark() }
+    fun deleteBookmark(id: Long) { (service ?: PlaybackService.currentInstance)?.deleteBookmark(id) }
+    fun setFolderSpeed(speed: Float?) { (service ?: PlaybackService.currentInstance)?.setFolderSpeed(speed) }
+    fun setFolderAutoSkip(on: Boolean?) { (service ?: PlaybackService.currentInstance)?.setFolderAutoSkip(on) }
+
+    fun startOver() { (service ?: PlaybackService.currentInstance)?.startOver() }
+    fun playUpNext() { (service ?: PlaybackService.currentInstance)?.playUpNext() }
+    fun cancelUpNext() { (service ?: PlaybackService.currentInstance)?.cancelUpNext() }
 
     private val _neighbours = MutableStateFlow(Neighbours())
     val neighbours: StateFlow<Neighbours> = _neighbours.asStateFlow()
@@ -148,13 +174,25 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 launch {
                     s.sleepTimer.collect { _sleepTimer.value = it }
                 }
+                launch {
+                    s.resumedFrom.collect { _resumedFrom.value = it }
+                }
+                launch {
+                    s.upNext.collect { _upNext.value = it }
+                }
+                launch {
+                    s.bookmarks.collect { _bookmarks.value = it }
+                }
+                launch {
+                    s.folderShow.collect { _folderShow.value = it }
+                }
             }
             pendingOpen?.let { req ->
                 pendingOpen = null
                 s.openVideo(
                     req.path, req.sizeBytes, req.identityKey, req.folderKey,
                     req.startFromBeginning, req.playAfterLoad, req.title,
-                    req.playbackConfig, req.shaderPreset, req.startPositionOverride
+                    req.playbackConfig, req.shaderPreset, req.startPositionOverride, netHints = req.netHints
                 )
             }
         }
@@ -215,14 +253,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         title: String? = null,
         playbackConfig: PlaybackConfig? = null,
         shaderPreset: ShaderPreset? = null,
-        startPositionOverride: Long? = null
+        startPositionOverride: Long? = null,
+        netHints: com.vibeplayer.player.NetHints? = null
     ) {
         _currentPath.value = path
         val active = service ?: PlaybackService.currentInstance
         if (active != null) {
-            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride)
+            active.openVideo(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride, netHints = netHints)
         } else {
-            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride)
+            pendingOpen = PendingOpen(path, sizeBytes, identityKey, folderKey, startFromBeginning, playAfterLoad, title, playbackConfig, shaderPreset, startPositionOverride, netHints)
         }
     }
 

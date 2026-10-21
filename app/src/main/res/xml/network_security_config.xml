@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P13: home servers, NAS web shares, DLNA and most IPTV lists are plain http: allow it. mpv/FFmpeg sockets
+     are not covered by this file; it applies to the listings and playlists read by the app itself. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

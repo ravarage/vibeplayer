@@ -75,6 +75,11 @@ fun DebugOverlay(
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            val res = if (stats.videoW > 0) "${stats.videoW}x${stats.videoH}" else "?"
+            DebugRow("VIDEO", listOfNotNull(res, stats.videoCodec).joinToString(" "))
+            stats.pixelFormat?.let { DebugRow("PIXFMT", it) }
+            stats.colors?.let { DebugRow("COLOR", it) }
+            DebugRow("SHADERS", stats.shaders ?: "off")
             DebugRow("VO", stats.vo.ifEmpty { "unknown" })
             DebugRow("GPU API", stats.gpuApi.ifEmpty { "unknown" })
             DebugRow("GPU CTX", stats.gpuContext.ifEmpty { "unknown" })
@@ -93,6 +98,8 @@ fun DebugOverlay(
 
             DebugRow("DROPS (VO)", "${stats.frameDropCount}")
             DebugRow("DROPS (DEC)", "${stats.decoderFrameDropCount}")
+            DebugRow("A/V SYNC", com.vibeplayer.player.StatsText.seconds(stats.avsyncSec))
+            DebugRow("CACHE", com.vibeplayer.player.StatsText.seconds(stats.cacheSec))
             val vkErr = stats.lastVulkanError
             if (!vkErr.isNullOrEmpty()) {
                 DebugRow("VK ERR", vkErr)

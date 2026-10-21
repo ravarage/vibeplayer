@@ -17,8 +17,15 @@ ksp = "2.3.12"
 datastore = "1.2.1"
 robolectric = "4.17"
 roborazzi = "1.76.0"
+# P13 network sources
+jsch = "2.28.8"
+smbj = "0.15.0"
+commons-net = "3.13.0"
 
 [libraries]
+jsch = { group = "com.github.mwiede", name = "jsch", version.ref = "jsch" }
+smbj = { group = "com.hierynomus", name = "smbj", version.ref = "smbj" }
+commons-net = { group = "commons-net", name = "commons-net", version.ref = "commons-net" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }

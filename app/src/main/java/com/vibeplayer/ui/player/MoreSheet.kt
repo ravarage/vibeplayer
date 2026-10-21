@@ -34,6 +34,24 @@ import com.vibeplayer.player.PictureAdjust
 import com.vibeplayer.playback.SleepTimer
 import kotlinx.coroutines.delay
 
+/** P12-04: speed and auto-skip saved for the folder (a show), and the setters. */
+data class FolderShowControls(
+    val show: com.vibeplayer.playback.FolderShow = com.vibeplayer.playback.FolderShow(),
+    val currentSpeed: Double = 1.0,
+    val onSetSpeed: (Float?) -> Unit = {},
+    val onSetAutoSkip: (Boolean?) -> Unit = {}
+)
+
+/** P12-08: switch the shader preset while watching and compare with the original picture. */
+data class ShaderControls(
+    val ui: com.vibeplayer.player.ShaderUi = com.vibeplayer.player.ShaderUi(),
+    val qualityMode: Boolean = false,
+    val vulkan: Boolean = false,
+    val onSelect: (com.vibeplayer.player.ShaderPreset) -> Unit = {},
+    val onCompare: (Boolean) -> Unit = {},
+    val onSwitchToQuality: (() -> Unit)? = null
+)
+
 /** A button that moves into the More panel when the top bar is narrow (portrait). */
 data class QuickAction(val label: String, val tag: String, val selected: Boolean = false, val onClick: () -> Unit)
 
@@ -54,7 +72,11 @@ fun MoreSheet(
     quickActions: List<QuickAction> = emptyList(),
     pictureAdjust: PictureAdjust = PictureAdjust(),
     onPreviewPicture: (PictureAdjust) -> Unit = {},
-    onSavePicture: (PictureAdjust) -> Unit = {}
+    onSavePicture: (PictureAdjust) -> Unit = {},
+    bookmarkCount: Int = 0,
+    onOpenBookmarks: (() -> Unit)? = null,
+    folderShow: FolderShowControls? = null,
+    shaders: ShaderControls? = null
 ) {
     TrackRecomposition("MoreSheet")
     // The countdown in the sleep row ticks once a second while the panel is open.
@@ -137,6 +159,26 @@ fun MoreSheet(
                 }
             )
         }
+        if (onOpenBookmarks != null) {
+            item {
+                TrackRow(
+                    title = "Bookmarks",
+                    subtitle = if (bookmarkCount == 0) "Save spots in this video" else "$bookmarkCount saved",
+                    isSelected = false,
+                    onClick = onOpenBookmarks,
+                    modifier = Modifier.semantics {
+                        contentDescription = "bookmarks"
+                        testTag = "bookmarks"
+                    }
+                )
+            }
+        }
+        if (folderShow != null && folderShow.show.folderPath != null) {
+            item { FolderShowSection(folderShow) }
+        }
+        if (shaders != null) {
+            item { ShaderSection(shaders) }
+        }
         item {
             PictureSection(pictureAdjust, onPreviewPicture, onSavePicture)
         }
@@ -217,5 +259,106 @@ private fun PictureSlider(label: String, value: Int, onChange: (Int) -> Unit, on
             textAlign = TextAlign.End,
             modifier = Modifier.width(36.dp)
         )
+    }
+}
+
+/** "This folder": a speed and auto-skip for every file of a show (P12-04). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FolderShowSection(c: FolderShowControls) {
+    val folderName = c.show.folderPath?.substringAfterLast('/')?.ifEmpty { null } ?: "this folder"
+    val speed = c.currentSpeed.toFloat()
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        PanelSectionLabel("Whole folder: $folderName")
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            val folderSpeed = c.show.speed
+            when {
+                folderSpeed != null && folderSpeed == speed ->
+                    PanelChip(text = "Speed ${HoldGesture.label(speed.toDouble())} for all ✓", selected = true, tag = "folder_speed_clear",
+                        onClick = { c.onSetSpeed(null) })
+                speed != 1f ->
+                    PanelChip(text = "Use ${HoldGesture.label(speed.toDouble())} for all", tag = "folder_speed_set",
+                        onClick = { c.onSetSpeed(speed) })
+                folderSpeed != null ->
+                    PanelChip(text = "Folder speed ${HoldGesture.label(folderSpeed.toDouble())}: clear", tag = "folder_speed_clear",
+                        onClick = { c.onSetSpeed(null) })
+                else -> Text(
+                    text = "Change the speed, then use it for every file here",
+                    fontSize = 11.sp,
+                    color = PanelColors.secondaryText,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(text = "Auto-skip intro", fontSize = 12.sp, color = Color.White, modifier = Modifier.weight(1f))
+            PanelChip(text = "App", selected = c.show.autoSkipChapters == null, tag = "folder_skip_default",
+                onClick = { c.onSetAutoSkip(null) })
+            PanelChip(text = "On", selected = c.show.autoSkipChapters == true, tag = "folder_skip_on",
+                onClick = { c.onSetAutoSkip(true) })
+            PanelChip(text = "Off", selected = c.show.autoSkipChapters == false, tag = "folder_skip_off",
+                onClick = { c.onSetAutoSkip(false) })
+        }
+    }
+}
+
+/** Shader presets and an original/processed compare (P12-08). Shaders run in Quality mode; Anime4K on Vulkan only. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ShaderSection(c: ShaderControls) {
+    val preset = c.ui.preset
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        PanelSectionLabel("Shaders")
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            com.vibeplayer.player.ShaderPreset.entries.forEach { p ->
+                val label = when (p) {
+                    com.vibeplayer.player.ShaderPreset.NONE -> "Off"
+                    com.vibeplayer.player.ShaderPreset.ANIME4K_A -> "Anime4K A"
+                    com.vibeplayer.player.ShaderPreset.ANIME4K_B -> "Anime4K B"
+                    com.vibeplayer.player.ShaderPreset.ANIME4K_C -> "Anime4K C"
+                    com.vibeplayer.player.ShaderPreset.SNAPDRAGON_GSR -> "GSR"
+                    com.vibeplayer.player.ShaderPreset.FSRCNNX -> "FSRCNNX"
+                    com.vibeplayer.player.ShaderPreset.RAVU -> "RAVU"
+                }
+                PanelChip(text = label, selected = p == preset, tag = "shader_${p.name.lowercase()}", onClick = { c.onSelect(p) })
+            }
+            if (preset != com.vibeplayer.player.ShaderPreset.NONE && c.qualityMode) {
+                PanelChip(
+                    text = if (c.ui.showingOriginal) "◐ Showing original" else "◐ Compare",
+                    selected = c.ui.showingOriginal,
+                    tag = "shader_compare",
+                    onClick = { c.onCompare(!c.ui.showingOriginal) }
+                )
+            }
+        }
+        val note = when {
+            preset == com.vibeplayer.player.ShaderPreset.NONE -> null
+            !c.qualityMode -> "Shaders run in Quality mode only"
+            preset.vulkanOnly && !c.vulkan -> "${if (preset.isAnime4K) "Anime4K" else preset.displayName} needs the Vulkan renderer"
+            else -> null
+        }
+        if (note != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = note, fontSize = 11.sp, color = PanelColors.secondaryText, modifier = Modifier.weight(1f))
+                if (!c.qualityMode && c.onSwitchToQuality != null) {
+                    PanelChip(text = "Switch to Quality", tag = "shader_quality", onClick = c.onSwitchToQuality)
+                }
+            }
+        }
     }
 }
