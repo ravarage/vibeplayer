@@ -92,6 +92,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
 
+    // P13 network sources: SFTP, SMB 2/3, FTP (HTTP, WebDAV, DLNA and M3U use the platform's HttpURLConnection)
+    implementation(libs.jsch)
+    implementation(libs.smbj)
+    implementation(libs.commons.net)
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)

@@ -8,7 +8,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [FileSettings::class, FolderSettings::class, Bookmark::class],
+    entities = [FileSettings::class, FolderSettings::class, Bookmark::class, com.vibeplayer.net.NetSource::class],
     version = AppDatabase.VERSION,
     exportSchema = true
 )
@@ -17,10 +17,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun fileSettingsDao(): FileSettingsDao
     abstract fun folderSettingsDao(): FolderSettingsDao
     abstract fun bookmarkDao(): BookmarkDao
+    abstract fun netSourceDao(): com.vibeplayer.net.NetSourceDao
 
     companion object {
         /** Schema version (also the newest a backup may have, P12-10). */
-        const val VERSION = 6
+        const val VERSION = 7
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -86,6 +87,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** P13: saved network sources (password encrypted, see com.vibeplayer.net.Secrets). */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `network_sources` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL, `name` TEXT NOT NULL, `host` TEXT NOT NULL, `port` INTEGER NOT NULL, `path` TEXT NOT NULL, `username` TEXT NOT NULL, `secret` TEXT, `createdAt` INTEGER NOT NULL)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -93,7 +101,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vibeplayer.db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build().also { INSTANCE = it }
             }
         }

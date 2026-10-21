@@ -9,3 +9,21 @@
 
 # Compose call sites are statically rewritten by the Compose compiler. The
 # Compose artifacts provide their own consumer rules; no broad Compose keep is needed.
+
+# P13 network sources.
+# JSch loads its ciphers, key exchanges and MACs by class name from its config.
+-keep class com.jcraft.jsch.** { *; }
+-dontwarn com.jcraft.jsch.**
+-dontwarn org.ietf.jgss.**
+# smbj: mbassador dispatches events to @Handler methods by reflection; BouncyCastle algorithms
+# (MD4 for NTLM, AES-CMAC for SMB 3 signing) are looked up by name.
+-keep class com.hierynomus.** { *; }
+-keep class net.engio.mbassy.** { *; }
+-keep class org.bouncycastle.jcajce.provider.** { *; }
+-keep class org.bouncycastle.jce.provider.** { *; }
+-dontwarn javax.el.**
+-dontwarn org.slf4j.**
+-dontwarn org.bouncycastle.**
+-dontwarn javax.naming.**
+# Room entity outside data.db (P13)
+-keep class com.vibeplayer.net.NetSource { *; }

@@ -6,7 +6,8 @@ object WebDav {
 
     /**
      * Entries of the folder [folderHref] (absolute path on the server, e.g. "/remote.php/dav/files/me/Movies/"),
-     * without the folder itself. Each entry's path is its href, decoded.
+     * without the folder itself. Each entry's path is its href as the server wrote it (still %-encoded, so it
+     * can be requested again); the name is decoded.
      */
     fun parse(xml: String, folderHref: String): List<RemoteEntry> {
         val root = Xml.parse(xml) ?: return emptyList()
@@ -16,12 +17,13 @@ object WebDav {
             val hrefRaw = Xml.text(resp, "href") ?: continue
             val href = decodePath(hrefRaw)
             if (normalize(href) == self) continue
+            val rawPath = if (hrefRaw.contains("://")) "/" + hrefRaw.substringAfter("://").substringAfter('/', "") else hrefRaw
             val prop = Xml.all(resp, "prop").firstOrNull()
             val isDir = prop?.let { Xml.all(it, "collection").isNotEmpty() } ?: hrefRaw.endsWith("/")
             val size = prop?.let { Xml.text(it, "getcontentlength")?.toLongOrNull() } ?: -1L
             val name = prop?.let { Xml.text(it, "displayname") }?.ifBlank { null }
                 ?: href.trimEnd('/').substringAfterLast('/')
-            out += RemoteEntry(name = name, path = href, isDir = isDir, size = size)
+            out += RemoteEntry(name = name, path = rawPath, isDir = isDir, size = size)
         }
         return out
     }
