@@ -132,7 +132,12 @@ else
   echo "WARNING: the app's user id cannot reach the server (nc: $(tail -c 200 "$OUT/probe.txt" | tr '\r\n' '  '))"
   echo "  local network permission: $(adb shell dumpsys package com.vibeplayer | tr -d '\r' | grep -o 'ACCESS_LOCAL_NETWORK: granted=[a-z]*' | head -1)"
   echo "  background data: $(adb shell cmd netpolicy get restrict-background 2>&1 | tr -d '\r')"
-  echo "  check Settings > Apps > Vibe Player > Mobile data and Wi-Fi (network access on)"
+  if [ "$(adb shell settings get global restricted_networking_mode 2>/dev/null | tr -d '\r')" = 1 ]; then
+    echo "  CAUSE: the phone's restricted networking mode is on (new apps get no network until allowed)."
+    echo "  Fix: Settings > Apps > Vibe Player > Mobile data and Wi-Fi > turn on 'Network access', then rerun."
+  else
+    echo "  check Settings > Apps > Vibe Player > Mobile data and Wi-Fi (network access on)"
+  fi
 fi
 
 say "Device checks (P13)"

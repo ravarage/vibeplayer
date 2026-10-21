@@ -13,7 +13,7 @@ SV=$!
 trap 'kill $SV 2>/dev/null; adb reverse --remove tcp:$PORT >/dev/null 2>&1' EXIT
 sleep 1
 adb reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
-UID_=$(adb shell dumpsys package $PKG | tr -d '\r' | grep -o 'userId=[0-9]*' | head -1 | cut -d= -f2)
+UID_=$(adb shell cmd package list packages -U $PKG | tr -d '\r' | grep -o 'uid:[0-9]*' | head -1 | cut -d: -f2)
 echo "app uid: $UID_"
 
 # reach <label> <host> <port> [run-as]: nc's exit code and message. "Timeout" means the packets are dropped;
