@@ -114,9 +114,14 @@ class SftpFs(
     }
 
     private class HostKeyPrompt(private val pw: String) : com.jcraft.jsch.UserInfo, com.jcraft.jsch.UIKeyboardInteractive {
+        // The password is offered once per method: JSch asks again after a refusal, and saying yes every time
+        // repeats the wrong password until the server disconnects ("Too many authentication failures").
+        private var passwordAsked = false
+        private var keyboardAsked = false
+
         override fun getPassphrase(): String? = null
         override fun getPassword(): String = pw
-        override fun promptPassword(message: String?) = true
+        override fun promptPassword(message: String?): Boolean = !passwordAsked.also { passwordAsked = true }
         override fun promptPassphrase(message: String?) = false
 
         /** Yes only to "authenticity of host ... can't be established" (first use); no to a changed key. */
@@ -127,13 +132,17 @@ class SftpFs(
         override fun showMessage(message: String?) {}
         override fun promptKeyboardInteractive(
             destination: String?, name: String?, instruction: String?, prompt: Array<out String>?, echo: BooleanArray?
-        ): Array<String> = Array(prompt?.size ?: 0) { pw }
+        ): Array<String>? = if (keyboardAsked) null else { keyboardAsked = true; Array(prompt?.size ?: 0) { pw } }
     }
 
     companion object {
         /** A friendlier message for the common failures. */
         fun explain(e: Throwable): String = when {
-            e.message?.contains("Auth fail", ignoreCase = true) == true -> "SFTP: sign-in refused; check the user and password"
+            e.message?.contains("Auth fail", ignoreCase = true) == true ||
+                e.message?.contains("Too many authentication failures", ignoreCase = true) == true ||
+                // the password was offered once and refused (HostKeyPrompt does not repeat it)
+                e.message?.contains("Auth cancel", ignoreCase = true) == true ->
+                "SFTP: sign-in refused; check the user and password"
             e.javaClass.simpleName == "JSchChangedHostKeyException" || e.message?.contains("HostKey has been changed", ignoreCase = true) == true ->
                 "SFTP: the server's key changed since the first connection; if that is expected, remove and add the source again"
             e.message?.contains("reject HostKey", ignoreCase = true) == true -> "SFTP: the server's key was not accepted"

@@ -33,6 +33,7 @@ object HttpIndex {
             if (!seen.add(path)) continue
             val isDir = path.endsWith("/")
             val name = java.net.URLDecoder.decode(rest.trimEnd('/').replace("+", "%2B"), "UTF-8")
+            if (name.startsWith(".")) continue // hidden files and folders, as on the other sources
             if (!isDir && !MediaNames.isVideo(name) && !MediaNames.isPlaylist(name) && !MediaNames.isSubtitle(name)) continue
             out += RemoteEntry(name = name, path = abs, isDir = isDir, playUrl = if (isDir) null else abs)
         }

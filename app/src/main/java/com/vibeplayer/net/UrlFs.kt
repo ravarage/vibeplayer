@@ -19,7 +19,8 @@ class WebDavFs(private val url: String, user: String, password: String) : Remote
         val reply = Http.propfind(origin + path, auth, WebDav.PROPFIND_BODY)
         Http.check(reply, "WebDAV")
         return MediaNames.sort(
-            WebDav.parse(reply.text, path).filter { it.isDir || MediaNames.isVideo(it.name) || MediaNames.isSubtitle(it.name) }
+            WebDav.parse(reply.text, path)
+                .filter { !it.name.startsWith(".") && (it.isDir || MediaNames.isVideo(it.name) || MediaNames.isSubtitle(it.name)) }
                 .map { if (it.isDir) it else it.copy(playUrl = origin + it.path, headers = auth) }
         )
     }
