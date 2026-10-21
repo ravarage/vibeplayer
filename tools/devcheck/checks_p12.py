@@ -61,6 +61,28 @@ def _find_desc(ctx, desc, tries=4, gap=0.8):
     return None
 
 
+def _find_desc_scroll(ctx, desc, swipes=5):
+    """Finds [desc] in a player panel, scrolling it up when the row is below the visible part (the More panel
+    is longer than the screen; uiautomator only sees what is drawn)."""
+    w, h = ctx.size()
+    x = int(w * 0.85) if w > h else w // 2  # landscape: the side panel; portrait: the bottom sheet
+    for i in range(swipes + 1):
+        n = _find_desc(ctx, desc, tries=1)
+        if n:
+            return n
+        if i < swipes:
+            ctx.phone.swipe(x, int(h * 0.75), x, int(h * 0.35), 300)
+            ctx.sleep(0.8)
+    return None
+
+
+def _tap_desc_scroll(ctx, desc):
+    n = _find_desc_scroll(ctx, desc)
+    if n:
+        ctx.phone.tap(*uix.center(n))
+    return n is not None
+
+
 def _open_more(ctx):
     _open_panel(ctx, "more", "More", "more_panel")
 
@@ -95,8 +117,11 @@ def p12_resume_chip(ctx):
     m3 = ctx.log.mark()
     ctx.phone.tap(*uix.center(chip))
     need(ctx.log.wait(r"Resume: start over", 5, since=m3), "tapping Start over logged no 'Resume: start over'")
-    ctx.sleep(2.5)
-    pos = ctx.last_value(r"pos_ms=(\d+)", m3, tag="VP-Check")
+    seek = ctx.log.wait(r"seekTo 0 ms", 5, since=m3)
+    need(seek, "Start over did not seek to 0 ('seekTo 0 ms')")
+    # the VP-Check state line is periodic: only one logged after the seek tells the new position
+    after = ctx.log.wait(r"pos_ms=(\d+)", 8, since=seek[0].seq + 1, tag="VP-Check")
+    pos = after[1].group(1) if after else None
     need(pos is None or int(pos) < 10_000, f"position after Start over is {pos} ms")
     return f"chip shown on the resumed open; Start over went back to {pos or '?'} ms (screenshot resume_chip)"
 
@@ -132,6 +157,14 @@ def p12_up_next(ctx):
 def p12_sub_line(ctx):
     _play(ctx, EP1, pause=True)
     _open_panel(ctx, "sub", "Subtitles", "subtitle_panel_lines")
+    if not _find_desc(ctx, "sub_line_next", tries=1):
+        # The language settings may start the clip with subtitles off; the line buttons need one on.
+        ns = ctx.nodes()
+        tracks = uix.find_all(ns, regex=r"^sub_track_\d+$") if ns else []
+        need(tracks, "no subtitle track in the panel")
+        ctx.phone.tap(*uix.center(tracks[0]))  # selecting closes the panel
+        ctx.sleep(1.2)
+        _open_panel(ctx, "sub", "Subtitles", "subtitle_panel_lines")
     out = []
     for desc, nxt in (("sub_line_next", "true"), ("sub_line_prev", "false")):
         m = ctx.log.mark()
@@ -176,7 +209,7 @@ def p12_folder_speed(ctx):
     try:
         _open_more(ctx)
         m2 = ctx.log.mark()
-        need(_tap_desc(ctx, "folder_speed_set"), "no 'Use 1.5x for all' chip in More > Whole folder")
+        need(_tap_desc_scroll(ctx, "folder_speed_set"), "no 'Use 1.5x for all' chip in More > Whole folder")
         need(ctx.log.wait(r"Folder settings for .* speed=1\.5", 5, since=m2), "folder speed not saved")
         _close_panel(ctx)
         m3 = _play(ctx, fresh)
@@ -189,7 +222,7 @@ def p12_folder_speed(ctx):
             _debug(ctx, "speed:1.0")
             ctx.sleep(1.0)
             _open_more(ctx)
-            _tap_desc(ctx, "folder_speed_clear")
+            _tap_desc_scroll(ctx, "folder_speed_clear")
             ctx.sleep(1.0)
             _close_panel(ctx)
         except Exception as e:  # cleanup only
@@ -204,12 +237,12 @@ def p12_shader_switch(ctx):
     try:
         _open_more(ctx)
         m2 = ctx.log.mark()
-        need(_tap_desc(ctx, "shader_snapdragon_gsr"), "no GSR chip in More > Shaders")
+        need(_tap_desc_scroll(ctx, "shader_snapdragon_gsr"), "no GSR chip in More > Shaders")
         need(ctx.log.wait(r"Applied shader preset SNAPDRAGON_GSR \(", 6, since=m2), "picking GSR applied nothing")
         ctx.sleep(1.0)
         m3 = ctx.log.mark()
-        if _find_desc(ctx, "shader_compare", tries=2, gap=0.4):
-            _tap_desc(ctx, "shader_compare")
+        if _find_desc_scroll(ctx, "shader_compare", swipes=2):
+            _tap_desc_scroll(ctx, "shader_compare")
             need(ctx.log.wait(r"Shader compare: original=true", 5, since=m3), "Compare logged nothing")
             hit = ctx.log.wait(r"Applied shader preset SNAPDRAGON_GSR \([^)]*\): ?(\S*)", 5, since=m3)
             need(hit and hit[1].group(1) == "", "Compare did not clear the shader chain")
@@ -221,7 +254,7 @@ def p12_shader_switch(ctx):
     finally:
         try:
             _open_more(ctx)
-            _tap_desc(ctx, f"shader_{before.lower()}")
+            _tap_desc_scroll(ctx, f"shader_{before.lower()}")
             ctx.sleep(1.0)
             _close_panel(ctx)
         except Exception as e:
