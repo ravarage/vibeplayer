@@ -440,15 +440,15 @@ fun SettingsScreen(
 
             SettingsClickableRow(
                 title = "Back up history and settings",
-                subtitle = "Positions, tracks, bookmarks, folder settings and every setting, in one file",
-                description = "Keep it somewhere safe; Restore brings it back after a reinstall",
+                subtitle = "Save a copy of your library",
+                description = "Includes positions, tracks, bookmarks, folder settings and app settings",
                 onClick = { exportBackup.launch(com.vibeplayer.data.backup.Backup.fileName(System.currentTimeMillis())) }
             )
 
             SettingsClickableRow(
                 title = "Restore from backup",
-                subtitle = "Replaces the current history and settings; the app restarts",
-                description = "Pick a vibeplayer-backup-*.zip made by Back up",
+                subtitle = "Load a saved copy",
+                description = "Replaces the current history and settings, then restarts the app",
                 onClick = { importBackup.launch(arrayOf("application/zip", "application/octet-stream")) }
             )
 
