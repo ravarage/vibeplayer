@@ -210,6 +210,15 @@ battery cost on battery power is not measured yet (TASKS.md P6-08).
 Zero-copy needs OpenGL ES (mpv's `hwdec_aimagereader` refuses a non-GL renderer), so a zero-copy row forced onto Vulkan (renderer setting Vulkan) uses copy-back. The P6-08 section does not record the runner mode; copy-back rows most likely ran with the runner's default `mode=quality` (no `profile=fast`). Efficient mode keeps `profile=fast`, so the H.264 Vulkan row in efficient mode is that configuration plus `profile=fast` (cheaper; to be confirmed by the device pass).
 
 - **Quality mode override**: Overrides the renderer column with `gpu-next` on Vulkan (else GLES) and copy-back for hardware formats; the table only drives efficient mode.
+- **Copy-back size limit** (2026-10-23): with renderer Auto or OpenGL ES, a copy-back decode of a clip above 2560x1440
+  (size from format detection) becomes zero-copy on OpenGL ES (`gpu-next` in Quality mode), in both modes. Copy-back
+  cannot carry 4K: `hevc10_4k.mp4` (4K 60 fps 10-bit, Quality, 40 s) dropped 47.8 frames/s on Vulkan, 24.9 on GLES,
+  0.0 zero-copy on GLES `gpu-next` (app CPU 39 % vs 123 %); 30 min runs 48.5 and 29.9/s. Renderer set to Vulkan keeps
+  copy-back. Vulkan-only shaders (Anime4K, FSRCNNX, RAVU) are off for such clips; they upscale, and these sources are
+  larger than the screen. Frame rate does not save copy-back at 4K (generated clips, 30 s): HEVC 10-bit 4K24
+  2.4 drops/s on Vulkan copy-back (CPU 91 %) vs 0 zero-copy (17 %); H.264 4K30 8.8/s (101 %) vs 0.1/s (22 %). So the rule
+  is by size, not pixel rate; experimental HDR output (Vulkan only) therefore needs renderer Vulkan for 4K clips, and
+  plays with those drops. H.264 4K zero-copy start stalls (B-08 concern): 0 of 20 cold opens (tools/stall_test.sh).
 - **Fast format detection**: `VideoFormatDetector` uses Android `MediaExtractor` off the main thread in parallel with engine initialization (`Dispatchers.IO`), extracting MIME, profile, and bit depth under ~5-15 ms (well within the 50 ms budget). Falls back to `other` on error or timeout.
 - **Vulkan driver availability**: Probed and cached per driver build (`Build.FINGERPRINT` + `vulkan.adreno.so` mtime; never the 1.1 feature flag). Reset on driver update.
 - **Safety net chain**: Vulkan -> OpenGL ES -> software (`hwdec=no`) at the exact same position with one short on-screen message (`_onScreenMessage`), `VULKAN-FAIL` / `GLES-FAIL` log lines, and remembered format failures on this driver build so subsequent opens of that format immediately avoid Vulkan.

@@ -218,8 +218,14 @@ def _anime4k(ctx, renderer):
     m = _play_p11(ctx, extras=f"--es mode quality --es renderer {renderer} --es shader a", timeout=30)
     # The preset is applied more than once while opening (NONE at start-up, then ANIME4K_A while the config is
     # still Efficient, where the list is empty): wait for the Quality one.
-    applied = ctx.log.wait(r"Applied shader preset ANIME4K_A \(mode=QUALITY, renderer=(\w+)\): ?(\S*)", 12, since=m)
+    rx = r"Applied shader preset ANIME4K_A \(mode=QUALITY, renderer=(\w+)\): ?(\S*)"
+    applied = ctx.log.wait(rx, 12, since=m)
     need(applied, "no 'Applied shader preset ANIME4K_A (mode=QUALITY, ...)' log")
+    # It can be applied once more a few ms later (the first time before the shader folder is known, with an
+    # empty list, 2026-10-23): the last one counts.
+    ctx.sleep(1.0)
+    ctx.log.refresh()
+    applied = ctx.log.find_all(rx, m)[-1]
     need(applied[1].group(1).upper() == renderer.upper(), f"renderer is {applied[1].group(1)}, expected {renderer}")
     ctx.trace("applied: " + applied[0].msg)
     value = applied[1].group(2)

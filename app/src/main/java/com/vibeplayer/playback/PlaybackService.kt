@@ -1293,7 +1293,8 @@ class PlaybackService : Service() {
                 format = detectedFormat,
                 mode = targetMode,
                 rendererSetting = rendererSetting,
-                isVulkanAvailableForFormat = isVulkanAvailable
+                isVulkanAvailableForFormat = isVulkanAvailable,
+                clip = detectedClip
             )
             playerEngine.setCurrentFormatProfile(resolvedConfig)
 

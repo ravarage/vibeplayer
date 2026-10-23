@@ -223,16 +223,17 @@ class PlayerActivity : ComponentActivity() {
 
     private fun resolveConfig(
         appSettings: AppSettings,
-        format: VideoFormat? = null
+        clip: com.vibeplayer.player.ClipInfo? = null
     ): PlaybackConfig =
-        resolveConfig(appSettings.playbackMode, appSettings.renderer, format)
+        resolveConfig(appSettings.playbackMode, appSettings.renderer, clip)
 
     /** Null mode/renderer (no settings yet): keep what the service-owned engine runs. */
     private fun resolveConfig(
         modeSetting: com.vibeplayer.data.prefs.PlaybackModeOption? = null,
         rendererSetting: com.vibeplayer.data.prefs.RendererOption? = null,
-        format: VideoFormat? = null
+        clip: com.vibeplayer.player.ClipInfo? = null
     ): PlaybackConfig {
+        val format = clip?.format
         val modeArg = intent.getStringExtra("mode") ?: intent.getStringExtra("playback_mode")
         val mode = when (modeArg?.lowercase()) {
             "quality" -> PlaybackMode.QUALITY
@@ -277,7 +278,8 @@ class PlayerActivity : ComponentActivity() {
                 format = format,
                 mode = mode,
                 rendererSetting = targetRendererSetting,
-                isVulkanAvailableForFormat = isVulkanAvailable
+                isVulkanAvailableForFormat = isVulkanAvailable,
+                clip = clip
             )
         } else null
 
@@ -546,6 +548,11 @@ class PlayerActivity : ComponentActivity() {
             LaunchedEffect(pinControls) {
                 if (pinControls) controlsVisible = true
             }
+            // A pause tapped while the controls were already fading out (the 3 s auto-hide) left the player
+            // paused with no controls (devcheck p11_frame_step, 2026-10-23): pausing shows them.
+            LaunchedEffect(playerState.paused) {
+                if (playerState.paused && !isLocked) controlsVisible = true
+            }
             var aspectIndicatorText by remember { mutableStateOf("") }
             var showAspectIndicator by remember { mutableStateOf(false) }
             var aspectIndicatorTrigger by remember { mutableStateOf(0L) }
@@ -764,10 +771,10 @@ class PlayerActivity : ComponentActivity() {
             }
             val videoPath = currentVideoPath
             val targetKey = currentIdentityKey
-            val detectedFormat = if (videoPath.isNotEmpty()) {
-                VideoFormatDetector.detect(applicationContext, videoPath, targetKey)
+            val detectedClip = if (videoPath.isNotEmpty()) {
+                VideoFormatDetector.detectClip(applicationContext, videoPath, targetKey)
             } else null
-            val hinted = resolveConfig(modeHint, rendererHint, detectedFormat)
+            val hinted = resolveConfig(modeHint, rendererHint, detectedClip)
             // false: the handle exists already (running session, or init stopped waiting). No
             // reconfigure here: an open applies the configuration from settings in
             // PlaybackService.openVideo, and a re-attach must not touch the playing file (a config
@@ -780,12 +787,12 @@ class PlayerActivity : ComponentActivity() {
                     .putString("renderer", settings.renderer.name)
                     .apply()
             }
-            computeStartup(settings, detectedFormat)
+            computeStartup(settings, detectedClip)
         }
         contentDeferred = lifecycleScope.async(Dispatchers.IO) { resolveContentOnIo() }
     }
 
-    private fun computeStartup(settings: AppSettings, format: VideoFormat? = null): Startup {
+    private fun computeStartup(settings: AppSettings, clip: com.vibeplayer.player.ClipInfo? = null): Startup {
         val shaderArg = intent.getStringExtra("shader") ?: intent.getStringExtra("shader_preset")
         val preset = when (shaderArg?.lowercase()) {
             "anime4k_a", "a" -> com.vibeplayer.player.ShaderPreset.ANIME4K_A
@@ -797,7 +804,7 @@ class PlayerActivity : ComponentActivity() {
             "none" -> com.vibeplayer.player.ShaderPreset.NONE
             else -> null
         }
-        return Startup(resolveConfig(settings, format), preset)
+        return Startup(resolveConfig(settings, clip), preset)
     }
 
     private fun hideSystemBars() {

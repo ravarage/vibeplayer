@@ -1855,7 +1855,9 @@ class PlayerEngine(
     private fun glesFallbackConfig(current: PlaybackConfig): PlaybackConfig {
         val fromTable = current.formatProfile?.takeIf { it.vo == current.voOverride && it.renderer == current.renderer }
             ?: return current.copy(renderer = Renderer.GLES)
-        val resolved = FormatProfileTable.resolve(fromTable.format, current.mode, RendererSetting.AUTO, isVulkanAvailableForFormat = false)
+        val resolved = FormatProfileTable.resolve(
+            fromTable.format, current.mode, RendererSetting.AUTO, isVulkanAvailableForFormat = false, clip = lastLoad?.clip
+        )
         setCurrentFormatProfile(resolved)
         return current.copy(
             renderer = Renderer.GLES,
@@ -1932,7 +1934,8 @@ class PlayerEngine(
                 format = currentFormat,
                 mode = newMode,
                 rendererSetting = userRendererSetting,
-                isVulkanAvailableForFormat = isVulkanAvailable
+                isVulkanAvailableForFormat = isVulkanAvailable,
+                clip = lastLoad?.clip
             )
             setCurrentFormatProfile(resolved)
             val newConfig = current.copy(

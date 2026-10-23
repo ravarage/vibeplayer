@@ -9,6 +9,7 @@ object SubtitleMatcher {
     val EXTENSIONS = setOf("srt", "ass", "ssa", "vtt")
 
     private const val PRIMARY_ROOT = "/storage/emulated/0"
+    private val PRIMARY_ALIASES = listOf("/sdcard", "/storage/self/primary")
 
     /** Whether [candidate] is a subtitle for [videoName]: same base name, optionally followed by ".tags". */
     fun matches(videoName: String, candidate: String): Boolean {
@@ -40,8 +41,12 @@ object SubtitleMatcher {
         if (volume.isEmpty()) return null
         val treeRel = treeDocId.substringAfter(':').trim('/')
         val root = if (volume == "primary") PRIMARY_ROOT else "/storage/$volume"
-        if (!videoPath.startsWith("$root/")) return null
-        val folderRel = videoPath.removePrefix("$root/").substringBeforeLast('/', "")
+        // /sdcard and /storage/self/primary are the same primary storage (a file opened by path from adb or a
+        // file manager arrives as /sdcard/..., 2026-10-23).
+        val path = PRIMARY_ALIASES.firstOrNull { videoPath.startsWith("$it/") }
+            ?.let { PRIMARY_ROOT + videoPath.removePrefix(it) } ?: videoPath
+        if (!path.startsWith("$root/")) return null
+        val folderRel = path.removePrefix("$root/").substringBeforeLast('/', "")
         val inside = treeRel.isEmpty() || folderRel == treeRel || folderRel.startsWith("$treeRel/")
         return if (inside) "$volume:$folderRel" else null
     }

@@ -187,8 +187,11 @@ object BenchmarkRunner {
             val prevCoreTicks = mutableMapOf<String, Pair<Long, Long>>()
             val clkTck = readClkTck()
 
+            // Paced against the loop start, not delay(1000) per sample: the property and /proc reads
+            // take tens of ms, and a 1800 s row drifted to ~1905 s, past run_matrix.py's wait.
+            val loopStartMs = SystemClock.elapsedRealtime()
             for (sec in 1..targetRunSeconds) {
-                delay(1000L)
+                delay((loopStartMs + sec * 1000L - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
 
                 val nowElapsedMs = SystemClock.elapsedRealtime()
                 val nowCpuTicks = readProcessCpuTicks()

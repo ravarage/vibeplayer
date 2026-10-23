@@ -5,7 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0] - unreleased (versionCode 6)
+## [0.9.0] - unreleased (versionCode 7)
+
+Device pass on the POCO X5 Pro 5G (2026-10-23): full devcheck, network checks, 30 min stability and shader runs.
+
+### Changed
+- **4K plays smoothly**: videos larger than 1440p play with zero-copy decoding on OpenGL ES (renderer Auto or
+  OpenGL ES, both modes). Copy-back could not keep up at 4K: 4K 60 fps HEVC dropped 25-48 of 60 frames a second,
+  even 4K 24 fps dropped 10 %; now 0, at about a quarter of the CPU. Renderer set to Vulkan keeps the old path
+  (needed for HDR output, which then drops frames at 4K).
+- **Subtitles stay Unicode**: UTF-16 files without a BOM and UTF-32 files are read correctly, and a UTF-8 file
+  with a few broken bytes is no longer decoded in the legacy code page (Kurdish, Japanese and other scripts keep
+  their letters). The Subtitle encoding setting only applies to files that are clearly not Unicode.
+- Process exit diagnostics and "Collect system profiles" in Settings are debug builds only; release builds never
+  register the profiling triggers.
+
+### Fixed
+- Pausing just as the controls faded out left the player paused with no controls; pausing now shows them.
+- Subtitle files next to a video were not loaded automatically when the video was opened by a /sdcard/... path.
+
+### Developer
+- Benchmarks: the runner works on Android 17 (background activity start), samples no longer drift past the wait,
+  drop counts add up across loops, `run_matrix.py --seconds` for short runs; debug action `sleep_timer:<s>|eof|off`.
+- devcheck: fixes for the resume chip fading during the still-picture check and the Anime4K chain read.
+
+## [0.8.0] - 2026-10-21 (versionCode 6)
 
 Built in a cloud session without the phone; `tools/shower_check.sh` runs the device checks.
 

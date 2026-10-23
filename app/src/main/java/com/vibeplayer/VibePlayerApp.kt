@@ -19,7 +19,8 @@ class VibePlayerApp : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             // Only this setting matters: re-registering triggers on every unrelated settings write is waste.
             AppSettingsRepository(this@VibePlayerApp).appSettingsFlow
-                .map { it.collectSystemProfiles }
+                // Release builds hide the switch, so a value left on by an earlier build must not keep collecting.
+                .map { it.collectSystemProfiles && BuildConfig.DEBUG }
                 .distinctUntilChanged()
                 .collect { enabled ->
                     ProfilingController.setCollectSystemProfilesEnabled(this@VibePlayerApp, enabled)
