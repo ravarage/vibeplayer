@@ -213,6 +213,12 @@ class Ctx:
         return nb, ch
 
     def need_still(self, what="picture"):
+        # The "Resumed at ... Start over" chip (P12-01) leaves 8 s after a resumed open; its fade-out
+        # changed 2.6 % of a paused screen (2026-10-23).
+        for _ in range(6):
+            if not uix.find(self.nodes(), contains="Resumed at"):
+                break
+            self.sleep(1.5)
         nb, ch, _ = self.motion(2, 1.0)
         need(nb > 0.03, f"{what} is black while paused")
         need(ch <= 0.002, f"{what} still changes while paused (changed={ch:.2%})")
