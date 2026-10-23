@@ -210,4 +210,53 @@ class FormatProfileTableTest {
         assertEquals("no", DecodeMode.SOFTWARE.hwdec)
         assertEquals("no", step3HwdecOverride)
     }
+
+    private val clip4k = ClipInfo(VideoFormat.HEVC, fps = 60.0, width = 3840, height = 2160, tenBit = true)
+
+    @Test
+    fun `quality mode plays a 4K hardware clip zero-copy on GLES`() {
+        val resolved = FormatProfileTable.resolve(
+            VideoFormat.HEVC, PlaybackMode.QUALITY, RendererSetting.AUTO, isVulkanAvailableForFormat = true, clip = clip4k
+        )
+        assertEquals(DecodeMode.MEDIACODEC_ZERO_COPY, resolved.decodeMode)
+        assertEquals(Renderer.GLES, resolved.renderer)
+        assertEquals("gpu-next", resolved.vo)
+        assertTrue(resolved.isQualityMode)
+    }
+
+    @Test
+    fun `quality mode keeps copy-back on vulkan up to 1440p and when the size is unknown`() {
+        for (clip in listOf(ClipInfo(VideoFormat.HEVC, width = 2560, height = 1440), ClipInfo(VideoFormat.HEVC), null)) {
+            val resolved = FormatProfileTable.resolve(
+                VideoFormat.HEVC, PlaybackMode.QUALITY, RendererSetting.AUTO, isVulkanAvailableForFormat = true, clip = clip
+            )
+            assertEquals(DecodeMode.MEDIACODEC_COPY, resolved.decodeMode)
+            assertEquals(Renderer.VULKAN, resolved.renderer)
+        }
+    }
+
+    @Test
+    fun `a forced vulkan renderer keeps copy-back for 4K`() {
+        val resolved = FormatProfileTable.resolve(
+            VideoFormat.HEVC, PlaybackMode.QUALITY, RendererSetting.VULKAN, isVulkanAvailableForFormat = true, clip = clip4k
+        )
+        assertEquals(DecodeMode.MEDIACODEC_COPY, resolved.decodeMode)
+        assertEquals(Renderer.VULKAN, resolved.renderer)
+    }
+
+    @Test
+    fun `efficient copy-back row goes zero-copy on GLES for 4K, software rows are untouched`() {
+        val h264 = FormatProfileTable.resolve(
+            VideoFormat.H264_8BIT, PlaybackMode.EFFICIENT, RendererSetting.AUTO, isVulkanAvailableForFormat = true,
+            clip = ClipInfo(VideoFormat.H264_8BIT, width = 3840, height = 2160)
+        )
+        assertEquals(DecodeMode.MEDIACODEC_ZERO_COPY, h264.decodeMode)
+        assertEquals(Renderer.GLES, h264.renderer)
+        assertFalse(h264.isQualityMode)
+        val av1 = FormatProfileTable.resolve(
+            VideoFormat.AV1, PlaybackMode.QUALITY, RendererSetting.AUTO, isVulkanAvailableForFormat = true,
+            clip = ClipInfo(VideoFormat.AV1, width = 3840, height = 2160)
+        )
+        assertEquals(DecodeMode.SOFTWARE, av1.decodeMode)
+    }
 }

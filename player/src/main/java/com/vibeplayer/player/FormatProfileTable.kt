@@ -185,12 +185,17 @@ object FormatProfileTable {
      *    values (measured separately; gpu-next is never carried over to GLES unmeasured).
      * 6. Zero-copy (hwdec=mediacodec) needs OpenGL ES: mpv's MediaCodec interop (hwdec_aimagereader)
      *    refuses a non-GL renderer, so on Vulkan it becomes mediacodec-copy.
+     * 7. Renderer AUTO or GLES, copy-back decode of a clip above 1440p ([clip] size known): zero-copy on
+     *    OpenGL ES instead (gpu-next in Quality mode). Copy-back cannot carry 4K: hevc10_4k (4K 60 fps 10-bit)
+     *    dropped 48 of 60 frames/s on Vulkan and 25 on GLES, 0 with zero-copy (2026-10-23). The upscaling
+     *    shaders that need Vulkan have nothing to upscale on a source larger than the screen.
      */
     fun resolve(
         format: VideoFormat,
         mode: PlaybackMode,
         rendererSetting: RendererSetting,
-        isVulkanAvailableForFormat: Boolean
+        isVulkanAvailableForFormat: Boolean,
+        clip: ClipInfo? = null
     ): ResolvedConfiguration {
         val selection = active
         val profile = selection.rows[format] ?: getProfile(format)
@@ -223,6 +228,20 @@ object FormatProfileTable {
         if (targetRenderer == Renderer.VULKAN && targetDecode == DecodeMode.MEDIACODEC_ZERO_COPY) {
             targetDecode = DecodeMode.MEDIACODEC_COPY
         }
+        if (targetDecode == DecodeMode.MEDIACODEC_COPY && rendererSetting != RendererSetting.VULKAN &&
+            isAboveCopyBackLimit(clip)
+        ) {
+            return ResolvedConfiguration(
+                format = format,
+                profile = profile,
+                decodeMode = DecodeMode.MEDIACODEC_ZERO_COPY,
+                renderer = Renderer.GLES,
+                vo = if (quality) "gpu-next" else profile.glesVo ?: "gpu",
+                reason = "${clip?.width}x${clip?.height} is too large for copy-back, zero-copy on OpenGL ES",
+                isQualityMode = quality,
+                tableSource = selection.source
+            )
+        }
 
         return ResolvedConfiguration(
             format = format,
@@ -234,5 +253,12 @@ object FormatProfileTable {
             isQualityMode = quality,
             tableSource = selection.source
         )
+    }
+
+    /** Above 2560x1440 pixels: copy-back drops frames there (rule 7). */
+    internal fun isAboveCopyBackLimit(clip: ClipInfo?): Boolean {
+        val w = clip?.width ?: return false
+        val h = clip.height ?: return false
+        return w.toLong() * h > 2560L * 1440L
     }
 }
