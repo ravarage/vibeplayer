@@ -16,17 +16,16 @@ It is developed for one phone (POCO X5 Pro 5G) and published as is.
 
 <table>
   <tr>
-    <td align="center" rowspan="2"><img src="docs/screenshots/library.png" width="220" alt="Folder view"><br>Folder view</td>
+    <td align="center"><img src="docs/screenshots/library.png" width="400" alt="Folder view"><br>Folder view</td>
     <td align="center"><img src="docs/screenshots/player.png" width="400" alt="Player controls"><br>Player</td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/subtitles.png" width="400" alt="Subtitles"><br>Subtitles</td>
+    <td align="center"><img src="docs/screenshots/subtitle-sheet.png" width="400" alt="Subtitle panel"><br>Subtitle panel</td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/subtitle-sheet.png" width="400" alt="Subtitle sheet"><br>Subtitle sheet</td>
     <td align="center"><img src="docs/screenshots/speed.png" width="400" alt="Playback speed"><br>Playback speed</td>
-  </tr>
-  <tr>
-    <td></td>
-    <td align="center" colspan="2"><img src="docs/screenshots/settings.png" width="400" alt="Settings"><br>Settings</td>
+    <td align="center"><img src="docs/screenshots/settings.png" width="400" alt="Settings"><br>Settings</td>
   </tr>
 </table>
 
