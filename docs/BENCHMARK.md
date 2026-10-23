@@ -461,3 +461,21 @@ file) and the other stages keep running, so on GLES the stage never ran. **Updat
 | `av1_1080p60_10bit.mp4` | quality | gpu-next | gles | default | auto | none | warm | 300 | 0 / 0 / 0 | 0 / 0 / 0 | 60.0 | 162.4% | 956 | 38.0 → 37.0 |
 | `av1_1080p60_10bit.mp4` | quality | gpu | gles | default | auto | none | warm | 300 | 0 / 0 / 0 | 0 / 0 / 0 | 60.0 | 150.5% | 984 | 37.0 → 37.0 |
 
+
+## Stability, shaders and the copy-back limit (2026-10-23, Claude, debug build, driver 863.1)
+
+Run with `tools/bench/run_matrix.py` (BAL fix, quoted extras, drop totals summed across loop restarts), Quality mode.
+
+| Run | Length | Result |
+|---|---|---|
+| P6-05 stability, `hevc10_4k.mp4`, Vulkan (copy-back) | 30 min | no crash or ANR, picture moving, 39 -> 40 °C, 48.5 drops/s |
+| P6-05 stability, `hevc10_4k.mp4`, GLES (copy-back) | 30 min | no crash or ANR, 29.9 drops/s |
+| Same clip, GLES zero-copy `gpu-next` | 40 s | 0.0 drops/s, app CPU 39 % (123 % on copy-back) |
+| HEVC 10-bit 4K24, Vulkan copy-back vs zero-copy | 30 s | 2.4 drops/s (CPU 91 %) vs 0 (17 %) |
+| H.264 4K30, Vulkan copy-back vs zero-copy | 30 s | 8.8 drops/s (CPU 101 %) vs 0.1 (22 %) |
+| H.264 4K zero-copy cold opens (`tools/stall_test.sh`) | 20 opens | 0 start stalls |
+| P8-04 shaders, `ichiban.mp4` 1080p, Vulkan: none, C, GSR, FSRCNNX, RAVU | 60 s each | 0 drops |
+| P8-04 shaders, Anime4K A and B | 60 s each | 13.5 drops/s (Restore CNN, GPU-bound) |
+
+Result: clips above 2560x1440 now decode zero-copy on OpenGL ES (commit 73d43ed, in 0.9.0); details in
+ARCHITECTURE.md, "Copy-back size limit".
