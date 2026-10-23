@@ -16,6 +16,9 @@ the project owner is porting a Vulkan 1.3 driver to it).
   `c0b92d25178c8b21` (P6-08, on battery):
   - H.264 8-bit: MediaCodec copy-back with Vulkan `vo=gpu-next` (549 mA vs 637 mA GLES zero-copy, 0 drops on all;
     zero-copy also stalls at start, B-08). Without Vulkan: copy-back on GLES `vo=gpu`.
+  - Any MediaCodec clip above 2560x1440 (4K): zero-copy on OpenGL ES, whatever the table row says, unless the
+    renderer is set to Vulkan. Copy-back cannot carry 4K on this phone (H.264 4K30 8.8 drops/s vs 0.1, HEVC
+    10-bit 4K60 47.8/s vs 0; ARCHITECTURE.md, "Copy-back size limit").
   - HEVC 8/10-bit: MediaCodec zero-copy on OpenGL ES (605 mA vs 1254 mA, 29% vs 117% CPU, drops equal within 5%).
   - VP9: MediaCodec zero-copy on OpenGL ES (339 mA vs 794-1026 mA).
   - AV1 (any): dav1d software decode on all cores with Vulkan `vo=gpu` (362 drops vs 385 gpu-next and 918 GLES).
@@ -54,8 +57,9 @@ Details and methods in [BENCHMARK.md](BENCHMARK.md).
   | AV1 4K (dav1d) | Vulkan `gpu` | 1563 mA | 362 | Vulkan `gpu-next` 1340 mA, 385 drops; GLES 1668 mA, 918 drops |
 
   For HEVC and VP9, zero-copy on OpenGL ES uses far less power and CPU than any copy-back path; for H.264,
-  Vulkan `gpu-next` copy-back measured lowest (and zero-copy stalls at start more often, B-08). The HEVC 4K drops come from the decoder running below real time without an
-  operating-rate hint (device A/B: `operating_rate=120` gave 0 drops); that fix is pending its device check.
+  Vulkan `gpu-next` copy-back measured lowest (and zero-copy stalls at start more often, B-08). The HEVC 4K drops
+  in this table are fixed: the decoder now gets an operating-rate hint (device A/B: `operating_rate=120` gave 0
+  drops), and since 0.9.0 4K clips skip copy-back (0.0 drops/s zero-copy on GLES `gpu-next`, 2026-10-23).
 
 ## Best OS
 
