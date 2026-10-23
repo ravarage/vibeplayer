@@ -44,5 +44,7 @@ class SubtitleMatcherTest {
         assertEquals("1A2B-3C4D:Videos", SubtitleMatcher.folderDocumentId("1A2B-3C4D:", "/storage/1A2B-3C4D/Videos/a.mp4"))
         assertNull(SubtitleMatcher.folderDocumentId("1A2B-3C4D:", video))
         assertNull(SubtitleMatcher.folderDocumentId("nocolon", video))
+        assertEquals("primary:Movies/Anime", SubtitleMatcher.folderDocumentId("primary:Movies", "/sdcard/Movies/Anime/Ep01.mkv"))
+        assertEquals("primary:Movies/Anime", SubtitleMatcher.folderDocumentId("primary:Movies", "/storage/self/primary/Movies/Anime/Ep01.mkv"))
     }
 }

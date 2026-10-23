@@ -42,4 +42,45 @@ class SubtitleCharsetTest {
         assertEquals("windows-1256", SubtitleCharset.normalize("windows-1256"))
         assertEquals("windows-1252", SubtitleCharset.normalize(null))
     }
+
+    // User, 2026-10-23: Kurdish (Sorani) and Japanese subtitles must never be read in a code page.
+    private val kurdish = "${line}ئەمە تاقیکردنەوەیەکە بۆ ژێرنووس، سڵاو لە هەمووان"
+    private val japanese = "${line}これは字幕のテストです。こんにちは、世界！"
+
+    @Test
+    fun kurdishAndJapaneseUtf8AreLeftAloneWhateverTheSetting() {
+        for (cp in listOf("windows-1252", "windows-1256", "Shift_JIS")) {
+            assertNull(SubtitleCharset.toUtf8OrNull(kurdish.toByteArray(Charsets.UTF_8), cp))
+            assertNull(SubtitleCharset.toUtf8OrNull(japanese.toByteArray(Charsets.UTF_8), cp))
+        }
+    }
+
+    @Test
+    fun utf16WithoutBomIsConverted() {
+        for (text in listOf(kurdish, japanese, "${line}Hello")) {
+            assertArrayEquals(text.toByteArray(Charsets.UTF_8), SubtitleCharset.toUtf8OrNull(text.toByteArray(Charsets.UTF_16LE), "windows-1256"))
+            assertArrayEquals(text.toByteArray(Charsets.UTF_8), SubtitleCharset.toUtf8OrNull(text.toByteArray(Charsets.UTF_16BE), "windows-1256"))
+        }
+    }
+
+    @Test
+    fun utf32WithBomIsConverted() {
+        val le = byteArrayOf(0xFF.toByte(), 0xFE.toByte(), 0, 0) + japanese.toByteArray(Charset.forName("UTF-32LE"))
+        assertArrayEquals(japanese.toByteArray(Charsets.UTF_8), SubtitleCharset.toUtf8OrNull(le, "windows-1252"))
+    }
+
+    @Test
+    fun aFewBrokenBytesKeepTheFileUtf8() {
+        val bytes = kurdish.toByteArray(Charsets.UTF_8) + byteArrayOf(0xFF.toByte()) + japanese.toByteArray(Charsets.UTF_8)
+        val out = String(SubtitleCharset.toUtf8OrNull(bytes, "windows-1256")!!, Charsets.UTF_8)
+        assertEquals(kurdish + "\uFFFD" + japanese, out)
+    }
+
+    @Test
+    fun legacyCodePageTextIsNotMistakenForUtf8() {
+        val arabic = "${line}مرحبا بالعالم هذا اختبار للترميز"
+        assertEquals(false, SubtitleCharset.isMostlyUtf8(arabic.toByteArray(Charset.forName("windows-1256"))))
+        val sjis = japanese.toByteArray(Charset.forName("Shift_JIS"))
+        assertArrayEquals(japanese.toByteArray(Charsets.UTF_8), SubtitleCharset.toUtf8OrNull(sjis, "Shift_JIS"))
+    }
 }
