@@ -548,6 +548,11 @@ class PlayerActivity : ComponentActivity() {
             LaunchedEffect(pinControls) {
                 if (pinControls) controlsVisible = true
             }
+            // A pause tapped while the controls were already fading out (the 3 s auto-hide) left the player
+            // paused with no controls (devcheck p11_frame_step, 2026-10-23): pausing shows them.
+            LaunchedEffect(playerState.paused) {
+                if (playerState.paused && !isLocked) controlsVisible = true
+            }
             var aspectIndicatorText by remember { mutableStateOf("") }
             var showAspectIndicator by remember { mutableStateOf(false) }
             var aspectIndicatorTrigger by remember { mutableStateOf(0L) }
