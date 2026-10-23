@@ -473,39 +473,41 @@ fun SettingsScreen(
                 )
             }
 
-            // Category: Exit Diagnostics (P10-05)
-            val recentExits by com.vibeplayer.diagnostics.ExitDiagnostics.recentExits.collectAsState()
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            SettingsSectionHeader(title = "Process Exit Diagnostics")
-            if (recentExits.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = "No prior exit reasons recorded",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                recentExits.take(5).forEach { exit ->
-                    val dateStr = remember(exit.timestampMs) {
-                        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
-                            .format(java.util.Date(exit.timestampMs))
+            // Category: Exit Diagnostics (P10-05), debug builds only (user's request 2026-10-23)
+            if (com.vibeplayer.BuildConfig.DEBUG) {
+                val recentExits by com.vibeplayer.diagnostics.ExitDiagnostics.recentExits.collectAsState()
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+                SettingsSectionHeader(title = "Process Exit Diagnostics")
+                if (recentExits.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "No prior exit reasons recorded",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    val pssMb = exit.pssBytes / (1024 * 1024)
-                    val rssMb = exit.rssBytes / (1024 * 1024)
-                    val descStr = if (!exit.description.isNullOrBlank()) " • ${exit.description}" else ""
-                    SettingsInfoRow(
-                        title = "${exit.reasonName}$descStr",
-                        subtitle = dateStr,
-                        description = "PSS: ${pssMb}MB • RSS: ${rssMb}MB (code ${exit.reasonCode})"
-                    )
+                } else {
+                    recentExits.take(5).forEach { exit ->
+                        val dateStr = remember(exit.timestampMs) {
+                            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                                .format(java.util.Date(exit.timestampMs))
+                        }
+                        val pssMb = exit.pssBytes / (1024 * 1024)
+                        val rssMb = exit.rssBytes / (1024 * 1024)
+                        val descStr = if (!exit.description.isNullOrBlank()) " • ${exit.description}" else ""
+                        SettingsInfoRow(
+                            title = "${exit.reasonName}$descStr",
+                            subtitle = dateStr,
+                            description = "PSS: ${pssMb}MB • RSS: ${rssMb}MB (code ${exit.reasonCode})"
+                        )
+                    }
                 }
             }
 
