@@ -205,15 +205,18 @@ object BenchmarkSummaryComputer {
         }
 
         val last = samples.last()
-        val totalDrops = last.frameDropCount
-        val totalDecoderDrops = last.decoderFrameDropCount
+        // mpv restarts its drop counters on every loop-file restart: sum them across the restarts.
+        val drops = accumulateAcrossResets(samples.map { it.frameDropCount })
+        val decoderDrops = accumulateAcrossResets(samples.map { it.decoderFrameDropCount })
+        val totalDrops = drops.last()
+        val totalDecoderDrops = decoderDrops.last()
 
         // Startup drops: frame drop count at elapsedSeconds <= 2 (after playback starts)
-        val startupSample = samples.lastOrNull { it.elapsedSeconds <= 2 }
-        val startupDrops = startupSample?.frameDropCount?.coerceAtMost(totalDrops) ?: totalDrops
+        val startupIndex = samples.indexOfLast { it.elapsedSeconds <= 2 }
+        val startupDrops = if (startupIndex >= 0) drops[startupIndex] else totalDrops
         val steadyDrops = (totalDrops - startupDrops).coerceAtLeast(0L)
 
-        val startupDecoderDrops = startupSample?.decoderFrameDropCount?.coerceAtMost(totalDecoderDrops) ?: totalDecoderDrops
+        val startupDecoderDrops = if (startupIndex >= 0) decoderDrops[startupIndex] else totalDecoderDrops
         val steadyDecoderDrops = (totalDecoderDrops - startupDecoderDrops).coerceAtLeast(0L)
 
         val avgCpu = samples.map { it.cpuPercent }.average()
@@ -257,5 +260,19 @@ object BenchmarkSummaryComputer {
             driverHash = driverHash,
             driverMtime = driverMtime
         )
+    }
+}
+
+/**
+ * Turns per-second readings of a counter that restarts at 0 (mpv's drop counters on each loop-file
+ * restart) into a running total: a reading below the previous one starts a new segment.
+ */
+internal fun accumulateAcrossResets(readings: List<Long>): List<Long> {
+    var base = 0L
+    var prev = 0L
+    return readings.map { v ->
+        if (v < prev) base += prev
+        prev = v
+        base + v
     }
 }
