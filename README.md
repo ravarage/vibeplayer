@@ -5,7 +5,7 @@
 <p align="center">
   <img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
   <img alt="Platform: Android 17 arm64" src="https://img.shields.io/badge/platform-Android%2017%20%7C%20arm64--v8a-green">
-  <img alt="Version 0.8.0" src="https://img.shields.io/badge/version-0.8.0-orange">
+  <img alt="Version 0.9.0" src="https://img.shields.io/badge/version-0.9.0-orange">
 </p>
 
 Vibe Player is a personal Android video player built on libmpv, with MX Player-style touch gestures,
