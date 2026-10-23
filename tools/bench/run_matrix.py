@@ -530,25 +530,27 @@ def main() -> int:
         run_id = f"matrix_{args.matrix}_{int(time.time())}_{idx}"
         cold_str = "true" if row.cache == "cold" else "false"
 
+        # adb shell joins the arguments into one remote command line: quote every string value
+        # (driver_mtime has spaces, which shifted the extras after it and lost run_id).
         broadcast_args = [
             # The receiver starts PlayerActivity from the background, which Android 14+ blocks
             # (BAL_BLOCK) unless the shell lends its permission to start activities.
             "shell", "am", "broadcast", "--allow-background-activity-starts",
             "-a", "com.vibeplayer.BENCHMARK",
             "-n", "com.vibeplayer/.BenchmarkReceiver",
-            "--es", "path", row.file,
+            "--es", "path", shlex.quote(row.file),
             "--ei", "seconds", str(row.seconds),
-            "--es", "mode", row.mode,
-            "--es", "renderer", row.renderer,
-            "--es", "vo", row.vo,
-            "--es", "shader", row.shader,
+            "--es", "mode", shlex.quote(row.mode),
+            "--es", "renderer", shlex.quote(row.renderer),
+            "--es", "vo", shlex.quote(row.vo),
+            "--es", "shader", shlex.quote(row.shader),
             "--ez", "cold", cold_str,
-            "--es", "cache", row.cache,
-            "--es", "profile", row.profile,
-            "--es", "decoder", row.decoder,
-            "--es", "driver_hash", driver_hash,
-            "--es", "driver_mtime", driver_mtime,
-            "--es", "run_id", run_id,
+            "--es", "cache", shlex.quote(row.cache),
+            "--es", "profile", shlex.quote(row.profile),
+            "--es", "decoder", shlex.quote(row.decoder),
+            "--es", "driver_hash", shlex.quote(driver_hash),
+            "--es", "driver_mtime", shlex.quote(driver_mtime),
+            "--es", "run_id", shlex.quote(run_id),
         ]
         if args.mpv_opts:
             # adb shell joins the arguments into one remote command line: quote the ';'-separated list.
@@ -557,7 +559,7 @@ def main() -> int:
         run_adb(broadcast_args, timeout=30)
 
         # Wait for completion: watch the CSV on the device with a timeout
-        wait_timeout = row.seconds + 45
+        wait_timeout = row.seconds + 90
         start_wait = time.time()
         completed = False
 
