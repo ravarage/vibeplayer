@@ -531,7 +531,9 @@ def main() -> int:
         cold_str = "true" if row.cache == "cold" else "false"
 
         broadcast_args = [
-            "shell", "am", "broadcast",
+            # The receiver starts PlayerActivity from the background, which Android 14+ blocks
+            # (BAL_BLOCK) unless the shell lends its permission to start activities.
+            "shell", "am", "broadcast", "--allow-background-activity-starts",
             "-a", "com.vibeplayer.BENCHMARK",
             "-n", "com.vibeplayer/.BenchmarkReceiver",
             "--es", "path", row.file,
