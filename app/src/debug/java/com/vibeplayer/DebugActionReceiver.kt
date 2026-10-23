@@ -76,6 +76,20 @@ class DebugActionReceiver : BroadcastReceiver() {
                 engine.togglePause()
                 Log.i("VP", "DebugActionReceiver: toggled pause")
             }
+            action.startsWith("sleep_timer:") -> {
+                // P11-05 check: the sheet's shortest timer is 15 min; "sleep_timer:60" sets 60 s, "sleep_timer:eof" the end
+                // of the file, "sleep_timer:off" clears.
+                val arg = action.substringAfter("sleep_timer:")
+                val sec = arg.toLongOrNull()
+                service.setSleepTimer(
+                    when {
+                        arg == "eof" -> com.vibeplayer.playback.SleepTimer.endOfFile()
+                        sec != null -> com.vibeplayer.playback.SleepTimer(endsAtElapsedMs = android.os.SystemClock.elapsedRealtime() + sec * 1000L)
+                        else -> null
+                    }
+                )
+                Log.i("VP", "DebugActionReceiver: sleep timer $arg")
+            }
             action == "next" -> {
                 service.skipToNeighbour(true)
                 Log.i("VP", "DebugActionReceiver: next")
