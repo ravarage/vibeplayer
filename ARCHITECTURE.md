@@ -215,7 +215,10 @@ Zero-copy needs OpenGL ES (mpv's `hwdec_aimagereader` refuses a non-GL renderer)
   cannot carry 4K: `hevc10_4k.mp4` (4K 60 fps 10-bit, Quality, 40 s) dropped 47.8 frames/s on Vulkan, 24.9 on GLES,
   0.0 zero-copy on GLES `gpu-next` (app CPU 39 % vs 123 %); 30 min runs 48.5 and 29.9/s. Renderer set to Vulkan keeps
   copy-back. Vulkan-only shaders (Anime4K, FSRCNNX, RAVU) are off for such clips; they upscale, and these sources are
-  larger than the screen.
+  larger than the screen. Frame rate does not save copy-back at 4K (generated clips, 30 s): HEVC 10-bit 4K24
+  2.4 drops/s on Vulkan copy-back (CPU 91 %) vs 0 zero-copy (17 %); H.264 4K30 8.8/s (101 %) vs 0.1/s (22 %). So the rule
+  is by size, not pixel rate; experimental HDR output (Vulkan only) therefore needs renderer Vulkan for 4K clips, and
+  plays with those drops. H.264 4K zero-copy start stalls (B-08 concern): 0 of 20 cold opens (tools/stall_test.sh).
 - **Fast format detection**: `VideoFormatDetector` uses Android `MediaExtractor` off the main thread in parallel with engine initialization (`Dispatchers.IO`), extracting MIME, profile, and bit depth under ~5-15 ms (well within the 50 ms budget). Falls back to `other` on error or timeout.
 - **Vulkan driver availability**: Probed and cached per driver build (`Build.FINGERPRINT` + `vulkan.adreno.so` mtime; never the 1.1 feature flag). Reset on driver update.
 - **Safety net chain**: Vulkan -> OpenGL ES -> software (`hwdec=no`) at the exact same position with one short on-screen message (`_onScreenMessage`), `VULKAN-FAIL` / `GLES-FAIL` log lines, and remembered format failures on this driver build so subsequent opens of that format immediately avoid Vulkan.
