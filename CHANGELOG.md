@@ -17,7 +17,8 @@ Device pass on the POCO X5 Pro 5G (2026-10-23): full devcheck, network checks, 3
 - **Subtitles stay Unicode**: UTF-16 files without a BOM and UTF-32 files are read correctly, and a UTF-8 file
   with a few broken bytes is no longer decoded in the legacy code page (Kurdish, Japanese and other scripts keep
   their letters). The Subtitle encoding setting only applies to files that are clearly not Unicode.
-- Process exit diagnostics in Settings are shown only in debug builds.
+- Process exit diagnostics and "Collect system profiles" in Settings are debug builds only; release builds never
+  register the profiling triggers.
 
 ### Fixed
 - Pausing just as the controls faded out left the player paused with no controls; pausing now shows them.
@@ -28,7 +29,7 @@ Device pass on the POCO X5 Pro 5G (2026-10-23): full devcheck, network checks, 3
   drop counts add up across loops, `run_matrix.py --seconds` for short runs; debug action `sleep_timer:<s>|eof|off`.
 - devcheck: fixes for the resume chip fading during the still-picture check and the Anime4K chain read.
 
-## [0.8.0] - unreleased (versionCode 6)
+## [0.8.0] - 2026-10-21 (versionCode 6)
 
 Built in a cloud session without the phone; `tools/shower_check.sh` runs the device checks.
 
