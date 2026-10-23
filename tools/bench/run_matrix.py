@@ -16,6 +16,7 @@ Ensures:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import csv
 import io
 import os
@@ -476,6 +477,12 @@ def main() -> int:
         "only names in DebugMpvOptions.ALLOWED are applied; recorded in the CSV profile column as '<profile>+<opts>'",
     )
     parser.add_argument(
+        "--seconds",
+        type=int,
+        default=0,
+        help="Play every row for this many seconds instead of the matrix's length (quick runs)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print matrix rows and actions without executing on device",
@@ -483,6 +490,8 @@ def main() -> int:
     args = parser.parse_args()
 
     matrix_rows = get_predefined_matrix(args.matrix)
+    if args.seconds > 0:
+        matrix_rows = [dataclasses.replace(r, seconds=args.seconds) for r in matrix_rows]
     print(f"Loaded matrix '{args.matrix}': {len(matrix_rows)} total rows")
 
     if args.dry_run:
